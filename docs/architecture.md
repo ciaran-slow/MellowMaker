@@ -45,12 +45,38 @@ SQLite is the source of truth for core application state. Network services enric
 | Styling | NativeWind v4 |
 | Motion | React Native Reanimated |
 | Platforms | iOS and Android |
+| Navigation | Expo Router typed routes with Stitches, Patterns, and Guides bottom tabs |
+| Transient state and forms | React hooks/context and controlled inputs with pure domain validation; no global store or form dependency |
+| Unit/component tests | Jest with `jest-expo` and React Native Testing Library |
+| SQL integration tests | In-memory `node:sqlite` using shared production SQL/migration inputs |
+| Installed-app smoke tests | Maestro on iOS and Android targets |
 
-Navigation, application state, validation, testing, and network-client libraries are deliberately not selected here. The bootstrap implementation must prefer Expo-supported packages compatible with the installed SDK and record any lasting choice in this document.
+Network-client libraries remain deliberately unselected. Expo Router owns typed
+navigation, while durable state remains SQLite-authoritative. React hooks own
+local drafts, focus, loading, and animation; narrowly scoped context may provide
+stable dependencies or cross-screen ephemeral coordination, but it must never
+become a second durable entity store. Controlled forms trim, parse, and validate
+through pure domain functions that return discriminated success or field-error
+results. A state, form, or validation dependency should be introduced only when
+later feature complexity justifies changing this recorded decision.
 
 ## 5. Application boundaries
 
 The codebase should preserve these logical layers even if the initial folder structure is compact.
+
+Source code follows these boundaries: `src/features/<feature>/presentation`
+contains screens and feature orchestration; `src/domain` contains
+platform-independent entities, use cases, and validation; `src/data` contains
+repository contracts and SQLite or remote implementations; `src/platform`
+contains Expo/native adapters; and `src/ui` contains reusable presentation and
+theme code. Direct imports are lint-restricted so domain code cannot depend on
+React, React Native, Expo, or higher layers; data code cannot depend on routes,
+feature presentation, or UI; and feature/UI code cannot import anything from
+the concrete `src/platform` implementation root. Data contracts intended for
+feature/UI consumption live under `src/data/contracts`; all other `src/data`
+paths are treated as concrete implementation paths. These restrictions resolve
+the imported file before checking its layer, so aliases and relative paths have
+the same boundary.
 
 ### 5.1 Presentation
 
@@ -164,12 +190,13 @@ Centralize colors, spacing, radii, typography, and motion values rather than rep
 
 Interactive controls require accessible names, roles, and state; usable touch targets; text scaling; safe-area handling; and feedback that does not rely on color alone. Reduced-motion preferences should disable or simplify nonessential animation.
 
-## 11. State and concurrency
+## 11. State, forms, and concurrency
 
-- SQLite owns durable state.
-- Component state owns transient input, focus, loading, and animation state.
-- Shared in-memory state may cache or coordinate durable records but must be rebuildable from SQLite after restart.
-- Do not keep a second authoritative copy of persisted entities in an unrelated store.
+- SQLite owns durable state and is the only authoritative copy of persisted entities.
+- Component hooks own transient input, focus, loading, and animation state.
+- Narrow React context may provide stable dependencies or cross-screen ephemeral coordination, but durable records must be rebuilt from SQLite after restart.
+- Controlled React Native inputs keep draft state in their owning feature. On submit, pure domain functions trim, parse, and validate, returning discriminated success or field-error results that presentation maps to accessible text.
+- No global state or form dependency is adopted until a later feature demonstrates complexity that warrants revisiting this decision.
 - Counter and completion commands must prevent stale reads and lost writes during rapid taps.
 - Navigation away from a screen must not cancel an already acknowledged durable change.
 
@@ -194,13 +221,22 @@ Environment-dependent service URLs or public identifiers must use Expo-supported
 
 ## 14. Verification strategy
 
-The repository must establish tests at the narrowest useful level:
+The repository uses one Jest stack for pure domain tests and React Native
+component/router tests: Jest, `jest-expo`, and React Native Testing Library.
+Repository and migration integration tests use a fresh in-memory `node:sqlite`
+database, explicitly enable foreign keys, and close it after each test. When the
+production schema arrives, those tests must execute the same SQL and migration
+inputs as the Expo adapter rather than maintaining a second schema.
 
-- domain tests for counters, completion, ordering, URL parsing, and mappings;
-- SQLite integration tests for repositories, transactions, foreign keys, and migrations;
-- component tests for user-visible states and accessibility semantics;
-- device or end-to-end smoke coverage for critical flows and platform behavior;
-- configuration checks for Expo and EAS.
+Node SQLite proves SQLite schema, query, transaction, foreign-key, and migration
+behavior. It does **not** prove the `expo-sqlite` native bridge. Maestro covers
+installed-app behavior on iOS and Android; once the production adapter exists,
+its smoke flow must include observable database initialization and reopen
+behavior on both platforms.
+
+Configured CI runs a clean npm install, lint, strict type checking, and the full
+Jest suite. Maestro runs against locally installed targets using a caller-supplied
+application identifier until the EAS issue provides dedicated artifacts.
 
 Every release candidate should exercise, on both platforms where applicable:
 
@@ -210,8 +246,6 @@ Every release candidate should exercise, on both platforms where applicable:
 4. successful and failed YouTube import;
 5. saved guide access offline;
 6. video playback failure and recovery.
-
-Exact tools and commands belong to repository configuration once selected.
 
 ## 15. Current non-goals
 
@@ -226,9 +260,8 @@ Exact tools and commands belong to repository configuration once selected.
 
 These must be resolved by the issue that first needs them:
 
-- navigation library and route structure;
-- application state and form-validation approach;
-- test runners and device automation;
+Navigation, state/forms, and verification tooling are resolved in the technology
+baseline and verification sections above. The remaining decisions are:
 - bundled stitch-content source, image licensing, and seed-update policy;
 - compliant YouTube metadata/transcript provider and any trusted-service need;
 - feasibility of compliant YouTube playback through `expo-video`; validate the
