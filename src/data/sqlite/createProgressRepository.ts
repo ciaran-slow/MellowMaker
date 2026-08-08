@@ -22,10 +22,20 @@ const UPSERT_STEP_COMPLETION = `INSERT INTO pattern_step_progress (step_id, patt
   ON CONFLICT (step_id) DO UPDATE
   SET completed_at = excluded.completed_at, updated_at = excluded.updated_at`;
 
+/**
+ * The `SELECT` supplies `pattern_id` from the step itself, so a step belonging
+ * to another pattern — or no step at all — writes nothing instead of pointing a
+ * pattern at a position it does not own.
+ */
 const UPSERT_ACTIVE_STEP = `INSERT INTO pattern_progress (pattern_id, active_step_id, updated_at)
-  VALUES (?, ?, ?)
+  SELECT pattern_id, id, ? FROM pattern_step WHERE id = ? AND pattern_id = ?
   ON CONFLICT (pattern_id) DO UPDATE
   SET active_step_id = excluded.active_step_id, updated_at = excluded.updated_at`;
+
+const CLEAR_ACTIVE_STEP = `INSERT INTO pattern_progress (pattern_id, active_step_id, updated_at)
+  VALUES (?, NULL, ?)
+  ON CONFLICT (pattern_id) DO UPDATE
+  SET active_step_id = NULL, updated_at = excluded.updated_at`;
 
 export function createProgressRepository({
   connection,
@@ -56,7 +66,14 @@ export function createProgressRepository({
     },
 
     setActiveStep(patternId, stepId) {
-      connection.run(UPSERT_ACTIVE_STEP, [patternId, stepId, now()]);
+      const writtenAt = now();
+
+      if (stepId === null) {
+        connection.run(CLEAR_ACTIVE_STEP, [patternId, writtenAt]);
+        return;
+      }
+
+      connection.run(UPSERT_ACTIVE_STEP, [writtenAt, stepId, patternId]);
     },
   };
 }

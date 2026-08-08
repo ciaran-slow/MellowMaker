@@ -28,6 +28,11 @@ export function failDatabaseOpen(
   openFailure = error;
 }
 
+/** Names the databases the mock still holds open, so handle release is observable. */
+export function openDatabaseNames(): readonly string[] {
+  return [...openDatabases.keys()];
+}
+
 export function resetExpoSqliteMock(): void {
   openFailure = undefined;
   for (const database of openDatabases.values()) {

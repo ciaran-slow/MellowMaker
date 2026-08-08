@@ -71,9 +71,11 @@ platform-independent entities, use cases, and validation; `src/data` contains
 repository contracts and SQLite or remote implementations; `src/platform`
 contains Expo/native adapters; and `src/ui` contains reusable presentation and
 theme code. Direct imports are lint-restricted so domain code cannot depend on
-React, React Native, Expo, or higher layers; data code cannot depend on routes,
-feature presentation, or UI; and feature/UI code cannot import anything from
-the concrete `src/platform` implementation root. Data contracts intended for
+React, React Native, Expo, or higher layers; data code cannot depend on Expo,
+React Native, routes, feature presentation, or UI, keeping SQL and mapping
+engine-neutral and testable without a native runtime; and feature/UI code cannot
+import anything from the concrete `src/platform` implementation root. Data
+contracts intended for
 feature/UI consumption live under `src/data/contracts`; all other `src/data`
 paths are treated as concrete implementation paths. These restrictions resolve
 the imported file before checking its layer, so aliases and relative paths have
@@ -156,6 +158,7 @@ Conventions every table follows:
 | Ownership | `stitch.ownership` (`seed`/`user`), `stitch.seed_version`, and `stitch.user_modified_at` make bundled and maker content distinguishable. A seed import may insert or update only rows where `ownership = 'seed'` and `user_modified_at IS NULL`. `pattern`, `imported_guide`, and their children are always maker-owned and carry no ownership column. |
 | Search | `stitch.search_text` is a stored generated column, `lower(trim(name)) \|\| ' ' \|\| lower(trim(abbreviation))`, indexed, so case- and whitespace-insensitive lookup cannot drift from its source columns. |
 | Exclusive owners | `counter.owner_kind` plus paired `CHECK`s guarantee exactly one pattern or one guide owner. `UNIQUE (pattern_id, position)` and `UNIQUE (guide_id, position)` order each owner independently because SQLite treats `NULL`s in a unique index as distinct. |
+| Cross-parent references | A reference that must stay inside one aggregate derives its parent in SQL rather than trusting the caller. `pattern_progress.active_step_id` and `pattern_step_progress.pattern_id` are both written by `INSERT ... SELECT ... FROM pattern_step WHERE id = ?`, so a step from another pattern — or no step at all — writes nothing instead of pointing a pattern at a position it does not own. |
 | Text | Trimmed by the caller before insert; the schema never trims silently except in the generated search column. |
 
 ## 7. SQLite lifecycle

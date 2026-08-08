@@ -34,6 +34,16 @@ const virtualForbiddenImports = [
     code: "import { CraftCard } from '@/ui/components/CraftCard';\nvoid CraftCard;",
     ruleId: 'no-restricted-imports',
   },
+  {
+    filePath: 'src/data/reviewProbe.ts',
+    code: "import * as SQLite from 'expo-sqlite';\nvoid SQLite;",
+    ruleId: 'no-restricted-imports',
+  },
+  {
+    filePath: 'src/data/reviewProbe.ts',
+    code: "import { View } from 'react-native';\nvoid View;",
+    ruleId: 'no-restricted-imports',
+  },
 ];
 
 async function writeProbeFile(filePath, code, createdPaths) {

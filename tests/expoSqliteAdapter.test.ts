@@ -7,7 +7,7 @@ import {
   openExpoSqliteConnection,
 } from '@/platform/database/expoSqliteConnection';
 
-import { failDatabaseOpen } from './support/expoSqliteMock';
+import { failDatabaseOpen, openDatabaseNames } from './support/expoSqliteMock';
 
 describe('Expo SQLite adapter', () => {
   it('opens the application database, migrates it, and serves repositories', async () => {
@@ -64,5 +64,16 @@ describe('Expo SQLite adapter', () => {
     expect(() => openExpoSqliteConnection(DATABASE_NAME)).toThrow(
       expect.objectContaining({ code: 'open-failed' }),
     );
+  });
+
+  it('releases the handle when migration fails so a retry can reopen the file', async () => {
+    // A schema newer than this build knows how to read, recorded on the handle
+    // the adapter will reuse: initialization fails after the database is open.
+    openExpoSqliteConnection().execute('PRAGMA user_version = 999');
+
+    await expect(createAppDatabase()).rejects.toMatchObject({
+      code: 'unsupported-schema-version',
+    });
+    expect(openDatabaseNames()).toStrictEqual([]);
   });
 });

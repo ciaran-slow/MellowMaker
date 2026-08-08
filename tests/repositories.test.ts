@@ -298,6 +298,72 @@ describe('SQLite repositories', () => {
         completedStepIds: [],
       });
     });
+
+    it('refuses an active step that belongs to a different pattern', () => {
+      const sunrise = database.repositories.patterns.createPattern({
+        title: 'Sunrise Blanket',
+        steps: ['Chain 41'],
+      });
+      const dusk = database.repositories.patterns.createPattern({
+        title: 'Dusk Scarf',
+        steps: ['Chain 22'],
+      });
+      const [sunriseStep] = sunrise.steps;
+      const [duskStep] = dusk.steps;
+
+      database.repositories.progress.setActiveStep(
+        sunrise.pattern.id,
+        sunriseStep?.id ?? null,
+      );
+
+      // A step from another pattern must not become this pattern's position.
+      database.repositories.progress.setActiveStep(
+        sunrise.pattern.id,
+        duskStep?.id ?? null,
+      );
+
+      expect(
+        database.repositories.progress.getProgress(sunrise.pattern.id)
+          .activeStepId,
+      ).toBe(sunriseStep?.id);
+      expect(
+        database.repositories.progress.getProgress(dusk.pattern.id).activeStepId,
+      ).toBeUndefined();
+
+      // A pattern with no recorded position stays empty rather than pointing
+      // at a foreign step.
+      database.repositories.progress.setActiveStep(
+        dusk.pattern.id,
+        sunriseStep?.id ?? null,
+      );
+
+      expect(
+        database.repositories.progress.getProgress(dusk.pattern.id).activeStepId,
+      ).toBeUndefined();
+    });
+
+    it('clears the active position without dropping completion', () => {
+      const created = database.repositories.patterns.createPattern({
+        title: 'Sunrise Blanket',
+        steps: ['Chain 41', 'Single crochet across'],
+      });
+      const [first, second] = created.steps;
+
+      database.repositories.progress.setStepCompleted(first?.id ?? '', true);
+      database.repositories.progress.setActiveStep(
+        created.pattern.id,
+        second?.id ?? null,
+      );
+      database.repositories.progress.setActiveStep(created.pattern.id, null);
+
+      expect(
+        database.repositories.progress.getProgress(created.pattern.id),
+      ).toStrictEqual({
+        patternId: created.pattern.id,
+        activeStepId: undefined,
+        completedStepIds: [first?.id],
+      });
+    });
   });
 
   describe('counters', () => {

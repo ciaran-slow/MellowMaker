@@ -41,7 +41,18 @@ module.exports = defineConfig([
         {
           patterns: [
             {
-              group: ['@/app/*', '@/features/*', '@/ui/*'],
+              group: [
+                'react',
+                'react-native',
+                'expo',
+                '@expo/*',
+                'expo-*',
+                '@/app/*',
+                '@/features/*',
+                '@/ui/*',
+              ],
+              message:
+                'Data access owns SQL and mapping only. Expo, React Native, and presentation belong to the platform and UI layers.',
             },
             {
               regex:
