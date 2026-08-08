@@ -71,8 +71,12 @@ repository contracts and SQLite or remote implementations; `src/platform`
 contains Expo/native adapters; and `src/ui` contains reusable presentation and
 theme code. Direct imports are lint-restricted so domain code cannot depend on
 React, React Native, Expo, or higher layers; data code cannot depend on routes,
-feature presentation, or UI; and presentation cannot construct concrete SQLite
-or provider adapters.
+feature presentation, or UI; and feature/UI code cannot import anything from
+the concrete `src/platform` implementation root. Data contracts intended for
+feature/UI consumption live under `src/data/contracts`; all other `src/data`
+paths are treated as concrete implementation paths. These restrictions resolve
+the imported file before checking its layer, so aliases and relative paths have
+the same boundary.
 
 ### 5.1 Presentation
 

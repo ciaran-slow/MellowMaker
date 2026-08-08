@@ -54,22 +54,34 @@ module.exports = defineConfig([
   },
   {
     files: ['src/features/**/*.{ts,tsx}', 'src/ui/**/*.{ts,tsx}'],
+    settings: {
+      'import/resolver': {
+        node: {
+          extensions: ['.js', '.jsx', '.ts', '.tsx', '.d.ts'],
+        },
+        typescript: {
+          project: './tsconfig.json',
+        },
+      },
+    },
     rules: {
-      'no-restricted-imports': [
+      'import/no-restricted-paths': [
         'error',
         {
-          patterns: [
+          basePath: process.cwd(),
+          zones: [
             {
-              group: [
-                '@/data/**/sqlite/*',
-                '@/data/**/remote/*',
-                '@/platform/**/sqlite/*',
-                '@/platform/**/remote/*',
-              ],
+              target: ['./src/features', './src/ui'],
+              from: './src/platform',
+              message:
+                'Feature and UI code must depend on platform contracts, not concrete platform adapters.',
             },
             {
-              regex:
-                '^\\.\\.(?:/\\.\\.)*/(?:data|platform)/.*(?:sqlite|remote)(?:/|$)',
+              target: ['./src/features', './src/ui'],
+              from: './src/data',
+              except: ['./contracts'],
+              message:
+                'Feature and UI code may import data contracts, not concrete data adapters.',
             },
           ],
         },
