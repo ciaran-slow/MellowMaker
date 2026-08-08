@@ -251,8 +251,10 @@ describe('SQLite repositories', () => {
       });
       const [first, second, third] = created.steps;
 
-      database.repositories.progress.setStepCompleted(first?.id ?? '', true);
+      // Completed out of order, so a read that echoed completion order instead
+      // of step position would return them the other way round.
       database.repositories.progress.setStepCompleted(third?.id ?? '', true);
+      database.repositories.progress.setStepCompleted(first?.id ?? '', true);
       database.repositories.progress.setActiveStep(
         created.pattern.id,
         second?.id ?? null,

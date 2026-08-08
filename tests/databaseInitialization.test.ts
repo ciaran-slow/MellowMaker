@@ -44,6 +44,29 @@ const FAILING_MIGRATION: Migration = {
   ],
 };
 
+/** Second statement is the recorded version, so its failure must roll back the first. */
+const VERSION_PROBE_MIGRATION: Migration = {
+  version: LATEST_SCHEMA_VERSION + 1,
+  statements: ['CREATE TABLE version_probe (id TEXT PRIMARY KEY)'],
+};
+
+/**
+ * Fails the recorded-version write and nothing else, standing in for a crash
+ * between the migration's statements and its version.
+ */
+function failingVersionWrite(connection: SqliteConnection): SqliteConnection {
+  return {
+    ...connection,
+    execute(sql) {
+      if (sql.startsWith('PRAGMA user_version =')) {
+        throw new Error('interrupted before the version was recorded');
+      }
+
+      connection.execute(sql);
+    },
+  };
+}
+
 function objectNames(connection: SqliteConnection, type: string): string[] {
   return connection
     .all<{ readonly name: string }>(
@@ -288,6 +311,23 @@ describe('database initialization', () => {
       schemaVersion: 1,
       appliedMigrations: [],
     });
+  });
+
+  it('records the schema version atomically with the statements it describes', () => {
+    initializeDatabase(connection);
+
+    const failure = captureFailure(() => {
+      initializeDatabase(failingVersionWrite(connection), {
+        migrations: [...MIGRATIONS, VERSION_PROBE_MIGRATION],
+      });
+    });
+
+    expect((failure as DatabaseError).code).toBe('migration-failed');
+
+    // A schema that outlived its unrecorded version would replay migration 2 on
+    // the next launch and fail forever on the table it already created.
+    expect(objectNames(connection, 'table')).toStrictEqual(EXPECTED_TABLES);
+    expect(schemaVersionOf(connection)).toBe(1);
   });
 
   it('refuses a database newer than the app and changes nothing', () => {
