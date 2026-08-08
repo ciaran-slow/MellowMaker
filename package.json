@@ -14,16 +14,19 @@
     "typecheck": "npm run generate:types && tsc --noEmit",
     "test": "jest",
     "test:watch": "jest --watch",
-    "test:smoke:foundation": "maestro test .maestro/foundation.yaml"
+    "test:smoke:foundation": "maestro test .maestro/foundation.yaml",
+    "test:smoke:database": "maestro test .maestro/database.yaml"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.0.2",
     "expo": "~57.0.11",
     "expo-asset": "~57.0.9",
     "expo-constants": "~57.0.9",
+    "expo-crypto": "~57.0.1",
     "expo-font": "~57.0.1",
     "expo-linking": "~57.0.5",
     "expo-router": "~57.0.11",
+    "expo-sqlite": "~57.0.1",
     "expo-status-bar": "~57.0.1",
     "nativewind": "^4.2.6",
     "react": "19.2.3",
