@@ -9,10 +9,7 @@ export function PatternsScreen() {
       <Text accessibilityRole="header" className="text-display text-ink">
         Patterns
       </Text>
-      <CraftCard
-        accessibilityLabel="Patterns foundation card"
-        accent="pink"
-      >
+      <CraftCard accent="pink">
         <Text accessibilityRole="header" className="text-heading text-ink">
           Keep every project within reach
         </Text>

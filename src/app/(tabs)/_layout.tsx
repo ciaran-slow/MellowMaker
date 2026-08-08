@@ -5,13 +5,19 @@ import { Tabs } from 'expo-router';
 import { CraftTabBarButton } from '@/ui/components/CraftTabBarButton';
 import tokens from '@/ui/theme/tokens.json';
 
+export const tabBarColors = {
+  activeForeground: tokens.colors.ink,
+  selectedAccent: tokens.colors.pink,
+  surface: tokens.colors.surface,
+} as const;
+
 export default function TabsLayout() {
   return (
     <Tabs
       initialRouteName="dictionary/index"
       screenOptions={{
         headerShown: false,
-        tabBarActiveTintColor: tokens.colors.pink,
+        tabBarActiveTintColor: tabBarColors.activeForeground,
         tabBarInactiveTintColor: tokens.colors.ink,
         tabBarButton: (props) => <CraftTabBarButton {...props} />,
         tabBarLabelStyle: {

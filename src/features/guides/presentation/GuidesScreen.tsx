@@ -9,10 +9,7 @@ export function GuidesScreen() {
       <Text accessibilityRole="header" className="text-display text-ink">
         Guides
       </Text>
-      <CraftCard
-        accessibilityLabel="Guides foundation card"
-        accent="blue"
-      >
+      <CraftCard accent="blue">
         <Text accessibilityRole="header" className="text-heading text-ink">
           Turn tutorials into making steps
         </Text>

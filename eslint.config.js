@@ -2,16 +2,24 @@ const { defineConfig } = require('eslint/config');
 const expoConfig = require('eslint-config-expo/flat');
 
 const domainRestrictions = [
-  'react',
-  'react-native',
-  'expo',
-  '@expo/*',
-  'expo-*',
-  '@/app/*',
-  '@/features/*',
-  '@/data/*',
-  '@/platform/*',
-  '@/ui/*',
+  {
+    group: [
+      'react',
+      'react-native',
+      'expo',
+      '@expo/*',
+      'expo-*',
+      '@/app/*',
+      '@/features/*',
+      '@/data/*',
+      '@/platform/*',
+      '@/ui/*',
+    ],
+  },
+  {
+    regex:
+      '^\\.\\.(?:/\\.\\.)*/(?:app|features|data|platform|ui)(?:/|$)',
+  },
 ];
 
 module.exports = defineConfig([
@@ -30,7 +38,17 @@ module.exports = defineConfig([
     rules: {
       'no-restricted-imports': [
         'error',
-        { patterns: ['@/app/*', '@/features/*', '@/ui/*'] },
+        {
+          patterns: [
+            {
+              group: ['@/app/*', '@/features/*', '@/ui/*'],
+            },
+            {
+              regex:
+                '^\\.\\.(?:/\\.\\.)*/(?:app|features|ui)(?:/|$)',
+            },
+          ],
+        },
       ],
     },
   },
@@ -41,10 +59,18 @@ module.exports = defineConfig([
         'error',
         {
           patterns: [
-            '@/data/**/sqlite/*',
-            '@/data/**/remote/*',
-            '@/platform/**/sqlite/*',
-            '@/platform/**/remote/*',
+            {
+              group: [
+                '@/data/**/sqlite/*',
+                '@/data/**/remote/*',
+                '@/platform/**/sqlite/*',
+                '@/platform/**/remote/*',
+              ],
+            },
+            {
+              regex:
+                '^\\.\\.(?:/\\.\\.)*/(?:data|platform)/.*(?:sqlite|remote)(?:/|$)',
+            },
           ],
         },
       ],

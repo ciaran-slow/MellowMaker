@@ -51,8 +51,10 @@ describe('CraftTabBarButton', () => {
     });
   });
 
-  it('invokes navigation exactly once synchronously with reduced motion enabled', async () => {
+  it('skips press animation and navigates synchronously with reduced motion', async () => {
     jest.spyOn(Reanimated, 'useReducedMotion').mockReturnValue(true);
+    const withTiming = jest.spyOn(Reanimated, 'withTiming');
+    const withSpring = jest.spyOn(Reanimated, 'withSpring');
     const onPress = jest.fn();
     await render(
       <CraftTabBarButton
@@ -65,9 +67,15 @@ describe('CraftTabBarButton', () => {
       </CraftTabBarButton>,
     );
 
-    await fireEvent.press(screen.getByRole('tab', { name: 'Stitches' }));
+    const tab = screen.getByRole('tab', { name: 'Stitches' });
+    await fireEvent(tab, 'pressIn');
+    expect(withTiming).not.toHaveBeenCalled();
 
+    await fireEvent.press(tab);
     expect(onPress).toHaveBeenCalledTimes(1);
+
+    await fireEvent(tab, 'pressOut');
+    expect(withSpring).not.toHaveBeenCalled();
   });
 
   it('never invokes navigation while disabled', async () => {

@@ -28,7 +28,8 @@ export function CraftTabBarButton({
   const reduceMotion = useReducedMotion();
   const scale = useSharedValue(1);
   const isDisabled = disabled || accessibilityState?.disabled === true;
-  const isSelected = accessibilityState?.selected === true;
+  const isSelected =
+    accessibilityState?.selected === true || rest['aria-selected'] === true;
   const animatedStyle = useAnimatedStyle(() => ({
     transform: [{ scale: scale.value }],
   }));

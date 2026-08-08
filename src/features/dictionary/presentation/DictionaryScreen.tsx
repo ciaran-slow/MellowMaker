@@ -9,10 +9,7 @@ export function DictionaryScreen() {
       <Text accessibilityRole="header" className="text-display text-ink">
         Stitches
       </Text>
-      <CraftCard
-        accessibilityLabel="Stitches foundation card"
-        accent="teal"
-      >
+      <CraftCard accent="teal">
         <Text accessibilityRole="header" className="text-heading text-ink">
           Your stitch dictionary starts here
         </Text>

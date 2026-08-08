@@ -20,11 +20,16 @@ describe('DictionaryScreen', () => {
     );
 
     expect(screen.getByRole('header', { name: 'Stitches' })).toBeOnTheScreen();
+    const cardHeading = screen.getByRole('header', {
+      name: 'Your stitch dictionary starts here',
+    });
+    expect(cardHeading).toBeOnTheScreen();
+    expect(cardHeading.parent?.props.accessible).not.toBe(true);
     expect(
-      screen.getByRole('header', {
-        name: 'Your stitch dictionary starts here',
-      }),
+      screen.getByText(/Clear stitch guides will stay close at hand/),
     ).toBeOnTheScreen();
-    expect(screen.getByLabelText('Stitches foundation card')).toBeOnTheScreen();
+    expect(
+      screen.queryByLabelText('Stitches foundation card'),
+    ).not.toBeOnTheScreen();
   });
 });
