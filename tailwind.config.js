@@ -13,7 +13,7 @@ module.exports = {
       fontSize: Object.fromEntries(
         Object.entries(tokens.typography).map(([name, value]) => [
           name,
-          [value.fontSize, { lineHeight: value.lineHeight, fontWeight: value.fontWeight }],
+          [value.fontSize, { lineHeight: `${value.lineHeight}px`, fontWeight: value.fontWeight }],
         ]),
       ),
       minHeight: {
