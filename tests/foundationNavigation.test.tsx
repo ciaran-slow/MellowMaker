@@ -12,15 +12,15 @@ describe('foundation navigation', () => {
     const result = renderRouter(routes, { initialUrl: '/' });
     await result;
 
-    await waitFor(() => {
-      expect(result.getPathname()).toBe('/dictionary');
-    });
+    // The real SQLite stack opens and migrates before any tab content appears.
     expect(
-      screen.getByRole('header', {
+      await screen.findByRole('header', {
         name: 'Your stitch dictionary starts here',
       }),
     ).toBeOnTheScreen();
-
+    await waitFor(() => {
+      expect(result.getPathname()).toBe('/dictionary');
+    });
     await fireEvent.press(screen.getByRole('tab', { name: 'Patterns' }));
     await waitFor(() => {
       expect(result.getPathname()).toBe('/patterns');

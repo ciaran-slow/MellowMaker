@@ -5,7 +5,9 @@ import {
   SafeAreaProvider,
 } from 'react-native-safe-area-context';
 
+import { createAppDatabase } from '@/platform/database/createAppDatabase';
 import '@/styles/global.css';
+import { DatabaseGate } from '@/ui/database/DatabaseGate';
 import tokens from '@/ui/theme/tokens.json';
 
 const navigationTheme = {
@@ -26,12 +28,14 @@ export default function RootLayout() {
     <SafeAreaProvider initialMetrics={initialWindowMetrics}>
       <ThemeProvider value={navigationTheme}>
         <StatusBar style="dark" />
-        <Stack
-          screenOptions={{
-            headerShown: false,
-            contentStyle: { backgroundColor: tokens.colors.background },
-          }}
-        />
+        <DatabaseGate initialize={createAppDatabase}>
+          <Stack
+            screenOptions={{
+              headerShown: false,
+              contentStyle: { backgroundColor: tokens.colors.background },
+            }}
+          />
+        </DatabaseGate>
       </ThemeProvider>
     </SafeAreaProvider>
   );

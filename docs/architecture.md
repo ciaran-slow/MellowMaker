@@ -40,7 +40,8 @@ SQLite is the source of truth for core application state. Network services enric
 | Application | React Native with Expo managed workflow, SDK 52 or later |
 | Language | TypeScript with strict type checking |
 | Distribution | EAS builds for iOS (`.ipa`) and Android (`.aab`) |
-| Local persistence | `expo-sqlite` |
+| Local persistence | `expo-sqlite` `~57.0.1`, one application-owned database behind a synchronous connection boundary |
+| Identifier generation | `expo-crypto` `~57.0.1` `randomUUID()`, injected into the data layer rather than imported by it |
 | Video | `expo-video` |
 | Styling | NativeWind v4 |
 | Motion | React Native Reanimated |
@@ -111,43 +112,106 @@ Remote YouTube access sits behind a separate gateway. Provider response objects 
 
 ### 5.4 Platform infrastructure
 
-Contains Expo SQLite setup, schema migrations, `expo-video` integration, connectivity-aware network calls, EAS/app configuration, and platform-specific adapters. Platform differences should remain behind narrow interfaces where practical.
+Contains Expo/native adapters: the `expo-sqlite` connection and the composition
+of the opened, migrated app database, `expo-video` integration,
+connectivity-aware network calls, and EAS/app configuration. Schema and
+migrations are engine-neutral and live with the repositories in `src/data`, so
+the platform layer holds no SQL. Platform differences should remain behind
+narrow interfaces where practical.
 
-## 6. Conceptual data model
+## 6. Data model
 
-The first schema may combine or rename tables, but it must preserve the following ownership and relationships.
+Schema version 1 is the whole PRD0 schema, defined in `src/data/sqlite/migrations.ts`.
+That module is the single source of schema truth for the Expo adapter and for the
+`node:sqlite` integration tests, and it imports nothing.
 
-| Entity | Required responsibility |
+| Table | Responsibility | Key relationships |
+|---|---|---|
+| `stitch` | Identity, name, abbreviation, difficulty, summary, ownership provenance, and a normalized `search_text` | parent of `stitch_instruction` |
+| `stitch_instruction` | Ordered instruction text and local image asset key | `stitch_id` → `stitch`, cascade |
+| `pattern` | Maker-owned project metadata and notes | parent of steps, progress, counters |
+| `pattern_step` | Ordered row/instruction text for one pattern | `pattern_id` → `pattern`, cascade |
+| `pattern_progress` | One row per pattern holding the active position | `pattern_id` → `pattern` cascade; `active_step_id` → `pattern_step` **set null** |
+| `pattern_step_progress` | One row per step holding its `completed_at` instant | `step_id`/`pattern_id` cascade |
+| `imported_guide` | Canonical YouTube identity (`video_id` unique), URL, title, creator, thumbnail, notes, metadata sync instant | parent of guide steps and counters |
+| `guide_step` | Ordered instruction, optional `video_offset_ms`, transcript excerpt, note, completion, and `origin` | `guide_id` → `imported_guide`, cascade |
+| `counter` | Durable count, kind, maker label, and position for exactly one owner | `pattern_id` or `guide_id`, cascade |
+
+`pattern_progress` is deliberately split in two: one row per pattern for the
+active position and one row per step for completion. Each has a single job, both
+cascade cleanly, and a viewer restores position and completion with two bounded
+reads.
+
+Conventions every table follows:
+
+| Rule | Decision |
 |---|---|
-| `stitch` | Stable identity, name, abbreviation, difficulty, summary, and searchable content |
-| `stitch_instruction` | Ordered instructional steps and local visual-reference metadata |
-| `pattern` | User-owned project/pattern metadata and ordering information |
-| `pattern_step` | Ordered row or instruction text belonging to one pattern |
-| `pattern_progress` | Completion state for pattern steps and the active position |
-| `counter` | Durable count, counter kind, and association with the active pattern or guide |
-| `imported_guide` | Canonical YouTube identity, URL, title, creator, thumbnail metadata, and local notes |
-| `guide_step` | Ordered timestamp, instruction text, optional transcript excerpt, and completion state |
-
-Implementation rules:
-
-- Use generated stable identifiers; never use display names or list positions as identity.
-- Persist list order explicitly when users can reorder items.
-- Store timestamps in a single documented unit.
-- Store dates in an unambiguous format and convert only at presentation boundaries.
-- Define foreign-key behavior deliberately; deleting a parent must not leave orphaned progress.
-- Seeded stitch content and user-created content need distinguishable ownership so seed updates cannot overwrite maker edits.
+| Identity | `id TEXT PRIMARY KEY` holding a generated v4 UUID. Never a name, slug, or list position. |
+| Timestamps | `INTEGER` milliseconds since the Unix epoch, UTC, in a column whose name ends in `_at`. One unit everywhere. |
+| Calendar dates | A wall-clock date stores ISO-8601 `YYYY-MM-DD` `TEXT`. Version 1 has no such column; every temporal value is an instant. Conversion to local time happens only in presentation. |
+| Ordering | Explicit `position INTEGER NOT NULL CHECK (position >= 0)`, contiguous from 0 within its parent, `UNIQUE (<parent>_id, position)`. Reads always `ORDER BY position ASC, id ASC`. |
+| Recency | `pattern` has no manual position; the library orders by `updated_at DESC, id ASC` through `pattern_recent_idx`. Manual positions exist only where the maker reorders: stitch instructions, pattern steps, guide steps, counters. |
+| Booleans | Not stored. Completion is a nullable `completed_at` instant, so "when" is never lost. |
+| Deletion | Every child of an aggregate root is `ON DELETE CASCADE`. The single exception is `pattern_progress.active_step_id`, which is `ON DELETE SET NULL` so deleting one step clears the pointer instead of destroying the pattern's progress. `ON UPDATE` is omitted because identifiers are immutable. |
+| Ownership | `stitch.ownership` (`seed`/`user`), `stitch.seed_version`, and `stitch.user_modified_at` make bundled and maker content distinguishable. A seed import may insert or update only rows where `ownership = 'seed'` and `user_modified_at IS NULL`. `pattern`, `imported_guide`, and their children are always maker-owned and carry no ownership column. |
+| Search | `stitch.search_text` is a stored generated column, `lower(trim(name)) \|\| ' ' \|\| lower(trim(abbreviation))`, indexed, so case- and whitespace-insensitive lookup cannot drift from its source columns. |
+| Exclusive owners | `counter.owner_kind` plus paired `CHECK`s guarantee exactly one pattern or one guide owner. `UNIQUE (pattern_id, position)` and `UNIQUE (guide_id, position)` order each owner independently because SQLite treats `NULL`s in a unique index as distinct. |
+| Text | Trimmed by the caller before insert; the schema never trims silently except in the generated search column. |
 
 ## 7. SQLite lifecycle
 
-1. Open one application-owned database through a shared database boundary.
-2. Enable and verify foreign-key enforcement.
-3. Track an integer schema version.
-4. Apply pending migrations in order and inside transactions where supported.
-5. Test upgrades from the immediately previous released schema with populated user data.
-6. Do not mark a migration complete until every statement succeeds.
-7. Never silently delete unreadable user-created data. Surface a recoverable error and retain the original database where recovery is possible.
+1. **One connection.** `src/platform/database/expoSqliteConnection.ts` opens
+   `mellowmaker.db` once with `SQLite.openDatabaseSync` (the cached default
+   connection), sets `PRAGMA journal_mode = WAL`, and adapts the synchronous
+   `expo-sqlite` API to `SqliteConnection` — the one engine-neutral SQL surface
+   every data module uses. `getFirstSync`'s `null` becomes `undefined` so callers
+   have a single absent value. WAL is set only in the platform adapter, because it
+   is a property of the real file rather than of the in-memory test harness.
+2. **Foreign keys.** `initializeDatabase` runs `PRAGMA foreign_keys = ON` outside
+   any transaction (the pragma is a no-op inside one), reads it back, and throws
+   `DatabaseError('foreign-keys-unavailable')` unless it reports `1`.
+3. **Version.** `PRAGMA user_version` is the authoritative integer schema version.
+   It lives in the file header and is transactional with the migration that sets
+   it, so it cannot desync from the schema. A version above the latest known
+   migration throws `DatabaseError('unsupported-schema-version')` and touches
+   nothing: a downgraded app must never rewrite a newer database.
+4. **Migrations.** Pending migrations run in ascending version order, each inside
+   one `BEGIN IMMEDIATE` transaction that ends by setting `PRAGMA user_version`.
+   `BEGIN IMMEDIATE` takes write intent up front. Pragmas cannot be
+   parameterized, so the version is interpolated after `Number.isInteger`
+   validation; this is the single documented exception to parameterized SQL and it
+   never touches maker input.
+5. **Failure.** SQLite keeps DDL and `user_version` inside the transaction, so a
+   failed migration rolls back schema, rows, and version together and raises
+   `DatabaseError('migration-failed')` carrying the current and failing versions.
+   There is no `DROP`, no delete-and-recreate, and no reset control anywhere.
+   Re-running initialization after a failure is safe and resumes from the last
+   good version.
+6. **Error taxonomy.** `DatabaseError` (in `src/data/contracts`) carries exactly
+   `open-failed`, `foreign-keys-unavailable`, `migration-failed`, and
+   `unsupported-schema-version`. Its messages carry codes and version numbers
+   only, never maker content.
+7. **Upgrade coverage.** Every future schema change appends a migration and ships
+   its own populated fixture case that asserts literal maker rows survive.
 
-Repository methods should express multi-record operations—such as creating a pattern with steps or saving an imported guide—as transactions. Counter and checklist writes must be serialized so rapid interaction cannot lose updates.
+Repositories are built by `createRepositories` over one `RepositoryContext`
+(connection, transaction runner, injected clock, injected identifier generator),
+so `src/data` never imports Expo and tests stay deterministic. Multi-record
+operations — creating a pattern with steps, saving an imported guide, applying a
+seed release, reordering — run in one transaction; nested calls use savepoints so
+one repository method can compose another. Because the SQL API is synchronous and
+shared, a read-modify-write cannot interleave; counter and completion writes
+additionally use one statement (`MAX(0, value + ?)` and an `ON CONFLICT` upsert)
+so rapid interaction cannot lose an update. Reordering under
+`UNIQUE (<parent>_id, position)` runs two passes inside one transaction — offset
+every affected row, then write final positions — because SQLite cannot defer a
+unique constraint. List reads are bounded by `Page` (default 50, hard cap 200).
+
+Data-dependent UI is gated: `src/ui/database/DatabaseGate.tsx` takes an
+`initialize` function typed only by `src/data/contracts`, owns an
+`initializing`/`ready`/`failed` state machine, publishes the repositories through
+narrow context, and renders children only when ready. `src/app/_layout.tsx` is the
+composition root and the only place that references `src/platform`.
 
 ## 8. Offline and synchronization model
 
@@ -223,16 +287,27 @@ Environment-dependent service URLs or public identifiers must use Expo-supported
 
 The repository uses one Jest stack for pure domain tests and React Native
 component/router tests: Jest, `jest-expo`, and React Native Testing Library.
-Repository and migration integration tests use a fresh in-memory `node:sqlite`
-database, explicitly enable foreign keys, and close it after each test. When the
-production schema arrives, those tests must execute the same SQL and migration
-inputs as the Expo adapter rather than maintaining a second schema.
+Repository and migration integration tests open a fresh in-memory `node:sqlite`
+database through the production `SqliteConnection` boundary and run the
+production `MIGRATIONS`, so they execute the same SQL and migration inputs as the
+Expo adapter rather than maintaining a second schema. Every harness connection is
+created with `enableForeignKeyConstraints: false`, because `node:sqlite` enables
+foreign keys by default and would otherwise pass even if the initializer never
+enabled enforcement.
 
-Node SQLite proves SQLite schema, query, transaction, foreign-key, and migration
-behavior. It does **not** prove the `expo-sqlite` native bridge. Maestro covers
-installed-app behavior on iOS and Android; once the production adapter exists,
-its smoke flow must include observable database initialization and reopen
-behavior on both platforms.
+The Jest `expo-sqlite` mock (`tests/support/expoSqliteMock.ts`) is backed by the
+same in-memory engine and implements only `execSync`, `runSync`, `getAllSync`,
+`getFirstSync`, and `closeSync`, throwing on anything else so adapter drift is
+caught rather than silently mocked away. Component and router tests therefore run
+the real migrations and repositories. `expo-crypto` is mocked with Node's
+`randomUUID`, which has the same RFC 4122 v4 contract.
+
+Node SQLite and that mock prove SQLite schema, query, transaction, foreign-key,
+and migration behavior plus adapter JS wiring. Neither proves the `expo-sqlite`
+native bridge. Maestro covers installed-app behavior on iOS and Android:
+`.maestro/database.yaml` (`npm run test:smoke:database`) asserts the fresh-install
+migration path and the reopen path against an already-migrated database on both
+platforms.
 
 Configured CI runs a clean npm install, lint, strict type checking, and the full
 Jest suite. Maestro runs against locally installed targets using a caller-supplied
@@ -262,12 +337,17 @@ These must be resolved by the issue that first needs them:
 
 Navigation, state/forms, and verification tooling are resolved in the technology
 baseline and verification sections above. The remaining decisions are:
-- bundled stitch-content source, image licensing, and seed-update policy;
+- bundled stitch-content source, image licensing, and which stitches ship in the
+  seed *content* set. The schema-level mechanism is decided in section 6: seeded
+  rows carry `ownership`, `seed_version`, and `user_modified_at`, and a seed
+  import may only insert or update seeded rows the maker has not edited;
 - compliant YouTube metadata/transcript provider and any trusted-service need;
 - feasibility of compliant YouTube playback through `expo-video`; validate the
   source format before implementation and do not scrape or reverse-engineer
   YouTube media URLs;
-- whether pattern organization begins with tags, folders, or simple recency;
+- whether the pattern library adds tags or folders on top of recency. The storage
+  baseline is recency: `pattern` has no manual position and is indexed by
+  `updated_at DESC, id ASC`;
 - analytics, crash reporting, and privacy policy.
 
 An open decision must not be resolved by quietly adding a dependency. Update this document when the repository adopts the answer.
