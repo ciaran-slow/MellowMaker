@@ -1,0 +1,300 @@
+{
+  "seedVersion": 1,
+  "terminology": "US",
+  "stitches": [
+    {
+      "slug": "chain",
+      "name": "Chain",
+      "abbreviation": "ch",
+      "difficulty": "beginner",
+      "summary": "The starting row and the height builder: a run of linked loops worked straight from a slip knot.",
+      "instructions": [
+        {
+          "instruction": "Make a slip knot — cross the yarn into a loop, draw the working end through it, slide it onto the hook, and pull the tail to close it."
+        },
+        {
+          "instruction": "Hold the tail below the hook and wrap the working yarn over the hook from back to front."
+        },
+        {
+          "instruction": "Draw that wrap through the loop already on the hook to finish one chain."
+        },
+        {
+          "instruction": "Repeat the wrap and the draw through for every chain the pattern asks for, keeping each loop the same size."
+        },
+        {
+          "instruction": "Count the V shapes along the front of the chain and never count the loop still on the hook."
+        }
+      ]
+    },
+    {
+      "slug": "slip-stitch",
+      "name": "Slip stitch",
+      "abbreviation": "sl st",
+      "difficulty": "beginner",
+      "summary": "A flat, nearly invisible stitch that joins a round or travels across the work without adding height.",
+      "instructions": [
+        {
+          "instruction": "Insert the hook under both top loops of the next stitch."
+        },
+        {
+          "instruction": "Wrap the working yarn over the hook from back to front."
+        },
+        {
+          "instruction": "Draw that wrap through the stitch and through the loop on the hook in one movement."
+        },
+        {
+          "instruction": "One loop is left on the hook and the join lies flat, with no post standing beneath it."
+        },
+        {
+          "instruction": "To close a round, work the slip stitch into the first stitch of that same round."
+        }
+      ]
+    },
+    {
+      "slug": "single-crochet",
+      "name": "Single crochet",
+      "abbreviation": "sc",
+      "difficulty": "beginner",
+      "summary": "The shortest basic stitch. It builds dense, sturdy fabric and the tight rounds amigurumi needs.",
+      "instructions": [
+        {
+          "instruction": "Insert the hook front to back under both top loops of the next stitch."
+        },
+        {
+          "instruction": "Yarn over and draw a loop back through the stitch, leaving two loops on the hook."
+        },
+        {
+          "instruction": "Yarn over again and draw through both loops on the hook."
+        },
+        {
+          "instruction": "One loop remains, and the finished stitch stands a single loop tall."
+        },
+        {
+          "instruction": "At the end of a row, chain one and turn before working the next row."
+        }
+      ]
+    },
+    {
+      "slug": "half-double-crochet",
+      "name": "Half double crochet",
+      "abbreviation": "hdc",
+      "difficulty": "beginner",
+      "summary": "A middle-height stitch made by yarning over before the hook enters. It works up fast and drapes softly.",
+      "instructions": [
+        {
+          "instruction": "Yarn over once before the hook enters anything, and keep that wrap on the shaft."
+        },
+        {
+          "instruction": "Insert the hook under both top loops of the next stitch."
+        },
+        {
+          "instruction": "Yarn over and pull up a loop, leaving three loops on the hook."
+        },
+        {
+          "instruction": "Yarn over and draw through all three loops at once."
+        },
+        {
+          "instruction": "The finished stitch sits between a single crochet and a double crochet in height."
+        },
+        {
+          "instruction": "Chain two and turn to start a new row of half double crochet, following the pattern on whether that chain counts as a stitch."
+        }
+      ]
+    },
+    {
+      "slug": "double-crochet",
+      "name": "Double crochet",
+      "abbreviation": "dc",
+      "difficulty": "beginner",
+      "summary": "The everyday tall stitch behind most blankets and garments. It grows quickly into open, airy fabric.",
+      "instructions": [
+        {
+          "instruction": "Yarn over once, then insert the hook under both top loops of the next stitch."
+        },
+        {
+          "instruction": "Yarn over and pull up a loop so that three loops sit on the hook."
+        },
+        {
+          "instruction": "Yarn over and draw through the first two loops on the hook."
+        },
+        {
+          "instruction": "Yarn over and draw through the last two loops to close the stitch."
+        },
+        {
+          "instruction": "Chain three and turn to bring the next row up to double crochet height, following the pattern on whether that chain counts as a stitch."
+        }
+      ]
+    },
+    {
+      "slug": "treble-crochet",
+      "name": "Treble crochet",
+      "abbreviation": "tr",
+      "difficulty": "intermediate",
+      "summary": "A tall stitch begun with two yarn overs and closed two loops at a time, for long posts and open fabric.",
+      "instructions": [
+        {
+          "instruction": "Yarn over twice before inserting the hook, so two wraps rest on the shaft."
+        },
+        {
+          "instruction": "Insert the hook under both top loops of the next stitch, yarn over, and pull up a loop."
+        },
+        {
+          "instruction": "Yarn over and draw through the first two of the four loops now on the hook."
+        },
+        {
+          "instruction": "Yarn over and draw through two more, then yarn over and draw through the last two."
+        },
+        {
+          "instruction": "Chain four and turn to start a new row of treble crochet, following the pattern on whether that chain counts as a stitch."
+        },
+        {
+          "instruction": "Every extra starting yarn over adds one more post height and one more closing pair."
+        }
+      ]
+    },
+    {
+      "slug": "single-crochet-increase",
+      "name": "Single crochet increase",
+      "abbreviation": "inc",
+      "difficulty": "intermediate",
+      "summary": "Two single crochet worked into one stitch, widening the row or round by exactly one stitch.",
+      "instructions": [
+        {
+          "instruction": "Work one single crochet into the next stitch as usual and leave it in place."
+        },
+        {
+          "instruction": "Insert the hook into that very same stitch again, under both of its top loops."
+        },
+        {
+          "instruction": "Work a second complete single crochet there, closing it the same way as the first."
+        },
+        {
+          "instruction": "The pair shares one base, so the stitch count for the row or round rises by one."
+        },
+        {
+          "instruction": "In the round, spacing increases evenly keeps the fabric from cupping or ruffling."
+        }
+      ]
+    },
+    {
+      "slug": "single-crochet-two-together",
+      "name": "Single crochet two together",
+      "abbreviation": "sc2tog",
+      "difficulty": "intermediate",
+      "summary": "A decrease that gathers two neighboring stitches into one single crochet, lowering the count by one.",
+      "instructions": [
+        {
+          "instruction": "Insert the hook into the next stitch, yarn over, and pull up a loop."
+        },
+        {
+          "instruction": "Leave that loop on the hook and insert the hook into the following stitch."
+        },
+        {
+          "instruction": "Yarn over and pull up a second loop, so three loops sit on the hook."
+        },
+        {
+          "instruction": "Yarn over and draw through all three loops to finish one stitch."
+        },
+        {
+          "instruction": "Two stitches now share one top, so the count falls by one."
+        }
+      ]
+    },
+    {
+      "slug": "double-crochet-two-together",
+      "name": "Double crochet two together",
+      "abbreviation": "dc2tog",
+      "difficulty": "intermediate",
+      "summary": "A double crochet decrease that leaves each half unfinished, then closes both halves into one stitch.",
+      "instructions": [
+        {
+          "instruction": "Yarn over, insert the hook into the next stitch, yarn over, and pull up a loop."
+        },
+        {
+          "instruction": "Yarn over and draw through two loops only, stopping with two loops on the hook."
+        },
+        {
+          "instruction": "Repeat that unfinished double crochet in the following stitch, ending with three loops."
+        },
+        {
+          "instruction": "Yarn over and draw through all three loops to join the pair into one stitch."
+        },
+        {
+          "instruction": "Leaving each half unfinished is what lets a decrease work at any stitch height."
+        }
+      ]
+    },
+    {
+      "slug": "back-loop-only",
+      "name": "Back loop only",
+      "abbreviation": "BLO",
+      "difficulty": "intermediate",
+      "summary": "A placement change: work each stitch under the back loop alone to leave a ridge and stretchy fabric.",
+      "instructions": [
+        {
+          "instruction": "Look at the top of the next stitch and find its two loops, front and back."
+        },
+        {
+          "instruction": "The back loop is the one farther away from you as you face the work."
+        },
+        {
+          "instruction": "Insert the hook under that back loop alone, skipping the front loop entirely."
+        },
+        {
+          "instruction": "Complete whichever stitch the pattern names in the usual way."
+        },
+        {
+          "instruction": "The unworked front loops line up as a visible ridge, which is how ribbing is made."
+        }
+      ]
+    },
+    {
+      "slug": "magic-ring",
+      "name": "Magic ring",
+      "abbreviation": "MR",
+      "difficulty": "intermediate",
+      "summary": "An adjustable start for working in the round that pulls closed, leaving no hole at the center.",
+      "instructions": [
+        {
+          "instruction": "Wrap the yarn around two fingers, crossing the working yarn over the tail to form a loop."
+        },
+        {
+          "instruction": "Slide the loop off, insert the hook, and pull up a loop of working yarn through it."
+        },
+        {
+          "instruction": "Chain the height the round’s first stitch needs — one for single crochet, three for double crochet — and follow the pattern on whether it counts; a chain one never does."
+        },
+        {
+          "instruction": "Work the round’s stitches over both strands of the loop until you have the count the pattern asks for, keeping them slidable."
+        },
+        {
+          "instruction": "Pull the short tail firmly to draw the center closed before joining or continuing in a spiral."
+        }
+      ]
+    },
+    {
+      "slug": "fasten-off",
+      "name": "Fasten off",
+      "abbreviation": "FO",
+      "difficulty": "beginner",
+      "summary": "The finishing step that locks the last stitch and secures the yarn end so the work cannot unravel.",
+      "instructions": [
+        {
+          "instruction": "Finish the final stitch so that only one loop is left on the hook."
+        },
+        {
+          "instruction": "Cut the working yarn, leaving a tail of at least six inches to weave in."
+        },
+        {
+          "instruction": "Yarn over with the cut end and draw it all the way through that last loop, letting the loop slip off the hook."
+        },
+        {
+          "instruction": "Pull the tail snug so the knot closes against the final stitch without puckering the fabric."
+        },
+        {
+          "instruction": "Thread the tail on a blunt needle and weave it through several stitches on the wrong side."
+        }
+      ]
+    }
+  ]
+}

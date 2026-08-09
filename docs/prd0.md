@@ -86,7 +86,10 @@ PRD0 includes:
 - **FR-ST-05:** Each stitch detail shall show its name, abbreviation, difficulty, ordered text instructions, and available local visual references.
 - **FR-ST-06:** An empty search shall return the browse state; a search with no matches shall show a clear empty result rather than an error.
 
-The initial content set and image licensing must be approved before release. Seed updates must not overwrite maker-created data.
+The initial content set and image licensing are approved: the project authors and
+owns the bundled instruction text and bundles no third-party imagery, and twelve
+records ship as the PRD0 set. See [`content-provenance.md`](./content-provenance.md).
+Seed updates must not overwrite maker-created data.
 
 ### 7.2 Pattern library
 
@@ -236,7 +239,10 @@ PRD0 is releasable when all of the following are demonstrated:
 
 These decisions should be resolved in the issue that first implements them:
 
-1. Licensed source and minimum content set for stitch instructions and images.
+1. ~~Licensed source and minimum content set for stitch instructions and images.~~
+   Resolved: original text authored and owned by the project, no bundled
+   third-party imagery, twelve records at seed version 1. See
+   [`content-provenance.md`](./content-provenance.md).
 2. Navigation structure and names for the primary tabs/screens.
 3. One counter with a maker-defined label versus separate row and stitch counters.
 4. Initial pattern organization: recent ordering, tags, or folders.

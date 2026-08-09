@@ -677,5 +677,59 @@ describe('SQLite repositories', () => {
       ]);
       expect(detail?.seedVersion).toBe(2);
     });
+
+    it('reports no applied seed version until a release is imported', () => {
+      expect(
+        database.repositories.stitches.appliedSeedVersion(),
+      ).toBeUndefined();
+
+      database.connection.run(
+        `INSERT INTO stitch (id, slug, name, abbreviation, difficulty, summary, ownership, created_at, updated_at)
+         VALUES ('stitch-user', NULL, 'Swirl stitch', 'swrl', 'advanced', 'Mine alone', 'user', 1, 1)`,
+      );
+
+      // Maker-owned rows carry no seed version, so a database holding only their
+      // stitches is still behind every release.
+      expect(
+        database.repositories.stitches.appliedSeedVersion(),
+      ).toBeUndefined();
+    });
+
+    it('reports the highest imported seed version, not the lowest or the latest write', () => {
+      database.repositories.stitches.upsertSeededStitches(1, seedOne);
+
+      const edited = database.repositories.stitches
+        .listStitches()
+        .find((stitch) => stitch.slug === 'single-crochet');
+      database.connection.run(
+        'UPDATE stitch SET user_modified_at = ? WHERE id = ?',
+        [1_699_000_000_000, edited?.id ?? ''],
+      );
+
+      database.repositories.stitches.upsertSeededStitches(3, [
+        {
+          slug: 'treble-crochet',
+          name: 'Treble crochet',
+          abbreviation: 'tr',
+          difficulty: 'intermediate' as const,
+          summary: 'Taller again',
+          instructions: [{ instruction: 'Yarn over twice' }],
+        },
+      ]);
+      database.repositories.stitches.upsertSeededStitches(2, [
+        {
+          slug: 'magic-ring',
+          name: 'Magic ring',
+          abbreviation: 'MR',
+          difficulty: 'intermediate' as const,
+          summary: 'A closed centre start',
+          instructions: [{ instruction: 'Wrap the yarn twice' }],
+        },
+      ]);
+
+      // The maker-edited row keeps seed version 1 forever, so a `MIN` would say
+      // 1 and re-import on every launch; reading the newest write would say 2.
+      expect(database.repositories.stitches.appliedSeedVersion()).toBe(3);
+    });
   });
 });
