@@ -166,7 +166,7 @@ whitespace in the committed file.
 
 | Seed version | Released in | SHA-256 of the normalized document |
 |---|---|---|
-| 1 | PRD0 initial content set, amended in place before any release | `fc9ba33ba2bd7a74b17104bf52238f8fbfb5daeba521ca18d894c3c6f8204b00` |
+| 1 | PRD0 initial content set, amended in place before any release | `098475347abc4662c4b592f10d4efee1aafa2e5f8b8ed9ed5af678a5af1a0fc3` |
 
 The fingerprint does not pin correctness; the literal identity table in
 `tests/stitchSeedContent.test.ts` does that. Its job is to make unreviewed

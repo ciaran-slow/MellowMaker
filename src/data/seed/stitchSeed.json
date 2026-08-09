@@ -10,7 +10,7 @@
       "summary": "The starting row and the height builder: a run of linked loops worked straight from a slip knot.",
       "instructions": [
         {
-          "instruction": "Make a slip knot — loop the yarn, draw the working end through the loop, slide it onto the hook, and pull the tail to close it around the hook."
+          "instruction": "Make a slip knot — cross the yarn into a loop, draw the working end through it, slide it onto the hook, and pull the tail to close it."
         },
         {
           "instruction": "Hold the tail below the hook and wrap the working yarn over the hook from back to front."
@@ -97,7 +97,7 @@
           "instruction": "The finished stitch sits between a single crochet and a double crochet in height."
         },
         {
-          "instruction": "Chain two and turn to start a new row of half double crochet."
+          "instruction": "Chain two and turn to start a new row of half double crochet, following the pattern on whether that chain counts as a stitch."
         }
       ]
     },
@@ -121,7 +121,7 @@
           "instruction": "Yarn over and draw through the last two loops to close the stitch."
         },
         {
-          "instruction": "Chain three and turn to bring the next row up to double crochet height."
+          "instruction": "Chain three and turn to bring the next row up to double crochet height, following the pattern on whether that chain counts as a stitch."
         }
       ]
     },
@@ -145,7 +145,7 @@
           "instruction": "Yarn over and draw through two more, then yarn over and draw through the last two."
         },
         {
-          "instruction": "Chain four and turn to start a new row of treble crochet."
+          "instruction": "Chain four and turn to start a new row of treble crochet, following the pattern on whether that chain counts as a stitch."
         },
         {
           "instruction": "Every extra starting yarn over adds one more post height and one more closing pair."

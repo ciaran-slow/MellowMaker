@@ -62,7 +62,7 @@ const EXPECTED: readonly (readonly [
  * once a version has shipped, bumps `seedVersion` too.
  */
 const FINGERPRINT =
-  'fc9ba33ba2bd7a74b17104bf52238f8fbfb5daeba521ca18d894c3c6f8204b00';
+  '098475347abc4662c4b592f10d4efee1aafa2e5f8b8ed9ed5af678a5af1a0fc3';
 
 /** Hand-written, so a dropped or added step fails both here and in the table. */
 const TOTAL_STEPS = 62;
