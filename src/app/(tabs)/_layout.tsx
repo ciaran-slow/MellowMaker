@@ -76,6 +76,10 @@ export default function TabsLayout() {
           ),
         }}
       />
+      <Tabs.Screen
+        name="dictionary/[stitchId]"
+        options={{ href: null }}
+      />
     </Tabs>
   );
 }

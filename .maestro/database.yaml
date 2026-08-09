@@ -1,14 +1,15 @@
 appId: ${APP_ID}
 ---
-# Fresh install: the schema is created before any data-dependent screen is ready.
+# Fresh install: the schema is created and the bundled content seeded before any
+# data-dependent screen is ready, so a seeded row proves migrated *and* seeded.
 - launchApp:
     clearState: true
 - assertVisible: "Stitches"
-- assertVisible: "Your stitch dictionary starts here"
+- assertVisible: "Single crochet"
 - assertNotVisible: "We couldn't open your saved making data"
 # Reopen: the already-migrated database opens again with no error state.
 - launchApp:
     clearState: false
 - assertVisible: "Stitches"
-- assertVisible: "Your stitch dictionary starts here"
+- assertVisible: "Single crochet"
 - assertNotVisible: "We couldn't open your saved making data"

@@ -1,0 +1,41 @@
+appId: ${APP_ID}
+---
+# The repeatable airplane-mode dictionary scenario (release acceptance 3).
+# `setAirplaneMode` exists only on Android, so the toggle is guarded and the
+# flow itself stays platform-neutral; the iOS half is the documented physical
+# device step in docs/architecture.md section 14.
+- launchApp:
+    clearState: true
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - setAirplaneMode: enabled
+      - launchApp:
+          clearState: false
+# Browse order is `search_text`, so "Single crochet increase" precedes "Single
+# crochet". Rows are therefore tapped and asserted by their full accessible
+# name, which is unique, rather than by a name another row also contains.
+- assertVisible: "Single crochet, sc, Beginner"
+- tapOn:
+    id: "stitch-search-field"
+- inputText: "  DC  "
+- assertVisible: "Double crochet, dc, Beginner"
+- assertVisible: "Double crochet two together, dc2tog, Intermediate"
+- assertNotVisible: "Half double crochet, hdc, Beginner"
+- eraseText
+- assertVisible: "Single crochet, sc, Beginner"
+- inputText: "zzz"
+- assertVisible: "No stitches match “zzz”"
+- tapOn: "Clear search"
+- assertVisible: "Single crochet, sc, Beginner"
+- tapOn: "Single crochet, sc, Beginner"
+- assertVisible: "Abbreviation sc"
+- assertVisible: "Steps"
+- tapOn: "Back to stitches"
+- assertVisible: "Name or abbreviation"
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - setAirplaneMode: disabled

@@ -5,6 +5,7 @@ import {
   MAX_PAGE_LIMIT,
   resolvePage,
 } from '@/data/contracts/page';
+import { applyBundledStitchSeed } from '@/data/seed/stitchSeed';
 import { createRepositories } from '@/data/sqlite/createRepositories';
 import { initializeDatabase } from '@/data/sqlite/initializeDatabase';
 import type { SqliteConnection } from '@/data/sqlite/sqliteConnection';
@@ -730,6 +731,106 @@ describe('SQLite repositories', () => {
       // The maker-edited row keeps seed version 1 forever, so a `MIN` would say
       // 1 and re-import on every launch; reading the newest write would say 2.
       expect(database.repositories.stitches.appliedSeedVersion()).toBe(3);
+    });
+  });
+
+  describe('stitch search', () => {
+    /** The twelve bundled records, applied exactly as launch applies them. */
+    beforeEach(() => {
+      applyBundledStitchSeed(database.repositories.stitches);
+    });
+
+    function slugsFor(query: string): (string | undefined)[] {
+      return database.repositories.stitches
+        .searchStitches(query)
+        .map((stitch) => stitch.slug);
+    }
+
+    it('ignores surrounding whitespace and case and keeps browse order', () => {
+      expect(slugsFor('  SINGLE  ')).toStrictEqual([
+        'single-crochet-increase',
+        'single-crochet',
+        'single-crochet-two-together',
+      ]);
+    });
+
+    it('matches an abbreviation as a whole token, never inside another', () => {
+      // A `%dc%` implementation would also return half-double-crochet through
+      // `hdc` and bury the stitch the maker actually typed.
+      expect(slugsFor('DC')).toStrictEqual([
+        'double-crochet',
+        'double-crochet-two-together',
+      ]);
+    });
+
+    it('matches a multi-word name across its internal space', () => {
+      expect(slugsFor('single crochet')).toStrictEqual([
+        'single-crochet-increase',
+        'single-crochet',
+        'single-crochet-two-together',
+      ]);
+    });
+
+    it('restores the browse page for a blank or whitespace-only query', () => {
+      const browse = database.repositories.stitches.listStitches();
+
+      expect(browse).toHaveLength(12);
+      expect(database.repositories.stitches.searchStitches('')).toStrictEqual(
+        browse,
+      );
+      expect(
+        database.repositories.stitches.searchStitches('   '),
+      ).toStrictEqual(browse);
+    });
+
+    it('returns an empty result for an unmatched query rather than throwing', () => {
+      expect(slugsFor('unicorn stitch')).toStrictEqual([]);
+    });
+
+    it('treats LIKE metacharacters as literal text', () => {
+      // Unescaped, `%` and `_` would match every stitch instead of none.
+      expect(slugsFor('%')).toStrictEqual([]);
+      expect(slugsFor('_')).toStrictEqual([]);
+    });
+
+    it('pages search results and clamps an oversized window', () => {
+      const first = database.repositories.stitches.searchStitches('s', {
+        limit: 2,
+        offset: 0,
+      });
+      const second = database.repositories.stitches.searchStitches('s', {
+        limit: 2,
+        offset: 2,
+      });
+
+      expect([...first, ...second].map((stitch) => stitch.slug)).toStrictEqual([
+        'single-crochet-increase',
+        'single-crochet',
+        'single-crochet-two-together',
+        'slip-stitch',
+      ]);
+      expect(
+        first.some((stitch) =>
+          second.some((other) => other.id === stitch.id),
+        ),
+      ).toBe(false);
+
+      const all = jest.spyOn(database.connection, 'all');
+      try {
+        database.repositories.stitches.searchStitches('s', {
+          limit: 5_000,
+          offset: 0,
+        });
+
+        expect(all).toHaveBeenCalledWith(expect.stringContaining('LIKE'), [
+          's%',
+          '% s%',
+          MAX_PAGE_LIMIT,
+          0,
+        ]);
+      } finally {
+        all.mockRestore();
+      }
     });
   });
 });

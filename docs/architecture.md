@@ -52,6 +52,7 @@ SQLite is the source of truth for core application state. Network services enric
 | Unit/component tests | Jest with `jest-expo` and React Native Testing Library |
 | SQL integration tests | In-memory `node:sqlite` using shared production SQL/migration inputs |
 | Installed-app smoke tests | Maestro on iOS and Android targets |
+| Long lists | React Native `FlatList` virtualization over bounded `Page` repository reads; no third-party list dependency |
 
 Network-client libraries remain deliberately unselected. Expo Router owns typed
 navigation, while durable state remains SQLite-authoritative. React hooks own
@@ -107,6 +108,14 @@ Owns product behavior and platform-independent types:
 
 Domain behavior must not depend on React component lifecycle or a network connection.
 
+`src/domain` exists as of the stitch dictionary. It holds the rules that both
+`src/data` and a feature need to agree on, and nothing else: today that is
+`stitches/stitchQuery.ts`, the one definition of what a maker's typed query
+means, so the repository and the dictionary screen cannot disagree about
+whether a query is blank. Lint enforces the direction — `src/domain` may not
+import `@/app`, `@/features`, `@/data`, `@/platform`, `@/ui`, React, or Expo,
+while `src/data` may import `src/domain`.
+
 ### 5.3 Data access
 
 Repositories are the only feature-facing boundary to SQLite. They own queries, transactions, row-to-domain mapping, and write ordering. UI components must not contain SQL.
@@ -157,7 +166,7 @@ Conventions every table follows:
 | Booleans | Not stored. Completion is a nullable `completed_at` instant, so "when" is never lost. |
 | Deletion | Every child of an aggregate root is `ON DELETE CASCADE`. The single exception is `pattern_progress.active_step_id`, which is `ON DELETE SET NULL` so deleting one step clears the pointer instead of destroying the pattern's progress. `ON UPDATE` is omitted because identifiers are immutable. |
 | Ownership | `stitch.ownership` (`seed`/`user`), `stitch.seed_version`, and `stitch.user_modified_at` make bundled and maker content distinguishable. A seed import may insert or update only rows where `ownership = 'seed'` and `user_modified_at IS NULL`. `pattern`, `imported_guide`, and their children are always maker-owned and carry no ownership column. |
-| Search | `stitch.search_text` is a stored generated column, `lower(trim(name)) \|\| ' ' \|\| lower(trim(abbreviation))`, indexed, so case- and whitespace-insensitive lookup cannot drift from its source columns. |
+| Search | `stitch.search_text` is a stored generated column, `lower(trim(name)) \|\| ' ' \|\| lower(trim(abbreviation))`, indexed, so case- and whitespace-insensitive lookup cannot drift from its source columns. `StitchRepository.searchStitches` matches it with two token-prefix `LIKE ? ESCAPE '\'` clauses — `q%` and `% q%` — so an abbreviation matches as a whole token (`dc` never returns *Half double crochet* through `hdc`), a multi-word name still matches across its space, and the first clause stays index-eligible. `%`, `_`, and `\` a maker typed are escaped at that boundary rather than stripped during normalization, and results are ordered `search_text ASC, id ASC` like browse. No FTS table, no dependency, no migration. |
 | Exclusive owners | `counter.owner_kind` plus paired `CHECK`s guarantee exactly one pattern or one guide owner. `UNIQUE (pattern_id, position)` and `UNIQUE (guide_id, position)` order each owner independently because SQLite treats `NULL`s in a unique index as distinct. |
 | Cross-parent references | A reference that must stay inside one aggregate derives its parent in SQL rather than trusting the caller. `pattern_progress.active_step_id` and `pattern_step_progress.pattern_id` are both written by `INSERT ... SELECT ... FROM pattern_step WHERE id = ?`, so a step from another pattern — or no step at all — writes nothing instead of pointing a pattern at a position it does not own. |
 | Text | Trimmed by the caller before insert; the schema never trims silently except in the generated search column. |
@@ -286,6 +295,23 @@ Centralize colors, spacing, radii, typography, and motion values rather than rep
 
 Interactive controls require accessible names, roles, and state; usable touch targets; text scaling; safe-area handling; and feedback that does not rely on color alone. Reduced-motion preferences should disable or simplify nonessential animation.
 
+Shared primitives exist so a second copy of the same behaviour never appears:
+`useScreenContentInsets` owns the safe-area plus token padding every screen
+uses (`Screen` applies it to its `ScrollView`; a screen that owns a virtualized
+list applies it directly rather than nesting a `FlatList` in a `ScrollView`),
+`usePressScale` owns the reduced-motion-aware press feedback behind
+`CraftPressable` and `CraftTabBarButton`, and `CraftTextField` owns the one
+controlled input.
+
+A screen reading local data presents four labelled states, as the stitch
+dictionary does: a `progressbar` while the first read runs, the loaded content,
+an empty result that names the query and offers a way back to browse, and an
+`alert` with a retry for a failed read. A post-ready read failure is
+screen-local — `DatabaseGate` owns open/migrate/seed, so one bad read must not
+black out the whole app. A search field belongs above its list, never in
+`ListHeaderComponent`, so a list re-render cannot remount it and drop keyboard
+focus mid-word.
+
 ## 11. State, forms, and concurrency
 
 - SQLite owns durable state and is the only authoritative copy of persisted entities.
@@ -339,7 +365,15 @@ and migration behavior plus adapter JS wiring. Neither proves the `expo-sqlite`
 native bridge. Maestro covers installed-app behavior on iOS and Android:
 `.maestro/database.yaml` (`npm run test:smoke:database`) asserts the fresh-install
 migration path and the reopen path against an already-migrated database on both
-platforms.
+platforms, and `.maestro/dictionary.yaml` (`npm run test:smoke:dictionary`)
+browses, searches, opens a stitch, and returns to the list.
+
+`setAirplaneMode` exists only on Android, so the dictionary flow toggles it
+behind `when: platform: Android` and stays platform-neutral otherwise. The iOS
+half of release acceptance 3 is a manual step, not an automated one: run the
+same flow on a physical iPhone with airplane mode switched on in Control Centre
+(an iOS simulator has no airplane mode), and confirm browse, search, and detail
+still work.
 
 Configured CI runs a clean npm install, lint, strict type checking, and the full
 Jest suite. Maestro runs against locally installed targets using a caller-supplied

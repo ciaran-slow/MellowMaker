@@ -3,7 +3,7 @@ appId: ${APP_ID}
 - launchApp:
     clearState: true
 - assertVisible: "Stitches"
-- assertVisible: "Your stitch dictionary starts here"
+- assertVisible: "Single crochet"
 - tapOn: "Patterns"
 - assertVisible: "Patterns"
 - assertVisible: "Keep every project within reach"
@@ -11,4 +11,4 @@ appId: ${APP_ID}
 - assertVisible: "Guides"
 - assertVisible: "Turn tutorials into making steps"
 - tapOn: "Stitches"
-- assertVisible: "Your stitch dictionary starts here"
+- assertVisible: "Single crochet"
