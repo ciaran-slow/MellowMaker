@@ -15,7 +15,8 @@
     "test": "jest",
     "test:watch": "jest --watch",
     "test:smoke:foundation": "maestro test .maestro/foundation.yaml",
-    "test:smoke:database": "maestro test .maestro/database.yaml"
+    "test:smoke:database": "maestro test .maestro/database.yaml",
+    "test:smoke:dictionary": "maestro test .maestro/dictionary.yaml"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.0.2",

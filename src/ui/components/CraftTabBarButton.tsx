@@ -1,13 +1,8 @@
 import type { BottomTabBarButtonProps } from 'expo-router/tabs';
 import { Pressable } from 'react-native';
-import Animated, {
-  useAnimatedStyle,
-  useReducedMotion,
-  useSharedValue,
-  withSpring,
-  withTiming,
-} from 'react-native-reanimated';
+import Animated from 'react-native-reanimated';
 
+import { usePressScale } from '@/ui/motion/usePressScale';
 import tokens from '@/ui/theme/tokens.json';
 
 type CraftTabBarButtonProps = Omit<BottomTabBarButtonProps, 'ref'>;
@@ -25,14 +20,10 @@ export function CraftTabBarButton({
   style,
   ...rest
 }: CraftTabBarButtonProps) {
-  const reduceMotion = useReducedMotion();
-  const scale = useSharedValue(1);
   const isDisabled = disabled || accessibilityState?.disabled === true;
   const isSelected =
     accessibilityState?.selected === true || rest['aria-selected'] === true;
-  const animatedStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: scale.value }],
-  }));
+  const pressScale = usePressScale(isDisabled);
 
   return (
     <AnimatedPressable
@@ -48,24 +39,11 @@ export function CraftTabBarButton({
       }}
       onPressIn={(event) => {
         onPressIn?.(event);
-        if (!reduceMotion && !isDisabled) {
-          scale.set(
-            withTiming(tokens.motion.pressScale, {
-              duration: tokens.motion.timingMs,
-            }),
-          );
-        }
+        pressScale.onPressIn();
       }}
       onPressOut={(event) => {
         onPressOut?.(event);
-        scale.set(
-          reduceMotion
-            ? 1
-            : withSpring(1, {
-                damping: tokens.motion.spring.damping,
-                stiffness: tokens.motion.spring.stiffness,
-              }),
-        );
+        pressScale.onPressOut();
       }}
       style={[
         style,
@@ -76,7 +54,7 @@ export function CraftTabBarButton({
           borderTopWidth: isSelected ? tokens.spacing[1] : 0,
           borderRadius: isSelected ? tokens.radii.medium : 0,
         },
-        animatedStyle,
+        pressScale.animatedStyle,
       ]}
     >
       {children}

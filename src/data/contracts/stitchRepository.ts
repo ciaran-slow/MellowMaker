@@ -56,6 +56,13 @@ export interface SeedUpsertResult {
 
 export interface StitchRepository {
   listStitches(page?: Page): StitchSummary[];
+  /**
+   * Case- and whitespace-insensitive match on stitch name and abbreviation.
+   * A blank query returns the browse page, so an empty search cannot diverge
+   * from {@link StitchRepository.listStitches}. An unmatched query returns an
+   * empty array, never throws.
+   */
+  searchStitches(query: string, page?: Page): StitchSummary[];
   getStitchDetail(id: string): StitchDetail | undefined;
   /**
    * Highest seed version present in bundled rows, or `undefined` when no seed

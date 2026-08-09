@@ -1,0 +1,37 @@
+appId: ${APP_ID}
+---
+# The repeatable airplane-mode dictionary scenario (release acceptance 3).
+# `setAirplaneMode` exists only on Android, so the toggle is guarded and the
+# flow itself stays platform-neutral; the iOS half is the documented physical
+# device step in docs/architecture.md section 14.
+- launchApp:
+    clearState: true
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - setAirplaneMode: enabled
+      - launchApp:
+          clearState: false
+- assertVisible: "Single crochet"
+- tapOn:
+    id: "Search stitches"
+- inputText: "  DC  "
+- assertVisible: "Double crochet"
+- assertNotVisible: "Half double crochet"
+- eraseText
+- assertVisible: "Single crochet"
+- inputText: "zzz"
+- assertVisible: "No stitches match “zzz”"
+- tapOn: "Clear search"
+- assertVisible: "Single crochet"
+- tapOn: "Single crochet"
+- assertVisible: "Abbreviation sc"
+- assertVisible: "Steps"
+- tapOn: "Back to stitches"
+- assertVisible: "Search stitches"
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - setAirplaneMode: disabled

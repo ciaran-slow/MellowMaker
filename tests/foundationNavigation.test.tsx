@@ -12,11 +12,10 @@ describe('foundation navigation', () => {
     const result = renderRouter(routes, { initialUrl: '/' });
     await result;
 
-    // The real SQLite stack opens and migrates before any tab content appears.
+    // The real SQLite stack opens, migrates, and seeds before any tab content
+    // appears, so a seeded row is the proof rather than a placeholder card.
     expect(
-      await screen.findByRole('header', {
-        name: 'Your stitch dictionary starts here',
-      }),
+      await screen.findByLabelText('Single crochet, sc, Beginner'),
     ).toBeOnTheScreen();
     await waitFor(() => {
       expect(result.getPathname()).toBe('/dictionary');

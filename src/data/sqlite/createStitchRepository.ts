@@ -1,3 +1,5 @@
+import { normalizeStitchQuery } from '@/domain/stitches/stitchQuery';
+
 import { resolvePage } from '../contracts/page';
 import type {
   ContentOwnership,
@@ -36,6 +38,12 @@ const STITCH_COLUMNS =
   'id, slug, name, abbreviation, difficulty, summary, ownership, seed_version, user_modified_at, created_at, updated_at';
 
 const LIST_STITCHES = `SELECT ${STITCH_COLUMNS} FROM stitch ORDER BY search_text ASC, id ASC LIMIT ? OFFSET ?`;
+// Two token-prefix clauses rather than one `%query%`: `search_text` is
+// `"<name> <abbreviation>"`, so a substring match would return *Half double
+// crochet* for `dc`. Matching at the start of the string or immediately after a
+// space keeps abbreviations exact, still matches multi-word names, and leaves
+// the first clause eligible for `stitch_search_text_idx`.
+const SEARCH_STITCHES = `SELECT ${STITCH_COLUMNS} FROM stitch WHERE search_text LIKE ? ESCAPE '\\' OR search_text LIKE ? ESCAPE '\\' ORDER BY search_text ASC, id ASC LIMIT ? OFFSET ?`;
 const SELECT_STITCH = `SELECT ${STITCH_COLUMNS} FROM stitch WHERE id = ?`;
 const SELECT_STITCH_BY_SLUG =
   'SELECT id, ownership, user_modified_at FROM stitch WHERE slug = ?';
@@ -107,6 +115,33 @@ export function createStitchRepository({
 
       return connection
         .all<StitchRow>(LIST_STITCHES, [limit, offset])
+        .map(toSummary);
+    },
+
+    searchStitches(query, page) {
+      const { limit, offset } = resolvePage(page);
+      const normalized = normalizeStitchQuery(query);
+
+      if (normalized === '') {
+        // Blank searches share the browse statement so ordering and bounds
+        // cannot drift between the two reads.
+        return connection
+          .all<StitchRow>(LIST_STITCHES, [limit, offset])
+          .map(toSummary);
+      }
+
+      // `LIKE` metacharacters a maker typed are matched literally, so `%`
+      // finds the stitches actually containing a per-cent sign — none — rather
+      // than the whole catalogue.
+      const escaped = normalized.replace(/[\\%_]/gu, '\\$&');
+
+      return connection
+        .all<StitchRow>(SEARCH_STITCHES, [
+          `${escaped}%`,
+          `% ${escaped}%`,
+          limit,
+          offset,
+        ])
         .map(toSummary);
     },
 
