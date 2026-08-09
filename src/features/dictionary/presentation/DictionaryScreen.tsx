@@ -48,6 +48,7 @@ export function DictionaryScreen() {
           }}
           onChangeText={setQuery}
           placeholder="Name or abbreviation"
+          testID="stitch-search-field"
           value={query}
         />
         {state.status === 'ready' ? (

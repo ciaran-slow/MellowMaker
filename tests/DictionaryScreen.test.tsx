@@ -94,6 +94,9 @@ describe('DictionaryScreen', () => {
     await render(tree(seeded));
 
     const field = screen.getByLabelText('Search stitches');
+    // `.maestro/dictionary.yaml` taps this identifier: an accessible name is
+    // not a Maestro `id`, so losing it would break the smoke flow silently.
+    expect(screen.getByTestId('stitch-search-field')).toBe(field);
     await fireEvent.changeText(field, 'dc');
 
     expect(screen.getByText('2 matches')).toBeOnTheScreen();

@@ -13,23 +13,27 @@ appId: ${APP_ID}
       - setAirplaneMode: enabled
       - launchApp:
           clearState: false
-- assertVisible: "Single crochet"
+# Browse order is `search_text`, so "Single crochet increase" precedes "Single
+# crochet". Rows are therefore tapped and asserted by their full accessible
+# name, which is unique, rather than by a name another row also contains.
+- assertVisible: "Single crochet, sc, Beginner"
 - tapOn:
-    id: "Search stitches"
+    id: "stitch-search-field"
 - inputText: "  DC  "
-- assertVisible: "Double crochet"
-- assertNotVisible: "Half double crochet"
+- assertVisible: "Double crochet, dc, Beginner"
+- assertVisible: "Double crochet two together, dc2tog, Intermediate"
+- assertNotVisible: "Half double crochet, hdc, Beginner"
 - eraseText
-- assertVisible: "Single crochet"
+- assertVisible: "Single crochet, sc, Beginner"
 - inputText: "zzz"
 - assertVisible: "No stitches match “zzz”"
 - tapOn: "Clear search"
-- assertVisible: "Single crochet"
-- tapOn: "Single crochet"
+- assertVisible: "Single crochet, sc, Beginner"
+- tapOn: "Single crochet, sc, Beginner"
 - assertVisible: "Abbreviation sc"
 - assertVisible: "Steps"
 - tapOn: "Back to stitches"
-- assertVisible: "Search stitches"
+- assertVisible: "Name or abbreviation"
 - runFlow:
     when:
       platform: Android

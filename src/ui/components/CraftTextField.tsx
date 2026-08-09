@@ -8,6 +8,12 @@ type CraftTextFieldProps = {
   accessibilityLabel: string;
   accessibilityHint?: string;
   placeholder?: string;
+  /**
+   * Native identifier for the input itself. The installed-app smoke flows
+   * select the field by identifier, because an accessibility name is not a
+   * Maestro `id`.
+   */
+  testID?: string;
   value: string;
   onChangeText(value: string): void;
   /** Trailing clear control, rendered only while the field holds text. */
@@ -29,6 +35,7 @@ export function CraftTextField({
   clear,
   onChangeText,
   placeholder,
+  testID,
   value,
 }: CraftTextFieldProps) {
   return (
@@ -49,6 +56,7 @@ export function CraftTextField({
         placeholder={placeholder}
         placeholderTextColor={tokens.colors.ink}
         returnKeyType="search"
+        testID={testID}
         value={value}
       />
       {clear !== undefined && value !== '' ? (
