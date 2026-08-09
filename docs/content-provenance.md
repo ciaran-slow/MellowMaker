@@ -140,6 +140,14 @@ the statement of ownership that lets that happen cleanly.
    database can hold it, so there is nothing to migrate and a bump would
    misrepresent the first release as the second. An in-place amendment still owes
    every other obligation: the §2 table, the replaced §6 fingerprint, and §3.
+
+   This is the one rule in this document with no automated gate: whether a version
+   has shipped is checked by a reviewer, not a test. That asymmetry must not
+   outlive the first release. Issue #15 owns the first EAS artifacts, so the
+   change that produces one also owes this gate — assert `seedVersion > 1` for any
+   content edit once a release exists, or record a shipped-version high-water mark
+   the test can read. Until then the precondition is externally checkable: the
+   repository has no release and no tag.
 4. A release with unchanged content keeps its version. The launch guard then
    performs one bounded `MAX(seed_version)` read and no writes.
 5. Maker edits are never overwritten. The repository rule — a release may insert
@@ -158,7 +166,7 @@ whitespace in the committed file.
 
 | Seed version | Released in | SHA-256 of the normalized document |
 |---|---|---|
-| 1 | PRD0 initial content set | `d50f2a122ea3729878babf620db528c5817de7aae3ee9c03d55962554c8aed6d` |
+| 1 | PRD0 initial content set, amended in place before any release | `fc9ba33ba2bd7a74b17104bf52238f8fbfb5daeba521ca18d894c3c6f8204b00` |
 
 The fingerprint does not pin correctness; the literal identity table in
 `tests/stitchSeedContent.test.ts` does that. Its job is to make unreviewed

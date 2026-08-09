@@ -58,17 +58,15 @@ const EXPECTED: readonly (readonly [
 /**
  * SHA-256 of the normalized document. This pins nothing about correctness — the
  * table above does that — and everything about review: any prose revision fails
- * until the author bumps `seedVersion` and updates `docs/content-provenance.md`,
- * which is the enforceable half of the update policy.
+ * until the author records the new digest in `docs/content-provenance.md`, and,
+ * once a version has shipped, bumps `seedVersion` too.
  */
 const FINGERPRINT =
-  'd50f2a122ea3729878babf620db528c5817de7aae3ee9c03d55962554c8aed6d';
+  'fc9ba33ba2bd7a74b17104bf52238f8fbfb5daeba521ca18d894c3c6f8204b00';
 
-const TOTAL_STEPS_IN_WORDS: Record<number, string> = {
-  62: 'Sixty-two',
-  63: 'Sixty-three',
-  64: 'Sixty-four',
-};
+/** Hand-written, so a dropped or added step fails both here and in the table. */
+const TOTAL_STEPS = 62;
+const TOTAL_STEPS_PROSE = 'Sixty-two instruction steps in total.';
 
 const result = parseStitchSeedDocument(rawSeed);
 
@@ -191,14 +189,13 @@ describe('committed stitch content', () => {
       ]),
     );
 
-    const totalSteps = document.stitches.reduce(
-      (total, stitch) => total + stitch.instructions.length,
-      0,
-    );
-
-    expect(section).toContain(
-      `${TOTAL_STEPS_IN_WORDS[totalSteps]} instruction steps in total.`,
-    );
+    expect(
+      document.stitches.reduce(
+        (total, stitch) => total + stitch.instructions.length,
+        0,
+      ),
+    ).toBe(TOTAL_STEPS);
+    expect(section).toContain(TOTAL_STEPS_PROSE);
   });
 
   it('matches the fingerprint recorded for its seed version', () => {
@@ -207,8 +204,11 @@ describe('committed stitch content', () => {
       .digest('hex');
 
     expect(digest).toBe(FINGERPRINT);
-    expect(readFileSync(PROVENANCE_PATH, 'utf8')).toContain(
-      `| ${document.seedVersion} | PRD0 initial content set | \`${FINGERPRINT}\` |`,
+    expect(readFileSync(PROVENANCE_PATH, 'utf8')).toMatch(
+      new RegExp(
+        `^\\| ${document.seedVersion} \\| [^|]+ \\| \`${FINGERPRINT}\` \\|$`,
+        'm',
+      ),
     );
   });
 });
