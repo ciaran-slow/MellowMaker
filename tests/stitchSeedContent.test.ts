@@ -62,7 +62,13 @@ const EXPECTED: readonly (readonly [
  * which is the enforceable half of the update policy.
  */
 const FINGERPRINT =
-  '9c20f8de4510e63abdba45206a809a2acc85cf11e9b73680e0e4123e8ec86d68';
+  'd50f2a122ea3729878babf620db528c5817de7aae3ee9c03d55962554c8aed6d';
+
+const TOTAL_STEPS_IN_WORDS: Record<number, string> = {
+  62: 'Sixty-two',
+  63: 'Sixty-three',
+  64: 'Sixty-four',
+};
 
 const result = parseStitchSeedDocument(rawSeed);
 
@@ -161,12 +167,37 @@ describe('committed stitch content', () => {
       provenance.indexOf('## 2.'),
       provenance.indexOf('## 3.'),
     );
-    const recorded = [...section.matchAll(/^\| \d+ \| `([a-z0-9-]+)` \|/gm)].map(
-      (match) => match[1],
+    // Every column, not just the slug: a step count or difficulty edited in one
+    // place and not the other must fail rather than drift silently.
+    const recorded = [
+      ...section.matchAll(
+        /^\| \d+ \| `([a-z0-9-]+)` \| ([^|]+?) \| `([^`]+)` \| (\w+) \| (\d+) \|/gm,
+      ),
+    ].map((match) => [
+      match[1],
+      match[2],
+      match[3],
+      match[4],
+      Number(match[5]),
+    ]);
+
+    expect(recorded).toStrictEqual(
+      document.stitches.map((stitch) => [
+        stitch.slug,
+        stitch.name,
+        stitch.abbreviation,
+        stitch.difficulty,
+        stitch.instructions.length,
+      ]),
     );
 
-    expect([...recorded].sort()).toStrictEqual(
-      document.stitches.map((stitch) => stitch.slug).sort(),
+    const totalSteps = document.stitches.reduce(
+      (total, stitch) => total + stitch.instructions.length,
+      0,
+    );
+
+    expect(section).toContain(
+      `${TOTAL_STEPS_IN_WORDS[totalSteps]} instruction steps in total.`,
     );
   });
 

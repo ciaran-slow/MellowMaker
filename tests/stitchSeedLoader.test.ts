@@ -407,4 +407,34 @@ describe('bundled stitch seed loader', () => {
     ]);
     expect(error.message).not.toContain('write the chain steps');
   });
+
+  it('throws rather than seeding when the committed document itself is invalid', () => {
+    jest.isolateModules(() => {
+      jest.doMock('@/data/seed/stitchSeed.json', () => ({
+        seedVersion: 1,
+        terminology: 'US',
+        stitches: [{ slug: 'chain' }],
+      }));
+
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const seed = require('@/data/seed/stitchSeed') as {
+        readonly bundledStitchSeed: typeof bundledStitchSeed;
+        readonly applyBundledStitchSeed: typeof applyBundledStitchSeed;
+      };
+      // The isolated registry holds its own copy of the format module, so the
+      // error class must come from the same copy to compare by identity.
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const format = require('@/data/seed/stitchSeedDocument') as {
+        readonly StitchSeedError: typeof StitchSeedError;
+      };
+
+      expect(() => seed.bundledStitchSeed()).toThrow(format.StitchSeedError);
+      expect(() =>
+        seed.applyBundledStitchSeed(database.repositories.stitches),
+      ).toThrow(format.StitchSeedError);
+      expect(
+        database.repositories.stitches.appliedSeedVersion(),
+      ).toBeUndefined();
+    });
+  });
 });

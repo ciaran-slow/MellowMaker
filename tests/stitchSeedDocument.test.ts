@@ -493,4 +493,19 @@ describe('bundled stitch content format', () => {
 
     expect(new StitchSeedError(result.issues).message).toContain('<document>');
   });
+
+  it('names the record when a stitch entry is not an object', () => {
+    const result = parseStitchSeedDocument(
+      documentFixture([stitchFixture(0), 'single-crochet' as never]),
+    );
+
+    expect(result.ok).toBe(false);
+    if (result.ok) {
+      return;
+    }
+
+    expect(result.issues).toStrictEqual([
+      { path: 'stitches[1]', message: 'Each stitch must be an object.' },
+    ]);
+  });
 });

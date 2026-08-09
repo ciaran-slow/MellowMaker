@@ -50,12 +50,18 @@ Sixty-two instruction steps in total.
 
 ### Difficulty rubric
 
-PRD0 uses only two of the schema's three values:
+PRD0 uses only two of the schema's three values. A record is rated by what the
+maker must already understand before the first step makes sense:
 
-- **beginner** — workable knowing only how to hold the hook, make a chain, and
-  yarn over.
-- **intermediate** — composes, repeats, or relocates a beginner stitch, or
-  changes where the hook enters.
+- **beginner** — one self-contained action needing only the slip knot, the yarn
+  over, and the top loops of a stitch. Height varies with the starting yarn
+  overs, but nothing is worked twice into one place and the hook always enters
+  under both top loops. Covers `ch`, `sl st`, `sc`, `hdc`, `dc`, and `FO`.
+- **intermediate** — needs a beginner stitch already understood, because the
+  record either extends its yarn-over and closing count further (`tr`), works
+  more than one stitch into or out of a single place (`inc`, `sc2tog`,
+  `dc2tog`), changes where the hook enters (`BLO`), or starts a round instead of
+  a row (`MR`).
 
 Nothing is `advanced`, because PRD0 targets beginner-to-intermediate makers
 (`prd0.md` §3.1). The schema keeps `advanced` available for maker-owned stitches.
@@ -126,6 +132,14 @@ the statement of ownership that lets that happen cleanly.
    abbreviation, adding an `imageAssetKey` — requires, in the same commit: bump
    `seedVersion`, update the set table in §2, add a fingerprint row in §6, and
    re-confirm §3. The committed gates fail otherwise.
+
+   The bump is owed from the first shipped release onward, because its purpose is
+   to move installed databases forward. While a version has never shipped —
+   MellowMaker has published no build, and EAS artifacts are still owed by issue
+   #15 — content may be amended in place under that same version: no installed
+   database can hold it, so there is nothing to migrate and a bump would
+   misrepresent the first release as the second. An in-place amendment still owes
+   every other obligation: the §2 table, the replaced §6 fingerprint, and §3.
 4. A release with unchanged content keeps its version. The launch guard then
    performs one bounded `MAX(seed_version)` read and no writes.
 5. Maker edits are never overwritten. The repository rule — a release may insert
@@ -144,18 +158,21 @@ whitespace in the committed file.
 
 | Seed version | Released in | SHA-256 of the normalized document |
 |---|---|---|
-| 1 | PRD0 initial content set | `9c20f8de4510e63abdba45206a809a2acc85cf11e9b73680e0e4123e8ec86d68` |
+| 1 | PRD0 initial content set | `d50f2a122ea3729878babf620db528c5817de7aae3ee9c03d55962554c8aed6d` |
 
 The fingerprint does not pin correctness; the literal identity table in
 `tests/stitchSeedContent.test.ts` does that. Its job is to make unreviewed
 content drift impossible: any prose revision fails the gate until the author
-bumps `seedVersion` and updates this record.
+records the new digest here, and — once a version has shipped — bumps
+`seedVersion` as well.
 
 ## 7. Review checklist for a content change
 
-1. Bump `seedVersion` in `src/data/seed/stitchSeed.json`.
+1. Bump `seedVersion` in `src/data/seed/stitchSeed.json`, unless the version being
+   amended has never shipped (§6, rule 3).
 2. Update the set table in §2, including step counts and the total.
-3. Add a fingerprint row in §6 for the new version.
+3. Record the new digest in §6 — a new row for a bumped version, or the replaced
+   row for an in-place amendment.
 4. Re-confirm §3: no copied or paraphrased text entered the set.
 5. Record any asset licence or statement of self-production in §4.
 6. Confirm the maker-edit rule and the absence of a delete path are untouched.
