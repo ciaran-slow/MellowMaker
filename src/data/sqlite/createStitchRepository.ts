@@ -39,6 +39,10 @@ const LIST_STITCHES = `SELECT ${STITCH_COLUMNS} FROM stitch ORDER BY search_text
 const SELECT_STITCH = `SELECT ${STITCH_COLUMNS} FROM stitch WHERE id = ?`;
 const SELECT_STITCH_BY_SLUG =
   'SELECT id, ownership, user_modified_at FROM stitch WHERE slug = ?';
+// `MAX` rather than `MIN`: a maker-edited row keeps its old `seed_version`
+// forever, so `MIN` would make every launch re-import the bundled content.
+const SELECT_APPLIED_SEED_VERSION =
+  "SELECT MAX(seed_version) AS version FROM stitch WHERE ownership = 'seed'";
 const SELECT_INSTRUCTIONS =
   'SELECT id, position, instruction, image_asset_key FROM stitch_instruction WHERE stitch_id = ? ORDER BY position ASC, id ASC';
 const INSERT_STITCH = `INSERT INTO stitch (${STITCH_COLUMNS}) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
@@ -122,6 +126,16 @@ export function createStitchRepository({
           .all<StitchInstructionRow>(SELECT_INSTRUCTIONS, [id])
           .map(toInstruction),
       };
+    },
+
+    appliedSeedVersion(): number | undefined {
+      // The aggregate reports `null` for an empty table and for a database
+      // holding only maker-owned stitches; both mean no release is applied.
+      return (
+        connection.first<{ readonly version: number | null }>(
+          SELECT_APPLIED_SEED_VERSION,
+        )?.version ?? undefined
+      );
     },
 
     upsertSeededStitches(seedVersion, records): SeedUpsertResult {

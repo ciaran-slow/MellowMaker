@@ -42,6 +42,7 @@ SQLite is the source of truth for core application state. Network services enric
 | Distribution | EAS builds for iOS (`.ipa`) and Android (`.aab`) |
 | Local persistence | `expo-sqlite` `~57.0.1`, one application-owned database behind a synchronous connection boundary |
 | Identifier generation | `expo-crypto` `~57.0.1` `randomUUID()`, injected into the data layer rather than imported by it |
+| Bundled stitch content | One committed JSON document under `src/data/seed`, validated against one documented schema in the test suite and applied through `StitchRepository` |
 | Video | `expo-video` |
 | Styling | NativeWind v4 |
 | Motion | React Native Reanimated |
@@ -160,6 +161,34 @@ Conventions every table follows:
 | Exclusive owners | `counter.owner_kind` plus paired `CHECK`s guarantee exactly one pattern or one guide owner. `UNIQUE (pattern_id, position)` and `UNIQUE (guide_id, position)` order each owner independently because SQLite treats `NULL`s in a unique index as distinct. |
 | Cross-parent references | A reference that must stay inside one aggregate derives its parent in SQL rather than trusting the caller. `pattern_progress.active_step_id` and `pattern_step_progress.pattern_id` are both written by `INSERT ... SELECT ... FROM pattern_step WHERE id = ?`, so a step from another pattern — or no step at all — writes nothing instead of pointing a pattern at a position it does not own. |
 | Text | Trimmed by the caller before insert; the schema never trims silently except in the generated search column. |
+
+### 6.1 Seed content
+
+Bundled stitch content is one committed JSON document,
+`src/data/seed/stitchSeed.json`, holding a document-level `seedVersion`, an
+in-band `"terminology": "US"` declaration, and the records themselves. It lives
+in `src/data` because that layer owns bundled data and the repository contract;
+`src/domain` may not import `@/data/*`, and feature/UI code already cannot reach
+a non-contract `src/data` path. JSON rather than a TypeScript literal keeps
+shipped content as data validated at a boundary.
+
+`src/data/seed/stitchSeedDocument.ts` is the one documented format. Its
+`parseStitchSeedDocument` returns a discriminated result and collects every
+issue, so a malformed record is a red gate rather than shipped content, and the
+committed document is validated in the test suite on every run.
+
+| Concern | Decision |
+|---|---|
+| Seed identity | The kebab-case `slug` is frozen at authoring time. A release is matched by slug, so a changed slug would insert a duplicate stitch. `stitch.id` stays a v4 UUID assigned on first insert and never rewritten, so later references survive content revisions. |
+| Version | One monotonically increasing integer per document, never per record, stamped onto every row a release touches. |
+| Launch guard | `StitchRepository.appliedSeedVersion()` reads `MAX(seed_version)` over seeded rows. An equal or higher applied version skips the import, so relaunch performs one bounded aggregate and no writes, and an older build cannot rewrite newer content — the same refusal stance as `unsupported-schema-version`. `MIN` would re-import forever once a maker edited one row. |
+| Revision, not deletion | A release may add or revise records in place. No seed delete path exists in the contract, because retiring a bundled stitch would strand a maker who relies on it. |
+| Maker data | The repository's `ownership = 'seed'` and `user_modified_at IS NULL` filter is the only write path, so a release never overwrites a maker edit or a maker-owned stitch. |
+| Invocation | `createAppDatabase` applies the bundled content after migrations, inside its existing `try`. `DatabaseGate`'s ready state therefore means migrated *and* seeded, so dictionary screens own no seeding state, and a seed failure reuses the existing rollback-and-retry path. |
+| Error taxonomy | `StitchSeedError` is deliberately outside `DatabaseError`'s four codes: invalid bundled content is not a database condition. The gate maps it to its unexpected-error state and offers a retry, and the committed content gate makes that state unreachable in a shipped build. |
+
+The approval, authorship, imagery, attribution, and update-policy record is
+[`content-provenance.md`](./content-provenance.md).
 
 ## 7. SQLite lifecycle
 
@@ -339,11 +368,13 @@ Every release candidate should exercise, on both platforms where applicable:
 These must be resolved by the issue that first needs them:
 
 Navigation, state/forms, and verification tooling are resolved in the technology
-baseline and verification sections above. The remaining decisions are:
-- bundled stitch-content source, image licensing, and which stitches ship in the
-  seed *content* set. The schema-level mechanism is decided in section 6: seeded
-  rows carry `ownership`, `seed_version`, and `user_modified_at`, and a seed
-  import may only insert or update seeded rows the maker has not edited;
+baseline and verification sections above. Bundled stitch-content source, image
+licensing, and the shipping content set are resolved in section 6.1 and recorded
+in [`content-provenance.md`](./content-provenance.md): the project authors and
+owns the instruction text, no third-party imagery is bundled, and twelve records
+ship at `seedVersion` 1. Only the imagery half could reopen, if a later decision
+adopts licensed or self-produced assets; that would need a schema attribution
+field and an in-app attribution surface. The remaining decisions are:
 - compliant YouTube metadata/transcript provider and any trusted-service need;
 - feasibility of compliant YouTube playback through `expo-video`; validate the
   source format before implementation and do not scrape or reverse-engineer

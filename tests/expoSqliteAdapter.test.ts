@@ -54,6 +54,51 @@ describe('Expo SQLite adapter', () => {
     ).toBeUndefined();
   });
 
+  it('seeds the bundled catalog through the production composition and not again on reopen', async () => {
+    const database = await createAppDatabase();
+
+    // The browse order the catalog reads in, written out here so a composition
+    // that never ran the loader fails instead of reporting an empty catalog.
+    expect(
+      database.repositories.stitches
+        .listStitches({ limit: 200, offset: 0 })
+        .map((stitch) => stitch.slug),
+    ).toStrictEqual([
+      'back-loop-only',
+      'chain',
+      'double-crochet',
+      'double-crochet-two-together',
+      'fasten-off',
+      'half-double-crochet',
+      'magic-ring',
+      'single-crochet-increase',
+      'single-crochet',
+      'single-crochet-two-together',
+      'slip-stitch',
+      'treble-crochet',
+    ]);
+
+    const seeded = database.repositories.stitches
+      .listStitches({ limit: 200, offset: 0 })
+      .map((stitch) =>
+        database.repositories.stitches.getStitchDetail(stitch.id)?.updatedAt,
+      );
+
+    const reopened = await createAppDatabase();
+    const catalog = reopened.repositories.stitches.listStitches({
+      limit: 200,
+      offset: 0,
+    });
+
+    expect(catalog).toHaveLength(12);
+    expect(
+      catalog.map(
+        (stitch) =>
+          reopened.repositories.stitches.getStitchDetail(stitch.id)?.updatedAt,
+      ),
+    ).toStrictEqual(seeded);
+  });
+
   it('turns a native open failure into a recoverable database error', async () => {
     failDatabaseOpen(new Error('unable to open database file'));
 

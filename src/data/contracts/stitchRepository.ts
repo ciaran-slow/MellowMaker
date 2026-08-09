@@ -58,6 +58,12 @@ export interface StitchRepository {
   listStitches(page?: Page): StitchSummary[];
   getStitchDetail(id: string): StitchDetail | undefined;
   /**
+   * Highest seed version present in bundled rows, or `undefined` when no seed
+   * release has been imported. A seed loader's version guard reads this instead
+   * of re-importing the bundled content on every launch.
+   */
+  appliedSeedVersion(): number | undefined;
+  /**
    * Applies a seed release in one transaction. A seeded row is matched by slug;
    * maker-owned rows and seeded rows a maker has edited are left untouched and
    * reported as skipped.
