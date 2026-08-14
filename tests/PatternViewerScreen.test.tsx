@@ -138,7 +138,9 @@ describe('PatternViewerScreen', () => {
     await screen.findByRole('header', { name: 'Test Scarf' });
 
     const control = screen.getByLabelText('Mark step 2 complete');
-    // Both taps land before a re-render settles, the way a rapid double-tap does.
+    // Both taps land on the same "Mark complete" control before a re-render
+    // settles, the way a rapid double-tap does; batching them in one act keeps
+    // the two synchronous presses from leaking an unflushed update.
     await act(async () => {
       fireEvent.press(control);
       fireEvent.press(control);
@@ -209,6 +211,43 @@ describe('PatternViewerScreen', () => {
       screen.getByLabelText('Step 3 of 3, current step: Fasten off').props
         .accessibilityState.selected,
     ).toBe(true);
+  });
+
+  it('completing an earlier, non-current step does not move the active position', async () => {
+    // Mounting with step 1 current keeps every row rendered; `initialScrollIndex`
+    // only applies at mount, so selecting step 3 afterwards does not virtualize
+    // the earlier rows away and step 1's control stays pressable.
+    await render(tree(repositories, patternId));
+    await screen.findByRole('header', { name: 'Test Scarf' });
+
+    // Park the maker on step 3.
+    await fireEvent.press(screen.getByLabelText('Work on step 3'));
+    expect(repositories.progress.getProgress(patternId).activeStepId).toBe(
+      stepIds[2],
+    );
+
+    // Complete step 1 — earlier than, and not, the current step.
+    await fireEvent.press(screen.getByLabelText('Mark step 1 complete'));
+
+    // (a) The completion is recorded.
+    expect(
+      repositories.progress.getProgress(patternId).completedStepIds,
+    ).toContain(stepIds[0]);
+    // (b) The active/current position is UNCHANGED — still step 3. The expected
+    // id is pinned to step 3, not derived from the code: removing the
+    // `if (stepId === currentBefore)` guard in `completeStep` would auto-advance
+    // the pointer to step 2 and fail this assertion.
+    expect(repositories.progress.getProgress(patternId).activeStepId).toBe(
+      stepIds[2],
+    );
+    expect(
+      screen.getByLabelText('Step 3 of 3, current step: Fasten off').props
+        .accessibilityState.selected,
+    ).toBe(true);
+    // Step 1 now reads as completed, not current.
+    expect(
+      screen.getByLabelText('Step 1 of 3, completed: Chain 20'),
+    ).toBeOnTheScreen();
   });
 
   it('tells the maker a stale pattern id is no longer here', async () => {
