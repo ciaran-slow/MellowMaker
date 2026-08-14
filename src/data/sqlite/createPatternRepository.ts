@@ -5,6 +5,7 @@ import type {
   PatternStep,
   PatternSummary,
   PatternWithSteps,
+  UpdatePatternInput,
 } from '../contracts/patternRepository';
 import { reorderPositions, type ReorderStatements } from './reorderPositions';
 import type { RepositoryContext } from './repositoryContext';
@@ -34,11 +35,22 @@ const SELECT_STEPS =
   'SELECT id, pattern_id, position, instruction, created_at, updated_at FROM pattern_step WHERE pattern_id = ? ORDER BY position ASC, id ASC';
 const SELECT_STEP_IDS =
   'SELECT id FROM pattern_step WHERE pattern_id = ? ORDER BY position ASC, id ASC';
+const SELECT_STEP_COUNT =
+  'SELECT COUNT(*) AS total FROM pattern_step WHERE pattern_id = ?';
+const SELECT_STEP_PARENT = 'SELECT pattern_id FROM pattern_step WHERE id = ?';
 const INSERT_PATTERN =
   'INSERT INTO pattern (id, title, notes, created_at, updated_at) VALUES (?, ?, ?, ?, ?)';
 const INSERT_STEP =
   'INSERT INTO pattern_step (id, pattern_id, position, instruction, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)';
+const UPDATE_PATTERN_DETAILS =
+  'UPDATE pattern SET title = ?, notes = ?, updated_at = ? WHERE id = ?';
+const UPDATE_STEP_INSTRUCTION =
+  'UPDATE pattern_step SET instruction = ?, updated_at = ? WHERE id = ?';
+// Derives the parent from the step so a caller can never bump the wrong pattern.
+const TOUCH_PATTERN_OF_STEP =
+  'UPDATE pattern SET updated_at = ? WHERE id = (SELECT pattern_id FROM pattern_step WHERE id = ?)';
 const TOUCH_PATTERN = 'UPDATE pattern SET updated_at = ? WHERE id = ?';
+const DELETE_STEP = 'DELETE FROM pattern_step WHERE id = ?';
 const DELETE_PATTERN = 'DELETE FROM pattern WHERE id = ?';
 
 const STEP_REORDER: ReorderStatements = {
@@ -132,6 +144,98 @@ export function createPatternRepository({
 
     getPatternWithSteps(id) {
       return read(id);
+    },
+
+    updatePattern(input: UpdatePatternInput): PatternSummary {
+      const writtenAt = now();
+      connection.run(UPDATE_PATTERN_DETAILS, [
+        input.title,
+        input.notes ?? null,
+        writtenAt,
+        input.id,
+      ]);
+
+      const row = connection.first<PatternRow>(SELECT_PATTERN, [input.id]);
+      if (row === undefined) {
+        throw new Error('No pattern carries the id passed to updatePattern.');
+      }
+
+      return toSummary(row);
+    },
+
+    addStep(patternId, instruction): PatternStep {
+      return transaction(() => {
+        const writtenAt = now();
+        const stepId = newId();
+        // Positions stay contiguous from zero (see deleteStep), so the count is
+        // always MAX(position) + 1 and the append cannot collide with the
+        // UNIQUE (pattern_id, position) constraint.
+        const position =
+          connection.first<{ readonly total: number }>(SELECT_STEP_COUNT, [
+            patternId,
+          ])?.total ?? 0;
+
+        connection.run(INSERT_STEP, [
+          stepId,
+          patternId,
+          position,
+          instruction,
+          writtenAt,
+          writtenAt,
+        ]);
+        connection.run(TOUCH_PATTERN, [writtenAt, patternId]);
+
+        return {
+          id: stepId,
+          patternId,
+          position,
+          instruction,
+          createdAt: writtenAt,
+          updatedAt: writtenAt,
+        };
+      });
+    },
+
+    editStep(stepId, instruction) {
+      transaction(() => {
+        const writtenAt = now();
+        connection.run(UPDATE_STEP_INSTRUCTION, [
+          instruction,
+          writtenAt,
+          stepId,
+        ]);
+        connection.run(TOUCH_PATTERN_OF_STEP, [writtenAt, stepId]);
+      });
+    },
+
+    deleteStep(stepId) {
+      transaction(() => {
+        const parent = connection.first<{ readonly pattern_id: string }>(
+          SELECT_STEP_PARENT,
+          [stepId],
+        );
+        if (parent === undefined) {
+          // Nothing to remove; a stale id is a no-op, not a fault.
+          return;
+        }
+
+        const patternId = parent.pattern_id;
+        connection.run(DELETE_STEP, [stepId]);
+
+        const remainingIds = connection
+          .all<{ readonly id: string }>(SELECT_STEP_IDS, [patternId])
+          .map((row) => row.id);
+        const removedAt = now();
+        // Close the gap the delete left so positions stay contiguous from zero.
+        reorderPositions(
+          connection,
+          STEP_REORDER,
+          patternId,
+          remainingIds,
+          removedAt,
+        );
+        connection.run(TOUCH_PATTERN, [removedAt, patternId]);
+      });
     },
 
     reorderSteps(patternId, orderedStepIds) {

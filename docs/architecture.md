@@ -310,7 +310,27 @@ an empty result that names the query and offers a way back to browse, and an
 screen-local — `DatabaseGate` owns open/migrate/seed, so one bad read must not
 black out the whole app. A search field belongs above its list, never in
 `ListHeaderComponent`, so a list re-render cannot remount it and drop keyboard
-focus mid-word.
+focus mid-word. A list-owning screen re-reads its first page on focus
+(`useFocusEffect`) so a change made on a pushed editor is reflected on return,
+keeping SQLite authoritative without a global store.
+
+Two further shared conventions, introduced by the pattern editor (issue #5):
+
+- **Ordered-list reorder is button-driven.** Reorderable rows expose accessible
+  "Move up" / "Move down" controls (disabled at the ends via
+  `accessibilityState`) rather than a drag gesture, so reordering needs no
+  third-party list dependency and works with a screen reader. The persisted
+  positions stay contiguous from zero: deleting a row re-compacts the remainder
+  so an append at `position = count` can never collide with the
+  `UNIQUE (parent_id, position)` constraint.
+- **Destructive confirmation uses `CraftConfirmDialog`.** It is the one shared
+  accessible confirmation surface: an in-tree overlay (not a React Native
+  `Modal`, to stay testable and match the no-portal habit) that announces its
+  message as an assertive `alert`, spells the consequence out in words rather
+  than colour, and on Android cancels on the hardware back button. Deliberate
+  deletion of a whole pattern is confirmed through it because confirming
+  discards the pattern's saved progress; lower-stakes edits such as removing a
+  single step during editing stay immediate.
 
 ## 11. State, forms, and concurrency
 
@@ -408,14 +428,21 @@ in [`content-provenance.md`](./content-provenance.md): the project authors and
 owns the instruction text, no third-party imagery is bundled, and twelve records
 ship at `seedVersion` 1. Only the imagery half could reopen, if a later decision
 adopts licensed or self-produced assets; that would need a schema attribution
-field and an in-app attribution surface. The remaining decisions are:
+field and an in-app attribution surface.
+
+Pattern organization is resolved: issue #5 confirmed **recency as the single
+PRD0 pattern-organization method** (PRD0 decision 4). The library orders by
+`updated_at DESC, id ASC` through `pattern_recent_idx`, every create/edit/step
+mutation bumps the parent `updated_at` so recent work floats to the top, and
+PRD0 adds no tags, folders, search, or filtering over patterns. Tags or folders
+could only reopen this as a deliberate post-PRD0 decision with its own schema and
+UI.
+
+The remaining decisions are:
 - compliant YouTube metadata/transcript provider and any trusted-service need;
 - feasibility of compliant YouTube playback through `expo-video`; validate the
   source format before implementation and do not scrape or reverse-engineer
   YouTube media URLs;
-- whether the pattern library adds tags or folders on top of recency. The storage
-  baseline is recency: `pattern` has no manual position and is indexed by
-  `updated_at DESC, id ASC`;
 - analytics, crash reporting, and privacy policy.
 
 An open decision must not be resolved by quietly adding a dependency. Update this document when the repository adopts the answer.

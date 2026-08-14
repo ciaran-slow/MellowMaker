@@ -10,6 +10,10 @@ import { createRepositories } from '@/data/sqlite/createRepositories';
 import { initializeDatabase } from '@/data/sqlite/initializeDatabase';
 import type { SqliteConnection } from '@/data/sqlite/sqliteConnection';
 
+import {
+  BASELINE,
+  insertPopulatedBaseline,
+} from './support/populatedBaseline';
 import { createTestDatabase, type TestDatabase } from './support/sqliteHarness';
 
 /**
@@ -241,6 +245,287 @@ describe('SQLite repositories', () => {
           .getPatternWithSteps(created.pattern.id)
           ?.steps.map((step) => step.instruction),
       ).toStrictEqual(['Alpha', 'Bravo']);
+    });
+
+    it('rewrites details, clears omitted notes to NULL, and floats the pattern to the front of recency', () => {
+      const { patterns } = database.repositories;
+      const alpha = patterns.createPattern({
+        title: 'Alpha',
+        notes: 'first notes',
+        steps: [],
+      });
+      const bravo = patterns.createPattern({ title: 'Bravo', steps: [] });
+
+      // Bravo is newer, so recency is [Bravo, Alpha] before any edit.
+      expect(patterns.listPatterns().map((pattern) => pattern.id)).toStrictEqual(
+        [bravo.pattern.id, alpha.pattern.id],
+      );
+
+      const updated = patterns.updatePattern({
+        id: alpha.pattern.id,
+        title: 'Alpha renamed',
+      });
+      expect(updated.title).toBe('Alpha renamed');
+      // Notes omitted from the input clear to SQL NULL.
+      expect(updated.notes).toBeUndefined();
+
+      // The edit bumps updated_at, so Alpha now leads; a no-touch write leaves
+      // [Bravo, Alpha].
+      expect(patterns.listPatterns().map((pattern) => pattern.id)).toStrictEqual(
+        [alpha.pattern.id, bravo.pattern.id],
+      );
+
+      patterns.updatePattern({
+        id: alpha.pattern.id,
+        title: 'Alpha renamed',
+        notes: 'new notes',
+      });
+      expect(
+        patterns.getPatternWithSteps(alpha.pattern.id)?.pattern.notes,
+      ).toBe('new notes');
+    });
+
+    it('refuses to update a pattern that does not exist', () => {
+      expect(() =>
+        database.repositories.patterns.updatePattern({
+          id: 'no-such-pattern',
+          title: 'Ghost',
+        }),
+      ).toThrow();
+    });
+
+    it('appends a new step at the next contiguous position', () => {
+      const { patterns } = database.repositories;
+      const created = patterns.createPattern({
+        title: 'Growing',
+        steps: ['One', 'Two', 'Three'],
+      });
+
+      const added = patterns.addStep(created.pattern.id, 'Four');
+      expect(added.position).toBe(3);
+      expect(added.instruction).toBe('Four');
+
+      const steps = patterns.getPatternWithSteps(created.pattern.id)?.steps ?? [];
+      expect(steps.map((step) => step.position)).toStrictEqual([0, 1, 2, 3]);
+      expect(steps.map((step) => step.instruction)).toStrictEqual([
+        'One',
+        'Two',
+        'Three',
+        'Four',
+      ]);
+    });
+
+    it('edits only the target step and floats its pattern to the front of recency', () => {
+      const { patterns } = database.repositories;
+      const alpha = patterns.createPattern({
+        title: 'Alpha',
+        steps: ['One', 'Two', 'Three'],
+      });
+      const bravo = patterns.createPattern({ title: 'Bravo', steps: [] });
+      const [, second] = alpha.steps;
+
+      patterns.editStep(second?.id ?? '', 'Two revised');
+
+      expect(
+        patterns
+          .getPatternWithSteps(alpha.pattern.id)
+          ?.steps.map((step) => step.instruction),
+      ).toStrictEqual(['One', 'Two revised', 'Three']);
+      // Editing a step is recent activity on its parent pattern.
+      expect(patterns.listPatterns().map((pattern) => pattern.id)).toStrictEqual(
+        [alpha.pattern.id, bravo.pattern.id],
+      );
+    });
+
+    it('re-compacts positions after deleting a middle step so a later append cannot collide', () => {
+      const { patterns } = database.repositories;
+      const created = patterns.createPattern({
+        title: 'Compact',
+        steps: ['A', 'B', 'C', 'D'],
+      });
+      const [, bStep] = created.steps;
+
+      patterns.deleteStep(bStep?.id ?? '');
+
+      expect(
+        patterns
+          .getPatternWithSteps(created.pattern.id)
+          ?.steps.map((step) => [step.instruction, step.position]),
+      ).toStrictEqual([
+        ['A', 0],
+        ['C', 1],
+        ['D', 2],
+      ]);
+
+      // A gap-leaving delete would leave positions [0, 2, 3]; appending at
+      // count 3 would then collide with D's stale position 3.
+      const added = patterns.addStep(created.pattern.id, 'E');
+      expect(added.position).toBe(3);
+      expect(
+        patterns
+          .getPatternWithSteps(created.pattern.id)
+          ?.steps.map((step) => step.instruction),
+      ).toStrictEqual(['A', 'C', 'D', 'E']);
+    });
+
+    it('clears the active-step pointer when its step is deleted, keeping other completion', () => {
+      const { patterns, progress } = database.repositories;
+      const created = patterns.createPattern({
+        title: 'Active',
+        steps: ['One', 'Two', 'Three'],
+      });
+      const [first, second, third] = created.steps;
+
+      progress.setStepCompleted(first?.id ?? '', true);
+      progress.setStepCompleted(third?.id ?? '', true);
+      progress.setActiveStep(created.pattern.id, second?.id ?? null);
+
+      patterns.deleteStep(second?.id ?? '');
+
+      const after = progress.getProgress(created.pattern.id);
+      expect(after.activeStepId).toBeUndefined();
+      expect(after.completedStepIds).toStrictEqual([first?.id, third?.id]);
+    });
+
+    it('rolls back a failed deleteStep, leaving the step count and positions unchanged', () => {
+      const created = database.repositories.patterns.createPattern({
+        title: 'Rollback',
+        steps: ['A', 'B', 'C', 'D'],
+      });
+      const [, bStep] = created.steps;
+
+      const repositories = createRepositories({
+        connection: failingAt(
+          database.connection,
+          'UPDATE pattern_step SET position',
+          2,
+        ),
+        now: database.now,
+        newId: database.newId,
+      });
+
+      expect(() =>
+        repositories.patterns.deleteStep(bStep?.id ?? ''),
+      ).toThrow('simulated write failure');
+
+      expect(
+        database.repositories.patterns
+          .getPatternWithSteps(created.pattern.id)
+          ?.steps.map((step) => [step.instruction, step.position]),
+      ).toStrictEqual([
+        ['A', 0],
+        ['B', 1],
+        ['C', 2],
+        ['D', 3],
+      ]);
+    });
+
+    it('persists every edit, addition, deletion, and reorder across a reopen with no migration', () => {
+      const { patterns } = database.repositories;
+      const created = patterns.createPattern({
+        title: 'Draft',
+        notes: 'version one',
+        steps: ['One', 'Two', 'Three'],
+      });
+      const [first, second] = created.steps;
+
+      patterns.updatePattern({
+        id: created.pattern.id,
+        title: 'Final',
+        notes: 'version two',
+      });
+      patterns.addStep(created.pattern.id, 'Four');
+      patterns.editStep(first?.id ?? '', 'One edited');
+      patterns.deleteStep(second?.id ?? '');
+
+      // Remaining: One edited(0), Three(1), Four(2). Reorder to Four first.
+      const current =
+        patterns.getPatternWithSteps(created.pattern.id)?.steps ?? [];
+      patterns.reorderSteps(created.pattern.id, [
+        current[2]?.id ?? '',
+        current[0]?.id ?? '',
+        current[1]?.id ?? '',
+      ]);
+
+      // Reopening applies no migration and reads the exact final state.
+      expect(initializeDatabase(database.connection).appliedMigrations).toEqual(
+        [],
+      );
+      const reopened = createRepositories({
+        connection: database.connection,
+        now: database.now,
+        newId: database.newId,
+      });
+      const readBack = reopened.patterns.getPatternWithSteps(created.pattern.id);
+
+      expect(readBack?.pattern.title).toBe('Final');
+      expect(readBack?.pattern.notes).toBe('version two');
+      expect(readBack?.steps.map((step) => step.instruction)).toStrictEqual([
+        'Four',
+        'One edited',
+        'Three',
+      ]);
+      expect(readBack?.steps.map((step) => step.position)).toStrictEqual([
+        0, 1, 2,
+      ]);
+    });
+
+    it('operates on realistic existing data: reorder keeps completion, deleting the active step clears the pointer, and cascade removes the whole aggregate', () => {
+      insertPopulatedBaseline(database.connection);
+      const { patterns, progress, guides } = database.repositories;
+      const sunrise = BASELINE.patterns[0];
+      const [sunriseStep0, sunriseStep1, sunriseStep2] = sunrise.steps;
+
+      // Reorder Sunrise's three steps; the completed first step stays completed.
+      patterns.reorderSteps(sunrise.id, [
+        sunriseStep2.id,
+        sunriseStep0.id,
+        sunriseStep1.id,
+      ]);
+      expect(
+        patterns
+          .getPatternWithSteps(sunrise.id)
+          ?.steps.map((step) => [step.id, step.position]),
+      ).toStrictEqual([
+        ['step-sunrise-2', 0],
+        ['step-sunrise-0', 1],
+        ['step-sunrise-1', 2],
+      ]);
+      expect(progress.getProgress(sunrise.id).completedStepIds).toStrictEqual([
+        'step-sunrise-0',
+      ]);
+
+      // Deleting the active step clears the pointer but keeps the completed step.
+      patterns.deleteStep(sunriseStep1.id);
+      const afterDelete = progress.getProgress(sunrise.id);
+      expect(afterDelete.activeStepId).toBeUndefined();
+      expect(afterDelete.completedStepIds).toStrictEqual(['step-sunrise-0']);
+
+      // Deleting the pattern removes its steps, progress, and counter atomically.
+      patterns.deletePattern(sunrise.id);
+      expect(patterns.getPatternWithSteps(sunrise.id)).toBeUndefined();
+      expect(
+        database.connection.first<{ readonly total: number }>(
+          'SELECT COUNT(*) AS total FROM pattern_step WHERE pattern_id = ?',
+          [sunrise.id],
+        )?.total,
+      ).toBe(0);
+      expect(
+        database.connection.first<{ readonly total: number }>(
+          'SELECT COUNT(*) AS total FROM counter WHERE id = ?',
+          [BASELINE.counter.id],
+        )?.total,
+      ).toBe(0);
+
+      // The other pattern and the imported guide are untouched.
+      expect(
+        patterns
+          .getPatternWithSteps(BASELINE.patterns[1].id)
+          ?.steps.map((step) => step.instruction),
+      ).toStrictEqual(['Magic ring, 6 sc', 'Increase to 12 sc']);
+      expect(guides.getGuideWithSteps(BASELINE.guide.id)?.guide.title).toBe(
+        'Granny square basics',
+      );
     });
   });
 

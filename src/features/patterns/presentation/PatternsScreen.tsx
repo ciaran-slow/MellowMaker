@@ -1,23 +1,168 @@
-import { Text } from 'react-native';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { useFocusEffect, useRouter } from 'expo-router';
+import { useCallback } from 'react';
+import { ActivityIndicator, FlatList, Text, View } from 'react-native';
 
+import { libraryCountLabel } from '@/features/patterns/presentation/patternLabels';
+import { PatternListRow } from '@/features/patterns/presentation/PatternListRow';
+import { usePatternLibrary } from '@/features/patterns/presentation/usePatternLibrary';
 import { CraftCard } from '@/ui/components/CraftCard';
-import { Screen } from '@/ui/components/Screen';
+import { CraftPressable } from '@/ui/components/CraftPressable';
+import { useScreenContentInsets } from '@/ui/components/screenLayout';
+import tokens from '@/ui/theme/tokens.json';
 
 export function PatternsScreen() {
+  const router = useRouter();
+  const contentInsets = useScreenContentInsets();
+  const { state, loadMore, retry, reload } = usePatternLibrary();
+
+  // Returning from the editor re-reads the library so a created, renamed, or
+  // deleted pattern is reflected without a global store.
+  useFocusEffect(
+    useCallback(() => {
+      reload();
+    }, [reload]),
+  );
+
+  const openNewPattern = useCallback(() => {
+    router.push('/patterns/new');
+  }, [router]);
+
   return (
-    <Screen accessibilityLabel="Patterns screen">
-      <Text accessibilityRole="header" className="text-display text-ink">
-        Patterns
-      </Text>
-      <CraftCard accent="pink">
-        <Text accessibilityRole="header" className="text-heading text-ink">
-          Keep every project within reach
+    <View
+      accessibilityLabel="Patterns screen"
+      className="flex-1 bg-background"
+      style={{
+        paddingTop: contentInsets.paddingTop,
+        paddingRight: contentInsets.paddingRight,
+        paddingLeft: contentInsets.paddingLeft,
+      }}
+    >
+      <View className="w-full max-w-screen-sm self-center gap-4 pb-4">
+        <Text accessibilityRole="header" className="text-display text-ink">
+          Patterns
         </Text>
-        <Text className="text-body text-ink">
-          Your patterns, steps, and progress will live together for calmer
-          making sessions.
-        </Text>
-      </CraftCard>
-    </Screen>
+        <CraftPressable
+          accessibilityHint="Starts a new pattern"
+          accessibilityLabel="New pattern"
+          className="flex-row items-center justify-center gap-2 bg-pink px-6 py-3"
+          onPress={openNewPattern}
+        >
+          <MaterialCommunityIcons
+            accessibilityElementsHidden
+            color={tokens.colors.ink}
+            name="plus-circle"
+            size={tokens.typography.heading.fontSize}
+          />
+          <Text className="text-label text-ink">New pattern</Text>
+        </CraftPressable>
+        {state.status === 'ready' && state.patterns.length > 0 ? (
+          <Text accessibilityLiveRegion="polite" className="text-label text-ink">
+            {libraryCountLabel(state.patterns.length)}
+          </Text>
+        ) : null}
+      </View>
+
+      {state.status === 'loading' ? (
+        <View
+          accessible
+          accessibilityRole="progressbar"
+          accessibilityLabel="Loading your patterns"
+          accessibilityState={{ busy: true }}
+          accessibilityLiveRegion="polite"
+          className="w-full max-w-screen-sm self-center"
+        >
+          <ActivityIndicator color={tokens.colors.teal} size="large" />
+        </View>
+      ) : null}
+
+      {state.status === 'failed' ? (
+        <View className="w-full max-w-screen-sm self-center gap-4">
+          <View
+            accessible
+            accessibilityRole="alert"
+            accessibilityLiveRegion="assertive"
+          >
+            <CraftCard accent="pink">
+              <View className="flex-row items-center gap-3">
+                <MaterialCommunityIcons
+                  accessibilityElementsHidden
+                  color={tokens.colors.pink}
+                  name="alert-circle"
+                  size={tokens.typography.heading.fontSize}
+                />
+                <Text
+                  accessibilityRole="header"
+                  className="flex-1 text-heading text-ink"
+                >
+                  We couldn&apos;t read your patterns
+                </Text>
+              </View>
+              <Text className="text-body text-ink">
+                Your patterns are saved on this device. Nothing was changed.
+              </Text>
+            </CraftCard>
+          </View>
+          <CraftPressable
+            accessibilityLabel="Try again"
+            className="items-center bg-yellow px-6 py-3"
+            onPress={retry}
+          >
+            <Text className="text-label text-ink">Try again</Text>
+          </CraftPressable>
+        </View>
+      ) : null}
+
+      {state.status === 'ready' ? (
+        <FlatList
+          accessibilityLabel="Your patterns"
+          className="w-full max-w-screen-sm self-center"
+          contentContainerStyle={{
+            gap: tokens.spacing[3],
+            paddingBottom: contentInsets.paddingBottom,
+          }}
+          data={state.patterns}
+          keyExtractor={(pattern) => pattern.id}
+          ListEmptyComponent={
+            <View className="gap-4">
+              <CraftCard accent="teal">
+                <Text
+                  accessibilityRole="header"
+                  className="text-heading text-ink"
+                >
+                  No patterns yet
+                </Text>
+                <Text className="text-body text-ink">
+                  Keep your projects, steps, and progress together. Start your
+                  first pattern to begin.
+                </Text>
+              </CraftCard>
+              <CraftPressable
+                accessibilityHint="Starts a new pattern"
+                accessibilityLabel="Create your first pattern"
+                className="items-center bg-pink px-6 py-3"
+                onPress={openNewPattern}
+              >
+                <Text className="text-label text-ink">
+                  Create your first pattern
+                </Text>
+              </CraftPressable>
+            </View>
+          }
+          ListFooterComponent={
+            state.loadingMore ? (
+              <ActivityIndicator
+                accessibilityLabel="Loading more patterns"
+                color={tokens.colors.teal}
+              />
+            ) : null
+          }
+          onEndReached={loadMore}
+          onEndReachedThreshold={0.5}
+          renderItem={({ item }) => <PatternListRow pattern={item} />}
+          testID="pattern-results"
+        />
+      ) : null}
+    </View>
   );
 }
