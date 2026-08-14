@@ -29,7 +29,17 @@ export interface CounterInput {
 export interface CounterRepository {
   createCounter(input: CounterInput): Counter;
   listCounters(owner: CounterOwner): Counter[];
+  /**
+   * The owner's single maker-labelled counter (PRD0 decision 3). Returns the
+   * existing counter when the owner already has one, otherwise creates one at
+   * position 0 with `DEFAULT_COUNTER_LABEL`, kind `'custom'`, value 0. Idempotent
+   * per owner: a second call (a mount refresh or a reopen) returns the same row
+   * rather than creating a second counter.
+   */
+  getOrCreatePrimaryCounter(owner: CounterOwner): Counter;
   /** Clamps at zero inside SQL, so a decrement can never go negative. */
   adjustCounter(id: string, delta: number): Counter;
+  /** Rewrites the maker label; the caller passes an already-normalized, non-empty label. */
+  renameCounter(id: string, label: string): Counter;
   resetCounter(id: string): Counter;
 }

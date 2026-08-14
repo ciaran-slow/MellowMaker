@@ -1,0 +1,52 @@
+appId: ${APP_ID}
+---
+# The durable project counter in the pattern working view (FR-CO-01–08, NFR-02,
+# NFR-08; PRD0 decision 3; release acceptance 5). Everything is local SQLite, so
+# no connectivity is assumed and the flow runs identically on iOS and Android.
+# Fields are selected by testID; controls by their unique accessible names.
+- launchApp:
+    clearState: true
+
+# From a fresh install, create a pattern with one step. Creating lands on the
+# working viewer, which mounts the counter labelled "Rows" at 0.
+- tapOn: "Patterns"
+- assertVisible: "No patterns yet"
+- tapOn: "Create your first pattern"
+- assertVisible: "New pattern"
+- tapOn:
+    id: "pattern-title-field"
+- inputText: "Test Scarf"
+- tapOn:
+    id: "pattern-step-field"
+- inputText: "Chain 20"
+- tapOn: "Add step"
+- tapOn: "Create pattern"
+
+- assertVisible: "Test Scarf"
+- assertVisible: "Rows: 0"
+
+# Increment three times with the primary tap.
+- tapOn: "Increase Rows"
+- tapOn: "Increase Rows"
+- tapOn: "Increase Rows"
+- assertVisible: "Rows: 3"
+
+# Relaunch WITHOUT clearing state to prove the count survived an app restart
+# (FR-CO-06 / NFR-02).
+- launchApp:
+    clearState: false
+- tapOn: "Patterns"
+- tapOn: "Test Scarf"
+- assertVisible: "Rows: 3"
+
+# Decrement once, then reset behind the confirmation dialog.
+- tapOn: "Decrease Rows"
+- assertVisible: "Rows: 2"
+- tapOn: "Reset Rows"
+- assertVisible: "Reset this counter?"
+- tapOn: "Reset"
+- assertVisible: "Rows: 0"
+
+# Decrement at zero cannot go negative (FR-CO-03).
+- tapOn: "Decrease Rows"
+- assertVisible: "Rows: 0"
