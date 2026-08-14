@@ -27,7 +27,12 @@ The goal is to find the underlying causes and propose changes that improve futur
 
 ## When to Use
 
-Activate this skill when the user asks to:
+Retro is the mandatory closing stage of the per-issue workflow: **plan → build
+→ verify → retro**. Run it on every issue once verify has posted its verdict
+and the PR has merged, even when the cycle went smoothly — a clean run still
+surfaces what to preserve. The `verify` skill hands off to this stage.
+
+Also activate this skill when the user asks to:
 
 - do a retro
 - review what went wrong
@@ -35,6 +40,19 @@ Activate this skill when the user asks to:
 - find inefficiencies or wasted effort
 - understand repeated failure patterns
 - improve the workflow for next time
+
+### Running as the issue-closing retro
+
+When invoked to close out an issue, scope the review to that issue's full
+cycle. Pull, at minimum:
+
+- the issue body, acceptance criteria, and posted plan comment;
+- the PR, its diff, and the verify review;
+- any build- or verify-stage gate failures, corrections, or reruns.
+
+Judge whether the plan was buildable as written, whether the build followed it,
+and whether verify caught what mattered. Route every durable fix into the
+`plan`, `build`, or `verify` skill, a repo doc, or a script — never memory.
 
 ## Inputs to Review
 

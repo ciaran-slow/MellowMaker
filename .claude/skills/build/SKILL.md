@@ -184,3 +184,7 @@ Confirm the PR URL and head branch with `gh pr view --repo "$REPO"`.
 
 Stop after opening the PR. Do not verify your own work. Tell the user to run
 the verify skill in a fresh context, preferably with a different model.
+
+This is the build stage of the per-issue workflow: **plan → build → verify →
+retro**. After verify passes and the PR merges, the issue closes with a retro;
+do not skip it.

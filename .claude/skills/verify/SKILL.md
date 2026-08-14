@@ -189,3 +189,19 @@ Do not treat the pass as complete until the posted body matches the report.
 
 Review first. Only fix findings after the user asks. After a fix, rerun every
 affected repository gate and smoke scenario and post an updated review.
+
+## 8. Close the issue loop with a retro
+
+Verify is the last **quality** gate, not the last stage. Every issue runs the
+full workflow: **plan → build → verify → retro**.
+
+Once the verdict is posted — and, if it was **ready to merge**, once the PR is
+merged — stop and tell the user to run the `retro` skill in a fresh context on
+this issue. Do not run the retro in the verify context; it must review the
+whole cycle from the outside.
+
+Name the inputs the retro should pull for this issue: the issue number, its
+plan comment, the PR and its diff, this verify review, and any build/verify
+gate failures or back-and-forth. The retro's job is to convert what this cycle
+revealed into durable changes to the `plan`, `build`, or `verify` skills, a
+repo doc, or a script — never to memory.
