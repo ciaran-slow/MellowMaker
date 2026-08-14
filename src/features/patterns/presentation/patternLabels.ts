@@ -1,3 +1,5 @@
+import type { StepStatus } from '@/domain/patterns/patternProgress';
+
 import type { PatternSummary } from '@/data/contracts/patternRepository';
 
 /**
@@ -25,4 +27,31 @@ export function stepAccessibilityLabel(
 /** Tells a maker how many patterns they have without leaning on colour or an icon. */
 export function libraryCountLabel(count: number): string {
   return count === 1 ? '1 pattern' : `${count} patterns`;
+}
+
+/**
+ * Announces a viewer step with its ordinal *and* its progress status in words,
+ * so a screen reader user hears whether a step is done, current, or still to do
+ * without relying on colour or shape alone.
+ */
+export function viewerStepAccessibilityLabel(
+  index: number,
+  total: number,
+  instruction: string,
+  status: StepStatus,
+): string {
+  const place = `Step ${index + 1} of ${total}`;
+  switch (status) {
+    case 'completed':
+      return `${place}, completed: ${instruction}`;
+    case 'current':
+      return `${place}, current step: ${instruction}`;
+    case 'todo':
+      return `${place}, to do: ${instruction}`;
+  }
+}
+
+/** States pattern progress in words for a live region, never colour alone. */
+export function progressSummaryLabel(completed: number, total: number): string {
+  return `${completed} of ${total} steps done`;
 }

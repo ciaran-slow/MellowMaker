@@ -64,3 +64,4 @@ target exercised (or delete it once #16 records it).
 | Issue | PR | Flow file | Proxy coverage that ran | Still on-device-unverified | Status |
 |---|---|---|---|---|---|
 | #5 | #23 | `.maestro/patterns.yaml` | Jest repository + library/editor screen + real-router navigation suites (195 tests) | AC "rows/steps retain exact saved order after navigation and **app restart**" — true relaunch never exercised on a device | Open |
+| #6 | #25 | `.maestro/pattern-viewer.yaml` | Jest domain + repository (serialization/durability) + `PatternViewerScreen` component + real-router navigation suites (220 tests) | AC "completed/reopened state survives immediate termination and **app restart**" and on-device scroll-to-current-step restoration — true relaunch and real scroll never exercised on a device | Open |

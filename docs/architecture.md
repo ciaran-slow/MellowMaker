@@ -154,6 +154,18 @@ active position and one row per step for completion. Each has a single job, both
 cascade cleanly, and a viewer restores position and completion with two bounded
 reads.
 
+The interactive pattern viewer (issue #6) reads these two tables and derives the
+maker's place rather than storing it. Completion is the per-step `completed_at`
+instant; the maker's position is the single `pattern_progress.active_step_id`.
+The **current/next step is computed, never stored** (`src/domain/patterns/patternProgress.ts`):
+it is `active_step_id` when that names an existing *incomplete* step, else the
+first incomplete step by position, else none ("pattern complete"). Completing the
+current step auto-advances `active_step_id` to the next incomplete step (or clears
+it), so the restored position matches where the maker will work next; completing
+an out-of-order step never moves the pointer. There is **no** scroll/offset
+column — "viewing position" is the active step scrolled into view, and precise
+scroll restoration is a presentation concern, not persisted state.
+
 Conventions every table follows:
 
 | Rule | Decision |
@@ -332,6 +344,25 @@ Two further shared conventions, introduced by the pattern editor (issue #5):
   discards the pattern's saved progress; lower-stakes edits such as removing a
   single step during editing stay immediate.
 
+Two conventions introduced by the interactive pattern viewer (issue #6):
+
+- **A pattern's home is its working viewer.** The canonical route
+  `/patterns/[patternId]` is the interactive viewer (folder `index.tsx`), and
+  structural editing lives on the child route `/patterns/[patternId]/edit`
+  (`edit.tsx`), reached from the viewer's "Edit pattern" control. This matches
+  vision Journey B: a library row and the post-create redirect both open the
+  viewer, and the editor is one push deeper. Both child routes stay `href:null`
+  so the tab bar remains exactly `Stitches / Patterns / Guides`.
+- **`CraftPressable` expresses completion state, never colour alone.** The shared
+  press primitive accepts an optional `accessibilityRole="checkbox"` with
+  `checked`, and an optional `selected`, defaulting to the plain button so every
+  existing caller is unchanged. A step's completion is an accessible checkbox and
+  the current step is `selected`; status is additionally stated in words (a
+  status pill and the step's label) and in shape (a check vs empty circle, a left
+  accent bar and marker on the current step), so meaning survives without colour
+  (A11Y-01/03, UX-05). A completion announcement and the progress summary use a
+  polite live region.
+
 ## 11. State, forms, and concurrency
 
 - SQLite owns durable state and is the only authoritative copy of persisted entities.
@@ -341,6 +372,19 @@ Two further shared conventions, introduced by the pattern editor (issue #5):
 - No global state or form dependency is adopted until a later feature demonstrates complexity that warrants revisiting this decision.
 - Counter and completion commands must prevent stale reads and lost writes during rapid taps.
 - Navigation away from a screen must not cancel an already acknowledged durable change.
+- **Working-view command convention (issue #6).** Durable working-view commands
+  — step completion and active position now, the counter (#7) and later features
+  next — are absolute, idempotent, set-based SQL keyed by the target row (an
+  `ON CONFLICT` upsert taking an absolute value, never a counter/array mutation),
+  applied through a synchronous serialized runner (`usePatternViewer`'s `run`)
+  that writes then re-reads. There is **no read-modify-write** and the UI never
+  computes a `!state` toggle: each control shows an absolute "Mark complete" or
+  "Reopen" action fixed by the last-committed status. Because `expo-sqlite` is
+  synchronous over one shared connection and each write is one autocommitted
+  statement, rapid or interleaved taps commit in issue order and the final state
+  equals the last command per row — no duplicate, skip, or corruption (FR-PV-06,
+  NFR-02). Persistence is independent of Reanimated animation completion
+  (NFR-08). This is the convention #7/#12/#14 inherit.
 
 ## 12. Error handling and observability
 

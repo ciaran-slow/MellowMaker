@@ -8,6 +8,12 @@ import tokens from '@/ui/theme/tokens.json';
 type CraftPressableProps = PropsWithChildren<{
   accessibilityLabel: string;
   accessibilityHint?: string;
+  /** Defaults to `button`; a completion control passes `checkbox`. */
+  accessibilityRole?: 'button' | 'checkbox';
+  /** Merged into `accessibilityState.checked` when defined. */
+  checked?: boolean;
+  /** Merged into `accessibilityState.selected` when true. */
+  selected?: boolean;
   className?: string;
   disabled?: boolean;
   style?: StyleProp<ViewStyle>;
@@ -17,17 +23,23 @@ type CraftPressableProps = PropsWithChildren<{
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
 /**
- * The shared press target: one accessible element with a name, a button role, a
- * minimum touch target, and the reduced-motion-aware press scale. Screens style
- * it with tokens through `className` rather than reimplementing feedback.
+ * The shared press target: one accessible element with a name, a role, a minimum
+ * touch target, and the reduced-motion-aware press scale. Screens style it with
+ * tokens through `className` rather than reimplementing feedback. It also owns
+ * the one accessible completion control: pass `accessibilityRole="checkbox"`
+ * with `checked` so a step's completion is exposed as a checkbox to assistive
+ * technology rather than hand-rolling a raw `Pressable`.
  */
 export function CraftPressable({
   accessibilityHint,
   accessibilityLabel,
+  accessibilityRole = 'button',
+  checked,
   children,
   className,
   disabled = false,
   onPress,
+  selected = false,
   style,
 }: CraftPressableProps) {
   const pressScale = usePressScale(disabled);
@@ -37,8 +49,12 @@ export function CraftPressable({
       accessible
       accessibilityHint={accessibilityHint}
       accessibilityLabel={accessibilityLabel}
-      accessibilityRole="button"
-      accessibilityState={{ disabled }}
+      accessibilityRole={accessibilityRole}
+      accessibilityState={{
+        disabled,
+        ...(checked === undefined ? {} : { checked }),
+        ...(selected ? { selected: true } : {}),
+      }}
       className={`justify-center rounded-large ${className ?? ''}`}
       disabled={disabled}
       onPress={onPress}
