@@ -150,3 +150,6 @@ gh issue view <n> --repo "$REPO" --comments
 
 Confirm the full plan appears on the issue. Then stop: do not build in the
 planning context. Tell the user to start the build skill in a fresh context.
+
+This is the first stage of the per-issue workflow: **plan → build → verify →
+retro**. Every issue runs all four stages, each in its own fresh context.
