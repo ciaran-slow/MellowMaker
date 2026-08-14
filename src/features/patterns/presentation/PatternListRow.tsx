@@ -14,7 +14,7 @@ export function PatternListRow({ pattern }: PatternListRowProps) {
 
   return (
     <CraftPressable
-      accessibilityHint="Opens the pattern editor"
+      accessibilityHint="Opens the pattern"
       accessibilityLabel={patternRowAccessibilityLabel(pattern)}
       className="gap-2 bg-surface p-4"
       onPress={() => {

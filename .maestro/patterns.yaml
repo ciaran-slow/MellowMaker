@@ -29,8 +29,12 @@ appId: ${APP_ID}
 - inputText: "Single crochet across"
 - tapOn: "Add step"
 - assertVisible: "Step 2 of 2: Single crochet across"
+# Creating now lands on the interactive working viewer (Journey B), so step into
+# the editor to run the reorder/add/delete round-trip.
 - tapOn: "Create pattern"
 - assertVisible: "Edit pattern"
+- tapOn: "Edit pattern"
+- assertVisible: "Step 1 of 2: Chain 41"
 
 # Reorder: moving step 1 down puts "Single crochet across" first.
 - tapOn: "Move step 1 down"
@@ -52,7 +56,10 @@ appId: ${APP_ID}
     clearState: false
 - tapOn: "Patterns"
 - assertVisible: "Meadow Wrap"
+# Reopening lands on the viewer; step into the editor to confirm the saved order
+# and to delete the pattern.
 - tapOn: "Meadow Wrap"
+- tapOn: "Edit pattern"
 - assertVisible: "Step 1 of 2: Chain 41"
 - assertVisible: "Step 2 of 2: Fasten off"
 

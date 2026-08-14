@@ -81,7 +81,8 @@ export default function TabsLayout() {
         options={{ href: null }}
       />
       <Tabs.Screen name="patterns/new" options={{ href: null }} />
-      <Tabs.Screen name="patterns/[patternId]" options={{ href: null }} />
+      <Tabs.Screen name="patterns/[patternId]/index" options={{ href: null }} />
+      <Tabs.Screen name="patterns/[patternId]/edit" options={{ href: null }} />
     </Tabs>
   );
 }

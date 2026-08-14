@@ -652,6 +652,87 @@ describe('SQLite repositories', () => {
         completedStepIds: [first?.id],
       });
     });
+
+    it('lands on the exact final set after rapid interleaved completions', () => {
+      const created = database.repositories.patterns.createPattern({
+        title: 'Interleave',
+        steps: ['s0', 's1', 's2', 's3', 's4'],
+      });
+      const [s0, s1, s2, s3, s4] = created.steps;
+      const { progress } = database.repositories;
+
+      // Issued in this exact order. The final set is authored by hand from the
+      // sequence, not derived from the repository, so a non-serialized or
+      // additive implementation fails: additive completion would keep s2/s0/s4
+      // after they are reopened; an echo-by-completion-order read would return
+      // [s3, s1] rather than position order [s1, s3].
+      progress.setStepCompleted(s2?.id ?? '', true);
+      progress.setStepCompleted(s3?.id ?? '', true);
+      progress.setStepCompleted(s2?.id ?? '', true);
+      progress.setStepCompleted(s4?.id ?? '', true);
+      progress.setStepCompleted(s0?.id ?? '', true);
+      progress.setStepCompleted(s4?.id ?? '', false);
+      progress.setStepCompleted(s1?.id ?? '', true);
+      progress.setStepCompleted(s2?.id ?? '', false);
+      progress.setStepCompleted(s0?.id ?? '', false);
+
+      expect(
+        progress.getProgress(created.pattern.id).completedStepIds,
+      ).toStrictEqual([s1?.id, s3?.id]);
+    });
+
+    it('makes a completion visible immediately, with no lingering transaction', () => {
+      const created = database.repositories.patterns.createPattern({
+        title: 'Immediate',
+        steps: ['s0', 's1'],
+      });
+      const [first] = created.steps;
+
+      database.repositories.progress.setStepCompleted(first?.id ?? '', true);
+
+      // A fresh read through the same repository sees it.
+      expect(
+        database.repositories.progress.getProgress(created.pattern.id)
+          .completedStepIds,
+      ).toStrictEqual([first?.id]);
+
+      // A second repositories instance over the same connection sees it too,
+      // proving the write autocommitted rather than being cached in memory or
+      // held in an open transaction (NFR-02).
+      const reopened = createRepositories({
+        connection: database.connection,
+        now: database.now,
+        newId: database.newId,
+      });
+      expect(
+        reopened.progress.getProgress(created.pattern.id).completedStepIds,
+      ).toStrictEqual([first?.id]);
+    });
+
+    it('advances then clears the active position as the hook drives completion', () => {
+      const created = database.repositories.patterns.createPattern({
+        title: 'Advance',
+        steps: ['s0', 's1', 's2'],
+      });
+      const [s0, s1, s2] = created.steps;
+      const { progress } = database.repositories;
+
+      // The hook completes the current step then points active at the next
+      // incomplete one.
+      progress.setStepCompleted(s0?.id ?? '', true);
+      progress.setActiveStep(created.pattern.id, s1?.id ?? null);
+      expect(progress.getProgress(created.pattern.id).activeStepId).toBe(s1?.id);
+
+      // Completing through the last step clears the pointer while completion
+      // remains recorded ("Pattern complete").
+      progress.setStepCompleted(s1?.id ?? '', true);
+      progress.setStepCompleted(s2?.id ?? '', true);
+      progress.setActiveStep(created.pattern.id, null);
+
+      const after = progress.getProgress(created.pattern.id);
+      expect(after.activeStepId).toBeUndefined();
+      expect(after.completedStepIds).toStrictEqual([s0?.id, s1?.id, s2?.id]);
+    });
   });
 
   describe('counters', () => {

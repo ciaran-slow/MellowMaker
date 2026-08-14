@@ -10,7 +10,7 @@ import { createAppDatabase } from '@/platform/database/createAppDatabase';
 const routes = 'src/app';
 
 describe('patterns navigation', () => {
-  it('creates a pattern from the empty state and shows it after returning to the library', async () => {
+  it('creates a pattern, lands on the viewer, and shows it after returning to the library', async () => {
     const result = renderRouter(routes, { initialUrl: '/patterns' });
     await result;
 
@@ -27,8 +27,12 @@ describe('patterns navigation', () => {
       screen.getByRole('button', { name: 'Create pattern' }),
     );
 
-    // Creating replaces the route with the editor in edit mode.
-    await screen.findByRole('header', { name: 'Edit pattern' });
+    // Creating replaces the route with the working viewer (Journey B), not the
+    // editor: the pattern title is the viewer header and there is no editor.
+    await screen.findByRole('header', { name: 'Meadow Wrap' });
+    expect(
+      screen.queryByRole('header', { name: 'Edit pattern' }),
+    ).not.toBeOnTheScreen();
 
     // Return to the library through the Patterns tab and confirm the focus
     // reload surfaces the newly created pattern.
@@ -40,7 +44,7 @@ describe('patterns navigation', () => {
     expect(await screen.findByLabelText('Meadow Wrap')).toBeOnTheScreen();
   });
 
-  it('opens the editor for a chosen library row', async () => {
+  it('opens the viewer for a chosen library row', async () => {
     const database = await createAppDatabase();
     const created = database.repositories.patterns.createPattern({
       title: 'Sky Scarf',
@@ -54,6 +58,40 @@ describe('patterns navigation', () => {
 
     await waitFor(() => {
       expect(result.getPathname()).toBe(`/patterns/${created.pattern.id}`);
+    });
+    // The viewer, not the editor: the pattern title is the header and the step
+    // renders with its viewer status label.
+    expect(
+      await screen.findByRole('header', { name: 'Sky Scarf' }),
+    ).toBeOnTheScreen();
+    expect(
+      screen.getByLabelText('Step 1 of 1, current step: Chain 20'),
+    ).toBeOnTheScreen();
+    expect(
+      screen.queryByRole('header', { name: 'Edit pattern' }),
+    ).not.toBeOnTheScreen();
+  });
+
+  it('opens the editor from the viewer via Edit pattern', async () => {
+    const database = await createAppDatabase();
+    const created = database.repositories.patterns.createPattern({
+      title: 'Sky Scarf',
+      steps: ['Chain 20'],
+    });
+
+    const result = renderRouter(routes, {
+      initialUrl: `/patterns/${created.pattern.id}`,
+    });
+    await result;
+
+    await fireEvent.press(
+      await screen.findByRole('button', { name: 'Edit pattern' }),
+    );
+
+    await waitFor(() => {
+      expect(result.getPathname()).toBe(
+        `/patterns/${created.pattern.id}/edit`,
+      );
     });
     expect(
       await screen.findByRole('header', { name: 'Edit pattern' }),

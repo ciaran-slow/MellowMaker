@@ -1,0 +1,62 @@
+appId: ${APP_ID}
+---
+# The interactive pattern viewer: durable step completion, auto-advance, and
+# restart persistence (release acceptance 5; FR-PV-01–06, NFR-02). Everything is
+# local SQLite, so no connectivity is assumed and the flow runs identically on
+# iOS and Android. Fields are selected by testID; controls and rows by their
+# unique accessible names.
+- launchApp:
+    clearState: true
+
+# From a fresh install, create a pattern with three ordered steps. Creating
+# lands on the working viewer (not the editor).
+- tapOn: "Patterns"
+- assertVisible: "No patterns yet"
+- tapOn: "Create your first pattern"
+- assertVisible: "New pattern"
+- tapOn:
+    id: "pattern-title-field"
+- inputText: "Test Scarf"
+- tapOn:
+    id: "pattern-step-field"
+- inputText: "Chain 20"
+- tapOn: "Add step"
+- tapOn:
+    id: "pattern-step-field"
+- inputText: "Single crochet across"
+- tapOn: "Add step"
+- tapOn:
+    id: "pattern-step-field"
+- inputText: "Fasten off"
+- tapOn: "Add step"
+- tapOn: "Create pattern"
+
+# The viewer opens with the title, the progress summary, and the first step as
+# the current step.
+- assertVisible: "Test Scarf"
+- assertVisible: "0 of 3 steps done"
+- assertVisible: "Current step"
+
+# Complete step 1: it becomes Completed, the summary advances, and step 2 becomes
+# the current step.
+- tapOn: "Mark step 1 complete"
+- assertVisible: "Completed"
+- assertVisible: "1 of 3 steps done"
+
+# Complete step 2, then relaunch WITHOUT clearing state to prove the writes
+# survived an app restart (FR-PV-03 / NFR-02).
+- tapOn: "Mark step 2 complete"
+- assertVisible: "2 of 3 steps done"
+- launchApp:
+    clearState: false
+- tapOn: "Patterns"
+- tapOn: "Test Scarf"
+
+# After restart the completion and the restored position are intact: two steps
+# done and step 3 current.
+- assertVisible: "2 of 3 steps done"
+- assertVisible: "Current step"
+
+# Reopen step 1: it is no longer complete, and the summary falls back.
+- tapOn: "Reopen step 1"
+- assertVisible: "1 of 3 steps done"
