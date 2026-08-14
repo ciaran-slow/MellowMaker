@@ -118,6 +118,13 @@ incidental implementation details. Keep the issue to one reviewable PR; if
 the acceptance criteria cannot fit, propose an explicit issue split instead
 of silently dropping scope.
 
+When the plan names a specific display value or directs reuse of an existing
+component, confirm the cited data contract/query and the component's props
+actually supply it — especially when the same plan freezes that contract as
+unchanged. If they do not, either widen the contract in scope or state the
+substitute explicitly. Do not hand the builder a presentation detail its own
+named source cannot produce.
+
 ## 6. Specify falsifiable verification
 
 Use the repository's existing test tools. Do not assume Vitest, Jest,

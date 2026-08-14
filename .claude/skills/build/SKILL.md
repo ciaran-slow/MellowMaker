@@ -113,12 +113,18 @@ the first test setup, follow the plan's explicit decision.
 Tests should cover, as applicable:
 
 - happy path and observable UI/data transition;
-- invalid input and dependency failure;
+- invalid input and dependency failure — **per surface, not per category**:
+  every screen or hook that exposes its own failed/retry state must test its
+  own failure path. Testing the failure path on one screen does not cover
+  another screen with the same state shape;
 - offline behavior for core and saved content;
 - persistence across close/reopen;
 - repeated taps/imports/saves without duplication or drift;
 - SQLite migration with realistic existing user data;
-- accessibility labels, roles, and dynamic state;
+- accessibility labels, roles, and dynamic state — including a screen-level
+  assertion of `accessibilityState.disabled` (and a no-op-on-press check) for
+  boundary/edge controls such as first-row "move up" or last-row "move down",
+  rather than relying only on the shared pressable's disabled handling;
 - iOS/Android branches.
 
 Prefer behavior over implementation details. For every test, identify a
@@ -140,7 +146,12 @@ Run:
 4. the smallest specific test while iterating, then the complete relevant
    suite after the final edit;
 5. a smoke launch of the app and the changed path on an appropriate simulator,
-   device, or repository-provided end-to-end target.
+   device, or repository-provided end-to-end target. If no simulator/`APP_ID`/
+   installed build is available in this environment, follow
+   `docs/runbooks/smoke-verification.md`: use the Jest/router suites as the
+   accepted logic proxy, disclose the deferral with the runbook's exact
+   wording, and append a row to that runbook's "Deferred on-device smokes"
+   table. A deferred smoke that is not logged is a defect.
 
 For platform-specific code/configuration, exercise both iOS and Android or run
 the repository's equivalent platform-specific automated checks. Do not claim
