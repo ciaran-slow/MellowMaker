@@ -145,6 +145,16 @@ Fixtures for ordering, deduplication, boundaries, and migrations must differ
 under the wrong implementation. Do not derive boundary fixtures from the
 constant they are intended to pin.
 
+Whenever the plan states a conditional behavioral contract — "X only when Y",
+"never W", "does not move/advance/change Z" — name a falsifying test of its
+**negative branch** (the not-Y or would-W case), **at the layer where the
+condition is actually implemented**, with a concrete expected value pinned by
+the fixture rather than derived from the code under test. A category-level test
+("we have an out-of-order case") at a different layer does not discharge this: a
+guard living in a hook is not covered by a domain-module test that never
+exercises the guard. If a stated contract cannot be pinned this way, it is not
+yet buildable — resolve it before posting.
+
 ## 7. Post and confirm
 
 Write the plan to a temporary file, compare it once against every acceptance
