@@ -84,6 +84,13 @@ device, or existing automated device test—not a web-only substitute. Check
 both iOS and Android for platform-specific code/configuration. State exactly
 which targets were and were not exercised.
 
+When no simulator/`APP_ID`/installed build is available, follow
+`docs/runbooks/smoke-verification.md`: accept the Jest/router suites as the
+logic proxy, but treat acceptance criteria whose wording requires on-device
+behavior (app restart/relaunch, hardware back, real gestures) as only
+**provisionally met**, and confirm the build logged a "Deferred on-device
+smokes" row for the flow. A deferral the build did not log is a finding.
+
 ## 3. Check every acceptance criterion
 
 For each criterion, record:
@@ -101,7 +108,10 @@ For each changed contract, ask what plausible defect makes its test fail.
 Require concrete coverage, where applicable, for:
 
 - happy path and observable state transition;
-- invalid input, unavailable metadata/transcript, and dependency failure;
+- invalid input, unavailable metadata/transcript, and dependency failure —
+  checked per surface: every screen or hook with its own failed/retry state
+  must prove its own failure path; coverage on one screen does not vouch for
+  another with the same state shape;
 - offline launch and network loss for core or saved content;
 - close/reopen persistence for counters, steps, patterns, and imported guides;
 - repeated taps/imports/saves without duplication or drift;
