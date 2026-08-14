@@ -80,6 +80,8 @@ export default function TabsLayout() {
         name="dictionary/[stitchId]"
         options={{ href: null }}
       />
+      <Tabs.Screen name="patterns/new" options={{ href: null }} />
+      <Tabs.Screen name="patterns/[patternId]" options={{ href: null }} />
     </Tabs>
   );
 }

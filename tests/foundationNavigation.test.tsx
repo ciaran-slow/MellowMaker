@@ -24,8 +24,10 @@ describe('foundation navigation', () => {
     await waitFor(() => {
       expect(result.getPathname()).toBe('/patterns');
     });
+    // A fresh install has no patterns, so the creation-oriented empty state is
+    // the proof the Patterns tab is live rather than a placeholder card.
     expect(
-      screen.getByRole('header', { name: 'Keep every project within reach' }),
+      await screen.findByRole('header', { name: 'No patterns yet' }),
     ).toBeOnTheScreen();
 
     await fireEvent.press(screen.getByRole('tab', { name: 'Guides' }));

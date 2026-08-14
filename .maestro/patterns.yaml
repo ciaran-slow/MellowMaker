@@ -1,0 +1,64 @@
+appId: ${APP_ID}
+---
+# The offline pattern library and ordered editor round-trip (release acceptance
+# 4). Everything here is local SQLite, so no connectivity is assumed and the flow
+# runs identically on iOS and Android. Fields are selected by testID because an
+# accessibility name is not a Maestro id; rows and controls are selected by their
+# unique accessible names.
+- launchApp:
+    clearState: true
+
+# Open the library from a fresh install: it starts on the creation-oriented
+# empty state.
+- tapOn: "Patterns"
+- assertVisible: "No patterns yet"
+- tapOn: "Create your first pattern"
+- assertVisible: "New pattern"
+
+# Compose a pattern with a title and two ordered steps.
+- tapOn:
+    id: "pattern-title-field"
+- inputText: "Meadow Wrap"
+- tapOn:
+    id: "pattern-step-field"
+- inputText: "Chain 41"
+- tapOn: "Add step"
+- assertVisible: "Step 1 of 1: Chain 41"
+- tapOn:
+    id: "pattern-step-field"
+- inputText: "Single crochet across"
+- tapOn: "Add step"
+- assertVisible: "Step 2 of 2: Single crochet across"
+- tapOn: "Create pattern"
+- assertVisible: "Edit pattern"
+
+# Reorder: moving step 1 down puts "Single crochet across" first.
+- tapOn: "Move step 1 down"
+- assertVisible: "Step 1 of 2: Single crochet across"
+
+# Add a third step, then delete the first, leaving the exact order behind.
+- tapOn:
+    id: "pattern-step-field"
+- inputText: "Fasten off"
+- tapOn: "Add step"
+- assertVisible: "Step 3 of 3: Fasten off"
+- tapOn: "Delete step 1"
+- assertVisible: "Step 1 of 2: Chain 41"
+- assertVisible: "Step 2 of 2: Fasten off"
+
+# Relaunch without clearing state to prove the order survives an app restart,
+# then reopen the pattern from the library.
+- launchApp:
+    clearState: false
+- tapOn: "Patterns"
+- assertVisible: "Meadow Wrap"
+- tapOn: "Meadow Wrap"
+- assertVisible: "Step 1 of 2: Chain 41"
+- assertVisible: "Step 2 of 2: Fasten off"
+
+# Delete the whole pattern through the progress-warning confirmation and confirm
+# the library returns to its empty state.
+- tapOn: "Delete pattern"
+- assertVisible: "Delete this pattern?"
+- tapOn: "Yes, delete pattern"
+- assertVisible: "No patterns yet"
