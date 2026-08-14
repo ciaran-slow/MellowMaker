@@ -51,6 +51,22 @@ git checkout -b issue-<n>-<short-slug>
 
 Never commit issue work directly to the default branch.
 
+Prefer to do the build in a dedicated git worktree (the repo has `workmux`/
+worktree tooling), symmetric with how the verify stage isolates its review. A
+worktree keeps the primary checkout on the default branch and leaves an
+isolated, resumable tree if the build is interrupted. If you build directly in
+the primary checkout instead, restore it to the default branch when you finish
+or stop.
+
+**Resuming an interrupted build.** A build can be interrupted mid-run (crash,
+API error, machine sleep) and resumed later, possibly in a fresh context that
+does not remember what landed on disk. Before continuing, re-establish ground
+truth: confirm the current branch and `HEAD`, that `origin` still resolves to
+the canonical URL, and inspect `git status`/`git diff` to see exactly what
+partial work already exists — then re-read the posted plan so you neither redo
+finished parts nor drop planned ones. Re-run the full gate suite once the code
+is complete; never assume a pre-interruption "green" still holds.
+
 ## 3. Implement the plan
 
 Follow the posted outcome, paths, contracts, and tests. Small local judgment
@@ -130,6 +146,18 @@ Tests should cover, as applicable:
 Prefer behavior over implementation details. For every test, identify a
 plausible source bug that makes it fail. Use independent fixtures for
 ordering and numeric/time boundaries.
+
+**Mutation self-check on contract guards.** For each conditional guard you write
+to satisfy a plan-stated "only / never / exactly / does not" contract (for
+example an `if (stepId === currentBefore)` that suppresses an action), before
+opening the PR: temporarily invert or delete that guard, run the suite, and
+confirm a specific test goes **red for the right reason** (the assertion that
+pins the contract, not an unrelated failure). Then restore the guard, confirm
+the suite is green, and confirm `git status`/`git diff` show the working tree
+clean. If nothing goes red, the contract is unfalsified — add the missing
+negative-branch test before continuing. Note in the PR body which guards you
+mutation-checked. This catches at build time exactly what an independent verify
+mutation pass would otherwise bounce back to you.
 
 ## 7. Verify after the final edit
 
