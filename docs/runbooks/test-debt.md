@@ -1,0 +1,32 @@
+# Runbook — Carried-forward test-coverage debt
+
+When the verify stage rates a coverage gap as a **non-blocking follow-up** — a
+missing test that does not block the current merge but leaves a real contract
+under-covered — that finding must be recorded here rather than left in a PR
+review that disappears from view once the PR merges. Otherwise the same gap is
+rediscovered and re-litigated every time the code path is touched.
+
+This is the coverage-debt analogue of `smoke-verification.md`'s deferred-smoke
+table. It is intentionally *not* for blockers: a blocker keeps a PR from
+merging and is fixed in that PR. This ledger is for gaps that are acceptable to
+carry but should be tracked to closure.
+
+## Adding a row
+
+The verify stage appends a row whenever it accepts a coverage gap as a
+non-blocking follow-up (see `.claude/skills/verify/SKILL.md` §6). Include the
+issue/PR where it surfaced, the exact contract left uncovered, and the file
+that would hold the test.
+
+## Clearing a row
+
+Close a row by adding the missing test (in its own change or folded into a
+later issue that touches the path), then mark it Done with the PR that closed
+it — or delete the row once that PR records it. A planned issue that will
+naturally cover the path should reference the relevant open rows.
+
+## Open test-coverage debt
+
+| First seen | Also hit by | Uncovered contract | Where a test belongs | Status |
+|---|---|---|---|---|
+| #5 (PR #23) | #7 (PR #27) | `CraftConfirmDialog`'s Android hardware-back (`BackHandler` / `hardwareBackPress`) cancel path has no automated coverage anywhere in the repo; the confirmed-reset and confirmed-delete flows both rely on it | `tests/` — a `CraftConfirmDialog` (or dialog-hosting screen) test that simulates `hardwareBackPress` and asserts the dialog cancels without performing the destructive action | Open |
