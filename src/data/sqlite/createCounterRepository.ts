@@ -1,3 +1,5 @@
+import { DEFAULT_COUNTER_LABEL } from '@/domain/counters/counterLabel';
+
 import type {
   Counter,
   CounterOwner,
@@ -47,6 +49,8 @@ const INSERT_COUNTER = `INSERT INTO counter (${COUNTER_COLUMNS}) VALUES (?, ?, ?
  */
 const ADJUST_COUNTER =
   'UPDATE counter SET value = MAX(0, value + ?), updated_at = ? WHERE id = ?';
+const RENAME_COUNTER =
+  'UPDATE counter SET label = ?, updated_at = ? WHERE id = ?';
 const RESET_COUNTER =
   'UPDATE counter SET value = 0, updated_at = ? WHERE id = ?';
 
@@ -117,8 +121,48 @@ export function createCounterRepository({
         .map(toCounter);
     },
 
+    getOrCreatePrimaryCounter(owner: CounterOwner) {
+      // Select-then-insert inside one transaction so a concurrent mount refresh
+      // or a reopen returns the owner's existing counter instead of creating a
+      // second one. The owner surfaces exactly one counter (PRD0 decision 3);
+      // the schema still allows many, so guide counters need no migration.
+      return transaction(() => {
+        const existing = connection.first<CounterRow>(
+          LIST_BY_OWNER[owner.kind],
+          [owner.id],
+        );
+        if (existing !== undefined) {
+          return toCounter(existing);
+        }
+
+        const writtenAt = now();
+        const id = newId();
+
+        connection.run(INSERT_COUNTER, [
+          id,
+          owner.kind,
+          owner.kind === 'pattern' ? owner.id : null,
+          owner.kind === 'guide' ? owner.id : null,
+          DEFAULT_COUNTER_LABEL,
+          'custom',
+          0,
+          0,
+          writtenAt,
+          writtenAt,
+        ]);
+
+        return read(id);
+      });
+    },
+
     adjustCounter(id, delta) {
       connection.run(ADJUST_COUNTER, [delta, now(), id]);
+
+      return read(id);
+    },
+
+    renameCounter(id, label) {
+      connection.run(RENAME_COUNTER, [label, now(), id]);
 
       return read(id);
     },

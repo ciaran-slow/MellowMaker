@@ -1,12 +1,15 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useFocusEffect, useRouter } from 'expo-router';
-import { useCallback } from 'react';
+import { useCallback, useMemo } from 'react';
 import { ActivityIndicator, FlatList, Text, View } from 'react-native';
 
+import type { CounterOwner } from '@/data/contracts/counterRepository';
 import { progressSummaryLabel } from '@/features/patterns/presentation/patternLabels';
 import { PatternViewerStepRow } from '@/features/patterns/presentation/PatternViewerStepRow';
+import { useCounter } from '@/features/patterns/presentation/useCounter';
 import { usePatternViewer } from '@/features/patterns/presentation/usePatternViewer';
 import { CraftCard } from '@/ui/components/CraftCard';
+import { CraftCounter } from '@/ui/components/CraftCounter';
 import { CraftPressable } from '@/ui/components/CraftPressable';
 import { useScreenContentInsets } from '@/ui/components/screenLayout';
 import tokens from '@/ui/theme/tokens.json';
@@ -34,6 +37,15 @@ export function PatternViewerScreen({ patternId }: PatternViewerScreenProps) {
   const contentInsets = useScreenContentInsets();
   const viewer = usePatternViewer(patternId);
   const { refresh } = viewer;
+
+  // A stable owner so the counter's load effect resolves once rather than
+  // looping; the counter is keyed by this pattern, so a count never leaks
+  // between projects (FR-CO-05).
+  const counterOwner = useMemo<CounterOwner>(
+    () => ({ kind: 'pattern', id: patternId }),
+    [patternId],
+  );
+  const counter = useCounter(counterOwner);
 
   // Returning from the editor re-reads the pattern so an edited/reordered/deleted
   // step and the restored position are reflected without a global store. The
@@ -124,9 +136,50 @@ export function PatternViewerScreen({ patternId }: PatternViewerScreenProps) {
               </CraftPressable>
             </View>
             {/*
-              The row/stitch counter (FR-CO, issue #7) will mount here; this PR
-              ships no counter. The polite live region below speaks completion
-              and position changes to a screen reader (A11Y-07).
+              The maker-labelled project counter (FR-CO, issue #7) is pinned
+              above the scrolling step list so it stays reachable one-handed. Its
+              read failure is screen-local and retryable, so it never blacks out
+              the steps.
+            */}
+            {counter.state.status === 'ready' ? (
+              <CraftCounter
+                announcement={counter.state.announcement}
+                label={counter.state.label}
+                onDecrement={counter.decrement}
+                onIncrement={counter.increment}
+                onRename={counter.rename}
+                onReset={counter.reset}
+                value={counter.state.value}
+              />
+            ) : counter.state.status === 'failed' ? (
+              <View
+                accessible
+                accessibilityRole="alert"
+                accessibilityLiveRegion="assertive"
+              >
+                <CraftCard accent="pink">
+                  <Text
+                    accessibilityRole="header"
+                    className="text-heading text-ink"
+                  >
+                    We couldn&apos;t load this counter
+                  </Text>
+                  <Text className="text-body text-ink">
+                    Your count is saved on this device. Nothing was changed.
+                  </Text>
+                  <CraftPressable
+                    accessibilityLabel="Try again to load the counter"
+                    className="items-center self-start bg-yellow px-6 py-3"
+                    onPress={counter.retry}
+                  >
+                    <Text className="text-label text-ink">Try again</Text>
+                  </CraftPressable>
+                </CraftCard>
+              </View>
+            ) : null}
+            {/*
+              The polite live region below speaks completion and position
+              changes to a screen reader (A11Y-07).
             */}
             <Text
               accessibilityLiveRegion="polite"

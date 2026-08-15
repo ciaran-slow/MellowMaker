@@ -149,6 +149,25 @@ That module is the single source of schema truth for the Expo adapter and for th
 | `guide_step` | Ordered instruction, optional `video_offset_ms`, transcript excerpt, note, completion, and `origin` | `guide_id` → `imported_guide`, cascade |
 | `counter` | Durable count, kind, maker label, and position for exactly one owner | `pattern_id` or `guide_id`, cascade |
 
+**PRD0 decision 3 is resolved: one maker-labelled counter per project** (issue
+#7), not separate row and stitch counters. The working view surfaces exactly one
+counter the maker can name (default label **"Rows"**, `kind = 'custom'`),
+obtained through the idempotent owner-keyed accessor
+`CounterRepository.getOrCreatePrimaryCounter(owner)`: it returns the owner's
+existing counter or, on first call, inserts one at position 0 inside a
+transaction, so a mount, refresh, or reopen never creates a second row.
+`renameCounter(id, label)` rewrites the maker label (the caller passes an
+already-normalized, non-empty label from `src/domain/counters/counterLabel.ts`,
+the shared rule so the repository default and the presentation rename cannot
+disagree) and leaves the value untouched. **The single-counter choice is
+enforced at the accessor and the UI, not by a new schema constraint** — the
+`counter` table still permits many counters per owner, so a future *deliberate*
+multi-counter decision or the guide counters (#10/#11, `owner_kind = 'guide'`)
+need no migration. The trade-off is that there is no DB-level "one row per
+pattern" guarantee; the idempotent accessor plus the fact that the UI never
+calls `createCounter` keeps exactly one in practice, and a repository test pins
+the invariant. `LATEST_SCHEMA_VERSION` stays 1: this issue ships no migration.
+
 `pattern_progress` is deliberately split in two: one row per pattern for the
 active position and one row per step for completion. Each has a single job, both
 cascade cleanly, and a viewer restores position and completion with two bounded
@@ -385,6 +404,22 @@ Two conventions introduced by the interactive pattern viewer (issue #6):
   equals the last command per row — no duplicate, skip, or corruption (FR-PV-06,
   NFR-02). Persistence is independent of Reanimated animation completion
   (NFR-08). This is the convention #7/#12/#14 inherit.
+- **Counter commands (issue #7) inherit that convention.** The project counter's
+  `useCounter` hook resolves the owner's primary counter once (idempotent
+  accessor) and applies increment, decrement, reset, and rename through the same
+  synchronous serialized runner (write, then re-read the returned row). Each
+  command issues **one absolute-delta SQL statement** — `adjustCounter` is
+  `UPDATE counter SET value = MAX(0, value + ?) …` (the zero clamp lives in SQL,
+  so a decrement can never go negative and the UI never computes `value - 1`),
+  reset is `SET value = 0`, rename touches only the label. There is no
+  read-modify-write and the UI never writes a value computed from a rendered
+  count, so a rapid double-tap commits both deltas in issue order and lands on
+  exactly the sum (FR-CO-07). The value-change "pop" and press feedback are
+  gated on `useReducedMotion()` (the codebase's reduced-motion method, shared
+  with `usePressScale`) and no durable write waits on an animation (FR-CO-08,
+  NFR-08). The reusable `CraftCounter` control is presentational only and
+  owner-generic, so the guide working views (#10/#11) reuse it unchanged; its
+  read failure is screen-local and retryable, never blacking out the step list.
 
 ## 12. Error handling and observability
 
@@ -481,6 +516,13 @@ mutation bumps the parent `updated_at` so recent work floats to the top, and
 PRD0 adds no tags, folders, search, or filtering over patterns. Tags or folders
 could only reopen this as a deliberate post-PRD0 decision with its own schema and
 UI.
+
+The counter model is resolved: issue #7 confirmed **one maker-labelled counter
+per project** (PRD0 decision 3), default label "Rows", surfaced through the
+idempotent `getOrCreatePrimaryCounter` accessor with the single-counter choice
+enforced at the accessor and UI rather than a schema constraint (see section 6).
+Separate row/stitch counters could only reopen as a deliberate post-PRD0
+decision; the schema already permits it without a migration.
 
 The remaining decisions are:
 - compliant YouTube metadata/transcript provider and any trusted-service need;

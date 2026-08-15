@@ -121,7 +121,7 @@ Seed updates must not overwrite maker-created data.
 - **FR-CO-07:** Rapid taps shall produce exactly the corresponding count without lost or duplicated updates.
 - **FR-CO-08:** Counter changes shall provide immediate visual or tactile feedback while remaining usable when reduced motion is preferred.
 
-Whether PRD0 presents separate row and stitch counters or one maker-labelled counter is an open product decision; the persistence model must not prevent either choice.
+**Resolved (decision 3, issue #7): PRD0 presents one maker-labelled counter per project** (default label "Rows"), not separate row and stitch counters. The persistence model still supports either choice — the schema permits many counters per owner — so the single counter is surfaced through an idempotent owner-keyed accessor without a migration, leaving separate typed counters reachable as a future deliberate decision. See `docs/architecture.md` sections 6 and 11.
 
 ### 7.5 YouTube guide import
 
@@ -244,7 +244,12 @@ These decisions should be resolved in the issue that first implements them:
    third-party imagery, twelve records at seed version 1. See
    [`content-provenance.md`](./content-provenance.md).
 2. Navigation structure and names for the primary tabs/screens.
-3. One counter with a maker-defined label versus separate row and stitch counters.
+3. ~~One counter with a maker-defined label versus separate row and stitch
+   counters.~~ Resolved (issue #7): **one maker-labelled counter per project**
+   (default label "Rows", `kind 'custom'`), surfaced through the idempotent
+   `getOrCreatePrimaryCounter` accessor with the schema unchanged so separate or
+   guide counters remain reachable without a migration. See §7.4 and
+   `docs/architecture.md` sections 6 and 11.
 4. Initial pattern organization: recent ordering, tags, or folders.
 5. Supported YouTube URL forms and the compliant metadata/transcript provider.
 6. A compliant video source that `expo-video` can play without scraping or reverse-engineering YouTube media URLs; if none is available, the product vision must be revised before implementation.

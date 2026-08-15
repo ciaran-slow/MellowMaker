@@ -848,6 +848,123 @@ describe('SQLite repositories', () => {
         database.repositories.patterns.getPatternWithSteps(pattern.pattern.id),
       ).toBeUndefined();
     });
+
+    it('resolves exactly one primary counter per owner, idempotently', () => {
+      const pattern = database.repositories.patterns.createPattern({
+        title: 'Pattern A',
+        steps: [],
+      });
+      const owner = { kind: 'pattern' as const, id: pattern.pattern.id };
+
+      const first =
+        database.repositories.counters.getOrCreatePrimaryCounter(owner);
+      // Defaults are pinned literals: a maker-labelled 'Rows'/'custom'/0 counter.
+      expect(first.label).toBe('Rows');
+      expect(first.kind).toBe('custom');
+      expect(first.value).toBe(0);
+      expect(first.position).toBe(0);
+
+      // A second call returns the same row rather than creating a second one.
+      const second =
+        database.repositories.counters.getOrCreatePrimaryCounter(owner);
+      expect(second.id).toBe(first.id);
+      expect(
+        database.connection.first<{ readonly total: number }>(
+          'SELECT COUNT(*) AS total FROM counter WHERE pattern_id = ?',
+          [pattern.pattern.id],
+        )?.total,
+      ).toBe(1);
+    });
+
+    it('keeps each project\u2019s primary counter distinct and never leaks a count', () => {
+      const patternA = database.repositories.patterns.createPattern({
+        title: 'Pattern A',
+        steps: [],
+      });
+      const patternB = database.repositories.patterns.createPattern({
+        title: 'Pattern B',
+        steps: [],
+      });
+
+      const counterA = database.repositories.counters.getOrCreatePrimaryCounter({
+        kind: 'pattern',
+        id: patternA.pattern.id,
+      });
+      const counterB = database.repositories.counters.getOrCreatePrimaryCounter({
+        kind: 'pattern',
+        id: patternB.pattern.id,
+      });
+      expect(counterA.id).not.toBe(counterB.id);
+
+      database.repositories.counters.adjustCounter(counterA.id, 5);
+
+      // A's count is 5; B's stays 0 \u2014 a shared/global counter would leak.
+      expect(
+        database.repositories.counters.getOrCreatePrimaryCounter({
+          kind: 'pattern',
+          id: patternA.pattern.id,
+        }).value,
+      ).toBe(5);
+      expect(
+        database.repositories.counters.getOrCreatePrimaryCounter({
+          kind: 'pattern',
+          id: patternB.pattern.id,
+        }).value,
+      ).toBe(0);
+    });
+
+    it('renames the label while preserving the count and advancing updated_at', () => {
+      const pattern = database.repositories.patterns.createPattern({
+        title: 'Pattern A',
+        steps: [],
+      });
+      const counter = database.repositories.counters.getOrCreatePrimaryCounter({
+        kind: 'pattern',
+        id: pattern.pattern.id,
+      });
+      const withValue = database.repositories.counters.adjustCounter(
+        counter.id,
+        4,
+      );
+
+      const renamed = database.repositories.counters.renameCounter(
+        counter.id,
+        'Stitches',
+      );
+
+      expect(renamed.label).toBe('Stitches');
+      // The value is untouched by a rename \u2014 pinned to 4.
+      expect(renamed.value).toBe(4);
+      expect(renamed.updatedAt).toBeGreaterThan(withValue.updatedAt);
+    });
+
+    it('restores the same primary counter and value across a reopen without duplicating it', () => {
+      const pattern = database.repositories.patterns.createPattern({
+        title: 'Pattern A',
+        steps: [],
+      });
+      const owner = { kind: 'pattern' as const, id: pattern.pattern.id };
+      const created =
+        database.repositories.counters.getOrCreatePrimaryCounter(owner);
+      database.repositories.counters.adjustCounter(created.id, 7);
+
+      // A second repositories instance over the same connection proxies a reopen.
+      const reopened = createRepositories({
+        connection: database.connection,
+        now: database.now,
+        newId: database.newId,
+      });
+      const restored = reopened.counters.getOrCreatePrimaryCounter(owner);
+
+      expect(restored.id).toBe(created.id);
+      expect(restored.value).toBe(7);
+      expect(
+        database.connection.first<{ readonly total: number }>(
+          'SELECT COUNT(*) AS total FROM counter WHERE pattern_id = ?',
+          [pattern.pattern.id],
+        )?.total,
+      ).toBe(1);
+    });
   });
 
   describe('guides', () => {
