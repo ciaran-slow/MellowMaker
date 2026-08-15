@@ -45,7 +45,7 @@ PRD0 includes:
 - persistent row/stitch counters;
 - YouTube URL import with metadata;
 - saved, timestamped guide steps and notes;
-- embedded YouTube playback through `expo-video`;
+- embedded YouTube playback through the YouTube IFrame Player API in a WebView, with a link-out and offline fallback;
 - local persistence through `expo-sqlite`;
 - iOS and Android builds through Expo and EAS.
 
@@ -139,7 +139,7 @@ Seed updates must not overwrite maker-created data.
 - **FR-GU-01:** A maker shall be able to create, edit, delete, and reorder guide steps.
 - **FR-GU-02:** A guide step shall support instruction text and an optional video timestamp.
 - **FR-GU-03:** A guide step may include an optional transcript excerpt or maker note.
-- **FR-GU-04:** Selecting a timestamped step shall seek the embedded `expo-video` player when playback is available.
+- **FR-GU-04:** Selecting a timestamped step shall seek the embedded YouTube IFrame player (rendered in a WebView) when playback is available.
 - **FR-GU-05:** Guide content and completion state shall be saved locally and readable offline.
 - **FR-GU-06:** Video-unavailable and offline states shall preserve access to saved instructions and progress.
 - **FR-GU-07:** Remote titles, creator names, and transcript text shall be treated as display-only untrusted content.
@@ -218,7 +218,7 @@ PRD0 is releasable when all of the following are demonstrated:
 5. Step progress and at least one counter can be changed rapidly and restored after restart with the exact expected state.
 6. A supported YouTube URL can create a guide with available metadata.
 7. Missing transcript/metadata and network failure allow a clear manual path without corrupting a saved guide.
-8. Saved guide steps and progress remain readable offline; unavailable video playback is communicated clearly.
+8. Saved guide steps and progress remain readable offline; when the embedded YouTube IFrame player cannot play, the unavailable state and the link-out fallback are communicated clearly.
 9. A populated database upgrades from the previous release schema without losing maker data.
 10. Critical working views pass the repository's accessibility checks and a screen-reader smoke pass.
 11. Production EAS profiles can produce both store artifact types without secrets in source control.
@@ -251,8 +251,27 @@ These decisions should be resolved in the issue that first implements them:
    guide counters remain reachable without a migration. See §7.4 and
    `docs/architecture.md` sections 6 and 11.
 4. Initial pattern organization: recent ordering, tags, or folders.
-5. Supported YouTube URL forms and the compliant metadata/transcript provider.
-6. A compliant video source that `expo-video` can play without scraping or reverse-engineering YouTube media URLs; if none is available, the product vision must be revised before implementation.
+5. ~~Supported YouTube URL forms and the compliant metadata/transcript
+   provider.~~ Resolved (issue #8): support `watch?v=`, `youtu.be/`, `shorts/`,
+   `embed/`, and `live/` forms (with or without extra params), normalized to the
+   bare 11-character `[A-Za-z0-9_-]{11}` video id as the canonical identity so the
+   same video never duplicates; metadata comes from the key-free **YouTube
+   oEmbed** endpoint (title/author/thumbnail, display-only untrusted text), and
+   transcripts are **optional/manual** because no compliant public transcript API
+   exists. The keyed YouTube Data API v3 is rejected for the client because it
+   would embed a secret (NFR-11/13). See §7.5–7.6 and the URL matrix in
+   `docs/architecture.md` §9.
+6. ~~A compliant video source that `expo-video` can play without scraping or
+   reverse-engineering YouTube media URLs; if none is available, the product
+   vision must be revised before implementation.~~ Resolved (issue #8):
+   `expo-video` **cannot** compliantly play YouTube—it plays direct media streams
+   only, and obtaining a YouTube media URL requires the forbidden scraping—so the
+   vision is revised to play YouTube through the **YouTube IFrame Player API in a
+   WebView** (`react-native-youtube-iframe` over `react-native-webview`, both
+   Expo-managed compatible), which exposes `seekTo` for FR-GU-04, with a link-out
+   and offline saved-guide fallback. `expo-video` is retained only for possible
+   future non-YouTube media. See §5, FR-GU-04, `docs/vision.md`, and
+   `docs/architecture.md` §9.
 7. Whether analytics or crash reporting is appropriate and what privacy disclosure it requires.
 8. Minimum supported iOS and Android versions for the first EAS release.
 
