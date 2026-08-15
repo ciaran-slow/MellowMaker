@@ -33,9 +33,9 @@ Crocheting is a joyful, creative craft, but modern makers often juggle multiple 
 * **Persistent Row/Stitch Counter:** A prominent, easy-to-tap counter embedded directly into the active pattern view.
 
 ### C. YouTube Guide Importer
-* **URL Parsing:** Accept a YouTube link pasted by the user.
-* **Metadata Extraction:** Fetch the video title, thumbnail, and creator info.
-* **Structured Breakdown:** Extract or provide a space to map video timestamps and transcripts into readable, step-by-step instructions alongside an embedded video player (`expo-video`).
+* **URL Parsing:** Accept a YouTube link pasted by the user in any common form (watch, share, Shorts, embed, or live) and settle on one canonical video identity.
+* **Metadata Extraction:** Fetch the video title, thumbnail, and creator info through YouTube's public, key-free oEmbed endpoint, treated as display-only.
+* **Structured Breakdown:** Map video timestamps and optional transcript excerpts into readable, step-by-step instructions beside an embedded player. YouTube plays inside its own official **IFrame player** (rendered in a WebView), so tapping a timestamped step seeks the video—with a link-out to the YouTube app and an offline saved-guide fallback whenever playback is unavailable.
 
 ---
 
@@ -57,5 +57,5 @@ Crocheting is a joyful, creative craft, but modern makers often juggle multiple 
 * **Framework:** React Native with **Expo (Managed Workflow, SDK 52+)**.
 * **Language:** TypeScript for type safety across navigation, state, and local data schemas.
 * **Local Storage:** `expo-sqlite` for offline-first persistence of patterns, stitches, and imported metadata.
-* **Media Rendering:** `expo-video` for native, high-performance cross-platform video playback.
+* **Media Rendering:** YouTube plays through its official **IFrame Player API in a WebView** (`react-native-youtube-iframe` over `react-native-webview`, both Expo-managed compatible), which exposes `seekTo` for timestamped steps and stays within YouTube's terms; a link-out plus an offline saved-guide fallback covers unavailable playback. `expo-video` is retained in the stack only for possible future non-YouTube media.
 * **Deployment Pipeline:** **EAS (Expo Application Services)** configured for automated cloud builds (`.aab` for Android, `.ipa` for iOS) targeting both the Apple App Store and Google Play Store.

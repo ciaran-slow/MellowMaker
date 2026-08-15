@@ -26,7 +26,7 @@ This document turns the product vision into technical boundaries. It intentional
 flowchart LR
     Maker[Maker] --> App[MellowMaker Expo app]
     App --> DB[(On-device SQLite)]
-    App --> Video[YouTube video via expo-video]
+    App --> Video[YouTube IFrame player in a WebView]
     App --> Import[YouTube metadata/transcript provider]
     EAS[EAS Build] --> App
 ```
@@ -43,7 +43,7 @@ SQLite is the source of truth for core application state. Network services enric
 | Local persistence | `expo-sqlite` `~57.0.1`, one application-owned database behind a synchronous connection boundary |
 | Identifier generation | `expo-crypto` `~57.0.1` `randomUUID()`, injected into the data layer rather than imported by it |
 | Bundled stitch content | One committed JSON document under `src/data/seed`, validated against one documented schema in the test suite and applied through `StitchRepository` |
-| Video | `expo-video` |
+| Video | YouTube plays through the **YouTube IFrame Player API in a WebView** (`react-native-youtube-iframe` over `react-native-webview`), added when issue #11 implements playback (see §9). `expo-video` stays in the stack only for possible future non-YouTube media. |
 | Styling | NativeWind v4 |
 | Motion | React Native Reanimated |
 | Platforms | iOS and Android |
@@ -125,7 +125,8 @@ Remote YouTube access sits behind a separate gateway. Provider response objects 
 ### 5.4 Platform infrastructure
 
 Contains Expo/native adapters: the `expo-sqlite` connection and the composition
-of the opened, migrated app database, `expo-video` integration,
+of the opened, migrated app database, the YouTube IFrame player WebView (and the
+`expo-video` integration reserved for future non-YouTube media),
 connectivity-aware network calls, and EAS/app configuration. Schema and
 migrations are engine-neutral and live with the repositories in `src/data`, so
 the platform layer holds no SQL. Platform differences should remain behind
@@ -311,6 +312,90 @@ The importer has three separate responsibilities:
 Automatic transcript extraction or structured breakdown is optional when no compliant, reliable provider is available; manual timestamped guide creation is the required fallback. Provider credentials must never be embedded in the client bundle. Introducing a server-side credential proxy is a separate architectural decision, not an implicit part of the mobile app.
 
 Remote titles, creator names, thumbnails, and transcript text are untrusted input. Validate payload shape, constrain displayed content, and never execute imported text.
+
+### 9.1 Compliant sources — resolved (issue #8)
+
+Issue #8 resolved the compliant source model for all three responsibilities
+(PRD0 decisions 5 and 6). Two non-negotiable constraints govern every choice: no
+design may **scrape or reverse-engineer YouTube media URLs**, and no design may
+**embed a private credential in the client bundle** (AC #5; NFR-11/13). The
+following is the recorded architecture; playback is implemented in #11 and URL
+parsing in #9.
+
+**URL matrix and canonical identity (FR-YT-02/03).** Every supported form carries
+an 11-character video id matching `[A-Za-z0-9_-]{11}`. Normalization extracts that
+id and **discards everything else** (playlist, timestamp, tracking params); the
+canonical identity is the bare id (`imported_guide.video_id`, unique), so the same
+video pasted in any form never duplicates. Validation is a pure function—no
+network needed—so it is unit-testable at the narrowest level (NFR-16).
+
+| Input form | Example | Canonical id |
+|---|---|---|
+| `watch?v=` | `https://www.youtube.com/watch?v=dQw4w9WgXcQ` | `dQw4w9WgXcQ` |
+| short link | `https://youtu.be/dQw4w9WgXcQ` | `dQw4w9WgXcQ` |
+| Shorts | `https://www.youtube.com/shorts/dQw4w9WgXcQ` | `dQw4w9WgXcQ` |
+| embed | `https://www.youtube.com/embed/dQw4w9WgXcQ` | `dQw4w9WgXcQ` |
+| live | `https://www.youtube.com/live/dQw4w9WgXcQ` | `dQw4w9WgXcQ` |
+| with extra params | `https://youtu.be/dQw4w9WgXcQ?t=42&si=abc` | `dQw4w9WgXcQ` (params dropped; `t` may seed a step timestamp but is not part of identity) |
+| watch + playlist | `https://www.youtube.com/watch?v=dQw4w9WgXcQ&list=PLxxxx` | `dQw4w9WgXcQ` (playlist ignored) |
+| host variants | `m.youtube.com`, `music.youtube.com`, `www.`/no-`www.`, `http`/`https` | normalize host, then as above |
+
+Input is **rejected with an actionable message** (FR-YT-02) when it is a
+non-YouTube host, a YouTube URL with no extractable 11-character id (for example a
+channel `/@handle`, a playlist-only `?list=` with no `v=`, or `results?search_query=`),
+or any candidate id that fails the `[A-Za-z0-9_-]{11}` shape.
+
+**Metadata — YouTube oEmbed (FR-YT-04/05/06).** Metadata comes from
+`GET https://www.youtube.com/oembed?url=<encoded watch url>&format=json`. It is a
+fully public endpoint with **no API key or credential**, so it satisfies the
+no-secret constraint with no proxy and no offline-first violation. Fields used:
+`title`, `author_name`, `author_url` (creator), `thumbnail_url`. The `html`/
+`width`/`height` embed snippet is **not executed**—all fields are treated as
+display-only untrusted text, shape-validated, never rendered as markup or code
+(FR-GU-07, NFR-12). It is unofficial-but-public with no documented SLA or
+rate-limit, so any non-200, timeout, private/removed/age-restricted video, or
+malformed body is treated as "metadata unavailable": fields stay blank and
+editable and manual guide creation proceeds (FR-YT-05/06, FR-DA-05). A failed
+refresh must not overwrite locally edited fields or duplicate steps (FR-YT-07).
+The keyed **YouTube Data API v3** (`videos.list`) is **rejected for the client**
+because it requires an API key—exactly the embedded secret AC #5 / NFR-11/13
+forbid; doing it compliantly would need a trusted server holding the key, a
+backend PRD0 excludes.
+
+**Transcripts — optional / manual only (FR-YT-08, FR-GU-08).** No compliant public
+API returns transcripts for arbitrary videos: the Data API `captions.download`
+requires OAuth from the video's owner and cannot read arbitrary or auto-generated
+captions, and popular "transcript API" libraries scrape YouTube's internal
+`timedtext` endpoint (non-compliant and brittle). Transcript support therefore
+ships as an **optional manual field**—a maker-entered excerpt or note per step—and
+the app never claims a transcript exists when none was provided. This is the only
+PRD0 path; no scraping dependency is added.
+
+**Playback — YouTube IFrame Player API in a WebView (FR-GU-04, FR-GU-06).**
+Recorded blocking evidence for AC #4: `expo-video` plays a `VideoSource` pointing
+at a **direct media file or stream** (progressive `mp4`, HLS, DASH); it is not a
+YouTube player and has no YouTube support, and the only way to feed a YouTube
+video into it is a direct media-stream URL obtainable only by scraping—prohibited.
+Compliant YouTube playback through `expo-video` is therefore **not feasible**, and
+the approved product revision (recorded in `docs/vision.md` and `docs/prd0.md` §5
+with the owner's approval) plays YouTube inside **YouTube's own official IFrame
+player, rendered in a WebView** via `react-native-youtube-iframe` over
+`react-native-webview`—both Expo-managed-workflow compatible (NFR-07). It plays
+within YouTube's player (no ToS violation) and exposes `seekTo(seconds)`, exactly
+what FR-GU-04 needs. When online it embeds beside the timestamped steps; when the
+video is unavailable or offline it degrades to a **link-out to the YouTube app**
+plus the saved steps and progress read from SQLite (FR-GU-06). The WebView and any
+player subscription are released on view teardown (NFR-10). These offline-first
+guarantees are unchanged: saved guide text, steps, and progress never depend on
+the network. `expo-video` remains in the stack only for possible future
+first-party/self-hosted media.
+
+**Dependency intent.** `react-native-youtube-iframe` and `react-native-webview`
+are the intended playback dependencies; they are **added when issue #11 implements
+playback**, not by this decision record, which adds no code or dependencies. A
+proving spike (a canonical id renders and seeks in `react-native-youtube-iframe`
+on both iOS and Android under EAS, with the offline link-out fallback) is deferred
+to #11.
 
 ## 10. UI and interaction architecture
 
@@ -524,11 +609,18 @@ enforced at the accessor and UI rather than a schema constraint (see section 6).
 Separate row/stitch counters could only reopen as a deliberate post-PRD0
 decision; the schema already permits it without a migration.
 
-The remaining decisions are:
-- compliant YouTube metadata/transcript provider and any trusted-service need;
-- feasibility of compliant YouTube playback through `expo-video`; validate the
-  source format before implementation and do not scrape or reverse-engineer
-  YouTube media URLs;
+The YouTube source model is resolved: issue #8 confirmed the **compliant
+metadata, transcript, playback, and URL-identity architecture** recorded in
+section 9.1 (PRD0 decisions 5 and 6). Metadata is key-free **oEmbed**;
+transcripts are **optional/manual** (no compliant provider exists); playback uses
+the **YouTube IFrame Player API in a WebView**—not `expo-video`, which cannot
+compliantly play YouTube—with a link-out and offline saved-guide fallback; and no
+design depends on scraped media URLs or a client-embedded secret. Playback is
+implemented in #11, which adds `react-native-youtube-iframe`/`react-native-webview`
+at that time; URL parsing is implemented in #9. `expo-video` stays in the stack
+only for possible future non-YouTube media.
+
+The remaining decision is:
 - analytics, crash reporting, and privacy policy.
 
 An open decision must not be resolved by quietly adding a dependency. Update this document when the repository adopts the answer.
