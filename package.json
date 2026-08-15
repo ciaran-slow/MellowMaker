@@ -13,6 +13,7 @@
     "generate:types": "expo customize tsconfig.json",
     "typecheck": "npm run generate:types && tsc --noEmit",
     "test": "jest",
+    "test:ci": "jest --ci --runInBand",
     "test:watch": "jest --watch",
     "test:smoke:foundation": "maestro test -e APP_ID=$APP_ID .maestro/foundation.yaml",
     "test:smoke:database": "maestro test -e APP_ID=$APP_ID .maestro/database.yaml",

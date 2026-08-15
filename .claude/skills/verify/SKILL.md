@@ -78,6 +78,11 @@ Expo health/config, and build checks that gate the PR. Reproduce any failed
 CI-only job locally where practical. A red or pending required check is not
 merge-ready unless its irrelevance is proven against the same commit.
 
+The canonical test gate is `npm run test:ci` (`jest --ci --runInBand`), matching
+CI. A plain parallel `npm test` may flake with render/`findBy` timeouts under
+CPU contention; if you see only such timeouts, re-run `test:ci` and judge the
+serial result — do not report an environmental parallel flake as a regression.
+
 Exercise the changed user path by launching the app with the repository's
 documented Expo command or end-to-end target. UI behavior requires a simulator,
 device, or existing automated device test—not a web-only substitute. Check
@@ -188,6 +193,13 @@ Lead with exactly one outcome:
 List findings in severity order. Each finding needs a file/line, the broken
 contract, and a concrete failing input or runtime scenario. Separate blockers
 from optional follow-up. Do not manufacture findings when the work is sound.
+
+When you accept a coverage gap as a **non-blocking follow-up** — a real but
+non-blocking missing test — also append it to the carried-forward ledger in
+`docs/runbooks/test-debt.md` (issue/PR, the uncovered contract, where the test
+belongs) so it is tracked to closure instead of vanishing when the PR merges. A
+blocker is fixed in the PR and does not go in the ledger; this is only for gaps
+you are choosing to carry.
 
 Include:
 
