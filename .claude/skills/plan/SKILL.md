@@ -44,6 +44,13 @@ commands, test frameworks, architectural rules, or conventions that are not
 present. When the issue introduces the first convention, make that decision
 explicit in the plan.
 
+**If the issue carries the `type: decision` label**, it resolves a product or
+architecture decision and produces a recorded decision plus doc edits — not a
+feature PR. Follow `docs/runbooks/decision-issues.md` instead of the code-plan
+flow below (research and frame the options, escalate the product/compliance
+call to the user, then record the approved decision docs-only). The `labels`
+field is already in the `gh issue view` call above; read it.
+
 ## 2. Check feasibility before prescribing
 
 Ground every planned API and command in the installed versions and repository
@@ -77,7 +84,10 @@ Every plan must remain consistent with these product constraints:
 - UI work follows the bright “Playful Craft” system in `docs/vision.md`:
   NativeWind v4, chunky rounded surfaces, clear typography, the specified
   palette, and purposeful Reanimated feedback.
-- Video playback uses `expo-video`.
+- Video/media playback follows the current media-rendering decision in
+  `docs/vision.md` and `docs/architecture.md` (do not assume a specific player;
+  a `type: decision` issue may have revised it — treat the docs as authoritative
+  rather than any player name remembered here).
 - YouTube importing may require a network, but saved guide content and the
   maker's place/progress must remain available offline.
 

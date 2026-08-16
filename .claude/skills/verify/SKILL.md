@@ -148,9 +148,13 @@ the source.
 
 Check the diff specifically for:
 
-- **Vision drift:** behavior or styling that conflicts with `docs/vision.md`,
-  including replacement of Expo managed workflow, `expo-video`, NativeWind
-  v4, Reanimated, or the “Playful Craft” visual system.
+- **Vision drift:** behavior or styling that conflicts with the CURRENT
+  `docs/vision.md`, including replacement of Expo managed workflow, the
+  media-rendering technology that `docs/vision.md`/`docs/architecture.md`
+  currently mandate, NativeWind v4, Reanimated, or the “Playful Craft” visual
+  system. Read the current docs for the mandated player rather than assuming a
+  fixed one — a `type: decision` issue may have deliberately revised it, in
+  which case building to the new decision is not drift.
 - **Offline regression:** core content, saved guides, counters, or progress
   unexpectedly requiring a network.
 - **Data loss:** SQLite migrations or writes dropping user-created patterns,
@@ -163,8 +167,10 @@ Check the diff specifically for:
 - **Importer resilience:** malformed/non-YouTube URLs, supported URL forms,
   unavailable/private videos, missing transcript/metadata, network failure,
   duplicate imports, timestamp correctness, and safe rendering of remote text.
-- **Video lifecycle:** `expo-video` resources surviving navigation, playback
-  state attached to the wrong guide, or saved steps depending on playback.
+- **Video lifecycle:** media/player resources (whichever player the current
+  docs mandate — e.g. an embedded WebView player or `expo-video`) surviving
+  navigation, playback state attached to the wrong guide, or saved steps
+  depending on live playback.
 - **Expo compatibility:** packages incompatible with the installed SDK,
   unplanned native code/prebuild changes, missing permissions, secrets in the
   bundle, or EAS profiles that do not cover both stores.
