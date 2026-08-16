@@ -69,6 +69,16 @@ Write the **approved** decision into the docs. This is a **docs-only** change:
 - Reconcile the change across the **whole** of each doc: grep the revised term
   across every section (including pre-existing tables and lists you did not
   primarily edit) so no stale statement survives.
+- **Carry findings into the issues this decision blocks.** A decision commonly
+  surfaces a concrete design input for a downstream issue (a URL form the parser
+  must handle, a spike a playback issue must run, a constraint an importer must
+  honor). Those findings otherwise live only in this PR's review, which the
+  downstream builder will not read. Post each as a comment on the specific
+  blocked issue, naming the exact input, and note the back-reference in the PR
+  body. Example (issue #8 → #9): "URL parser must also accept legacy
+  `youtube.com/v/ID` and `youtube-nocookie.com/embed/ID`, which the §9.1 matrix
+  omitted." (For findings that are coverage gaps rather than design inputs, use
+  `docs/runbooks/test-debt.md` instead.)
 
 Gates for a docs-only record: `npm run lint`, `npm run typecheck`, and
 `npm run test:ci` all green, **plus** `package.json`/`package-lock.json`
@@ -86,6 +96,8 @@ smoke (nothing to mutate or run) and substitute:
   stale statement; resolved-decision markers consistent);
 - `package.json`/`package-lock.json` byte-identical to `main`;
 - lint/typecheck/`test:ci` green;
+- each design finding for a blocked issue was carried to that issue as a comment
+  (an un-routed finding that only lives in this PR is a follow-up finding);
 - no new code contract, so no test-debt entry is warranted.
 
 Post the usual binary verdict as a PR review.
