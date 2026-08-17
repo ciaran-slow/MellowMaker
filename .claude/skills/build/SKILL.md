@@ -41,6 +41,14 @@ Read, in order:
 Use installed versions and local conventions, not assumptions from another
 project. If no complete plan is posted, return to the plan stage.
 
+**If the issue carries the `type: decision` label**, follow
+`docs/runbooks/decision-issues.md` instead of the feature-PR flow below: record
+the product-owner-approved decision as a docs-only change (no code or
+dependencies — record intended deps as deferred to the implementing issue), do
+not re-open the settled decision, and use that runbook's gate expectations
+(lint/typecheck/`test:ci` green, package-lock byte-identical to `main`, and
+cross-doc consistency). The `labels` field is already fetched above; read it.
+
 ## 2. Branch
 
 Update from the repository's default branch, then create one issue branch:
@@ -93,7 +101,10 @@ These constraints come from `docs/vision.md`:
 - SQLite schema changes follow the one existing migration/version convention,
   run transactionally where supported, preserve user-created data, and are
   tested from the previous schema.
-- Video playback uses `expo-video`.
+- Video/media playback follows the current media-rendering decision recorded
+  in `docs/vision.md` and `docs/architecture.md` — do not assume a specific
+  player; a `type: decision` issue may have revised it. Treat the docs as
+  authoritative.
 - UI follows the “Playful Craft” system with NativeWind v4, the documented
   palette, friendly rounded surfaces and typography, and purposeful
   Reanimated interactions.
