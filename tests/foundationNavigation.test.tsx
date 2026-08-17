@@ -34,8 +34,10 @@ describe('foundation navigation', () => {
     await waitFor(() => {
       expect(result.getPathname()).toBe('/guides');
     });
+    // A fresh install has no guides, so the import-oriented empty state is the
+    // proof the Guides tab is live rather than a placeholder card.
     expect(
-      screen.getByRole('header', { name: 'Turn tutorials into making steps' }),
+      await screen.findByRole('header', { name: 'No guides yet' }),
     ).toBeOnTheScreen();
 
     await fireEvent.press(screen.getByRole('tab', { name: 'Stitches' }));

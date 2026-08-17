@@ -6,9 +6,16 @@ import {
 } from 'react-native-safe-area-context';
 
 import { createAppDatabase } from '@/platform/database/createAppDatabase';
+import { createYoutubeOembedGateway } from '@/platform/network/youtubeOembedGateway';
 import '@/styles/global.css';
 import { DatabaseGate } from '@/ui/database/DatabaseGate';
+import { GuideMetadataContext } from '@/ui/guides/guideMetadataContext';
 import tokens from '@/ui/theme/tokens.json';
+
+// One stable gateway for the whole app, built here at the only place that may
+// import `src/platform`. Best-effort metadata: every failure degrades to manual
+// guide creation, so this never blocks a maker or a saved guide.
+const guideMetadataGateway = createYoutubeOembedGateway();
 
 const navigationTheme = {
   ...DefaultTheme,
@@ -29,12 +36,14 @@ export default function RootLayout() {
       <ThemeProvider value={navigationTheme}>
         <StatusBar style="dark" />
         <DatabaseGate initialize={createAppDatabase}>
-          <Stack
-            screenOptions={{
-              headerShown: false,
-              contentStyle: { backgroundColor: tokens.colors.background },
-            }}
-          />
+          <GuideMetadataContext.Provider value={guideMetadataGateway}>
+            <Stack
+              screenOptions={{
+                headerShown: false,
+                contentStyle: { backgroundColor: tokens.colors.background },
+              }}
+            />
+          </GuideMetadataContext.Provider>
         </DatabaseGate>
       </ThemeProvider>
     </SafeAreaProvider>

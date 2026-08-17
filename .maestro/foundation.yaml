@@ -9,6 +9,6 @@ appId: ${APP_ID}
 - assertVisible: "Keep every project within reach"
 - tapOn: "Guides"
 - assertVisible: "Guides"
-- assertVisible: "Turn tutorials into making steps"
+- assertVisible: "No guides yet"
 - tapOn: "Stitches"
 - assertVisible: "Single crochet"

@@ -33,6 +33,8 @@ type CraftTextFieldProps = {
   /** Defaults match the search field; editor fields opt into sentence casing. */
   autoCapitalize?: TextInputProps['autoCapitalize'];
   autoCorrect?: boolean;
+  /** Tunes the keyboard for the field's content, e.g. `url` for a link field. */
+  keyboardType?: TextInputProps['keyboardType'];
   returnKeyType?: TextInputProps['returnKeyType'];
   /** Trailing clear control, rendered only while the field holds text. */
   clear?: {
@@ -55,6 +57,7 @@ export function CraftTextField({
   autoCorrect = false,
   clear,
   icon = 'magnify',
+  keyboardType,
   multiline = false,
   onChangeText,
   onSubmitEditing,
@@ -82,6 +85,7 @@ export function CraftTextField({
         autoCapitalize={autoCapitalize}
         autoCorrect={autoCorrect}
         className="min-h-touch flex-1 text-body text-ink"
+        keyboardType={keyboardType}
         multiline={multiline}
         onChangeText={onChangeText}
         onSubmitEditing={onSubmitEditing}

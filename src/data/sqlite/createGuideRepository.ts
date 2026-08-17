@@ -1,7 +1,9 @@
+import { resolvePage } from '../contracts/page';
 import type {
   GuideRepository,
   GuideStep,
   GuideStepOrigin,
+  GuideSummary,
   GuideWithSteps,
   ImportedGuide,
 } from '../contracts/guideRepository';
@@ -43,9 +45,36 @@ const STEP_COLUMNS =
 const SELECT_GUIDE = `SELECT ${GUIDE_COLUMNS} FROM imported_guide WHERE id = ?`;
 const SELECT_GUIDE_BY_VIDEO = 'SELECT id FROM imported_guide WHERE video_id = ?';
 const SELECT_STEPS = `SELECT ${STEP_COLUMNS} FROM guide_step WHERE guide_id = ? ORDER BY position ASC, id ASC`;
+const LIST_GUIDES =
+  'SELECT id, video_id, title, creator, thumbnail_url, updated_at FROM imported_guide ORDER BY updated_at DESC, id ASC LIMIT ? OFFSET ?';
 const INSERT_GUIDE = `INSERT INTO imported_guide (${GUIDE_COLUMNS}) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
 const INSERT_STEP = `INSERT INTO guide_step (${STEP_COLUMNS}) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+// Metadata only: `title` is never listed here, so a refresh cannot overwrite the
+// maker's confirmed name, and COALESCE keeps a stored value when a field is
+// omitted. No `guide_step` row is ever read or written by a refresh.
+const REFRESH_GUIDE_METADATA =
+  'UPDATE imported_guide SET creator = COALESCE(?, creator), thumbnail_url = COALESCE(?, thumbnail_url), metadata_synced_at = ?, updated_at = ? WHERE id = ?';
 const DELETE_GUIDE = 'DELETE FROM imported_guide WHERE id = ?';
+
+interface GuideSummaryRow {
+  readonly id: string;
+  readonly video_id: string;
+  readonly title: string;
+  readonly creator: string | null;
+  readonly thumbnail_url: string | null;
+  readonly updated_at: number;
+}
+
+function toSummary(row: GuideSummaryRow): GuideSummary {
+  return {
+    id: row.id,
+    videoId: row.video_id,
+    title: row.title,
+    creator: row.creator ?? undefined,
+    thumbnailUrl: row.thumbnail_url ?? undefined,
+    updatedAt: row.updated_at,
+  };
+}
 
 function toGuide(row: GuideRow): ImportedGuide {
   return {
@@ -153,6 +182,33 @@ export function createGuideRepository({
 
     getGuideWithSteps(id) {
       return read(id);
+    },
+
+    listGuides(page) {
+      const { limit, offset } = resolvePage(page);
+
+      return connection
+        .all<GuideSummaryRow>(LIST_GUIDES, [limit, offset])
+        .map(toSummary);
+    },
+
+    refreshGuideMetadata(id, input) {
+      return transaction(() => {
+        connection.run(REFRESH_GUIDE_METADATA, [
+          input.creator ?? null,
+          input.thumbnailUrl ?? null,
+          input.syncedAt,
+          now(),
+          id,
+        ]);
+
+        const refreshed = read(id);
+        if (refreshed === undefined) {
+          throw new Error('No guide carries the id passed to refreshGuideMetadata.');
+        }
+
+        return refreshed;
+      });
     },
 
     deleteGuide(id) {

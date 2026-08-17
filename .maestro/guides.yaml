@@ -1,0 +1,63 @@
+appId: ${APP_ID}
+---
+# Deterministic, offline-safe YouTube import scenario (FR-YT-02/03/05/06, NFR-04).
+# The live oEmbed success path can't be asserted deterministically, so this flow
+# forces the metadata-unavailable manual path with Android airplane mode (mirroring
+# dictionary.yaml); the online success path is left to on-device/manual checking.
+- launchApp:
+    clearState: true
+- tapOn: "Guides"
+- assertVisible: "No guides yet"
+
+# A malformed link is rejected inline and creates nothing.
+- tapOn: "Import from YouTube"
+- tapOn:
+    id: "guide-url-field"
+- inputText: "not-a-link"
+- tapOn: "Look up video"
+- assertVisible: "Paste a YouTube watch, share, Shorts, embed, or live link."
+- tapOn: "Back to guides"
+- assertVisible: "No guides yet"
+
+# A supported link, imported manually while offline (metadata unavailable path).
+- tapOn: "Import from YouTube"
+- tapOn:
+    id: "guide-url-field"
+- inputText: "https://youtu.be/dQw4w9WgXcQ"
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - setAirplaneMode: enabled
+- tapOn: "Look up video"
+- assertVisible: "you can still create this guide"
+- tapOn:
+    id: "guide-title-field"
+- inputText: "Amigurumi Basics"
+- tapOn: "Create guide"
+- assertVisible: "Amigurumi Basics"
+
+# The saved guide persists offline in the library.
+- tapOn: "Back to guides"
+- assertVisible: "Amigurumi Basics"
+
+# Re-importing the same video lands on the existing guide (dedup), no duplicate.
+- tapOn: "Import from YouTube"
+- tapOn:
+    id: "guide-url-field"
+- inputText: "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+- tapOn: "Look up video"
+- assertVisible: "You already imported this guide"
+- tapOn: "Open guide"
+- assertVisible: "Amigurumi Basics"
+
+# The guide survives an app restart, still offline.
+- launchApp:
+    clearState: false
+- tapOn: "Guides"
+- assertVisible: "Amigurumi Basics"
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - setAirplaneMode: disabled
