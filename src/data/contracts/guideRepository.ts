@@ -1,3 +1,5 @@
+import type { Page } from './page';
+
 /** Where a guide step came from, so a re-import cannot silently discard maker edits. */
 export type GuideStepOrigin = 'import' | 'user';
 
@@ -58,11 +60,44 @@ export interface SaveImportedGuideInput {
   readonly steps: readonly GuideStepInput[];
 }
 
+/** A guide list row: enough to render a library entry, no steps. */
+export interface GuideSummary {
+  readonly id: string;
+  readonly videoId: string;
+  readonly title: string;
+  readonly creator: string | undefined;
+  readonly thumbnailUrl: string | undefined;
+  readonly updatedAt: number;
+}
+
+/**
+ * A metadata-only refresh. `title` is deliberately absent: once saved it is the
+ * maker's confirmed name and a refresh must never overwrite it. Omitted provider
+ * fields preserve the stored value rather than erasing it.
+ */
+export interface RefreshGuideMetadataInput {
+  readonly creator?: string;
+  readonly thumbnailUrl?: string;
+  readonly syncedAt: number;
+}
+
 export interface GuideRepository {
   /** Writes the guide and every step in one transaction. */
   saveImportedGuide(input: SaveImportedGuideInput): GuideWithSteps;
   findGuideByVideoId(videoId: string): GuideWithSteps | undefined;
   getGuideWithSteps(id: string): GuideWithSteps | undefined;
+  /** Most recently updated first; the library's recorded organization method. */
+  listGuides(page?: Page): readonly GuideSummary[];
+  /**
+   * Updates provider display metadata only. The guide's title and every step are
+   * left untouched, and an omitted field preserves its stored value, so a refresh
+   * can neither clobber a maker edit nor duplicate or erase instructions. Throws
+   * if no guide carries the id.
+   */
+  refreshGuideMetadata(
+    id: string,
+    input: RefreshGuideMetadataInput,
+  ): GuideWithSteps;
   /** Cascades to guide steps and counters. */
   deleteGuide(id: string): void;
 }

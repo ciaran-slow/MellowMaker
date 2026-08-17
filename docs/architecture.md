@@ -53,8 +53,12 @@ SQLite is the source of truth for core application state. Network services enric
 | SQL integration tests | In-memory `node:sqlite` using shared production SQL/migration inputs |
 | Installed-app smoke tests | Maestro on iOS and Android targets |
 | Long lists | React Native `FlatList` virtualization over bounded `Page` repository reads; no third-party list dependency |
+| Network metadata | The platform global `fetch` + `AbortController` (no dependency), reached through a `GuideMetadataGateway` contract in `src/data/contracts` with the oEmbed adapter in `src/platform/network`; injected `fetch` keeps it testable offline (see §9.1). Resolved by issue #9. |
 
-Network-client libraries remain deliberately unselected. Expo Router owns typed
+The generic network-client-library question stays open, but the **one** network
+need PRD0 has — best-effort YouTube metadata — is resolved by issue #9 as the
+platform global `fetch` with **no added dependency** (see §9.1); a heavier HTTP
+client is introduced only if a later feature justifies it. Expo Router owns typed
 navigation, while durable state remains SQLite-authoritative. React hooks own
 local drafts, focus, loading, and animation; narrowly scoped context may provide
 stable dependencies or cross-screen ephemeral coordination, but it must never
@@ -321,6 +325,23 @@ design may **scrape or reverse-engineer YouTube media URLs**, and no design may
 **embed a private credential in the client bundle** (AC #5; NFR-11/13). The
 following is the recorded architecture; playback is implemented in #11 and URL
 parsing in #9.
+
+**Implemented in issue #9 (URL identity + metadata).** The URL matrix below is
+implemented as the pure `src/domain/guides/youtubeUrl.ts` normalizer, extended to
+also accept the two legacy/compliant forms the original table omitted —
+`youtube.com/v/ID` (legacy embed path) and `youtube-nocookie.com/embed/ID`
+(privacy-enhanced domain), both normalizing to the same bare 11-char id. Metadata
+is the oEmbed path below, realized as a MellowMaker-owned `GuideMetadataGateway`
+contract (`src/data/contracts`) whose oEmbed adapter lives in
+`src/platform/network/youtubeOembedGateway.ts` and uses the injected platform
+global `fetch` (**no dependency added**); a pure `mapOembedResponse` shape-checks
+the provider payload into owned types at the boundary, keeps only the four safe
+string fields, and **never returns the provider `html`** — the owned type has no
+`html` and no transcript field, so neither can be rendered or claimed. The gateway
+is surfaced to features through a narrow `src/ui/guides` context wired at the
+composition root. A guide is deduplicated on `imported_guide.video_id UNIQUE`; a
+refresh updates provider display fields only, never the maker's title and never a
+`guide_step`, and a failed fetch performs no write.
 
 **URL matrix and canonical identity (FR-YT-02/03).** Every supported form carries
 an 11-character video id matching `[A-Za-z0-9_-]{11}`. Normalization extracts that
@@ -617,7 +638,9 @@ the **YouTube IFrame Player API in a WebView**—not `expo-video`, which cannot
 compliantly play YouTube—with a link-out and offline saved-guide fallback; and no
 design depends on scraped media URLs or a client-embedded secret. Playback is
 implemented in #11, which adds `react-native-youtube-iframe`/`react-native-webview`
-at that time; URL parsing is implemented in #9. `expo-video` stays in the stack
+at that time; URL parsing **and the oEmbed metadata path are implemented in #9**
+(§9.1), which added **no dependency** — metadata uses the injected platform global
+`fetch` behind a `GuideMetadataGateway` contract. `expo-video` stays in the stack
 only for possible future non-YouTube media.
 
 The remaining decision is:
