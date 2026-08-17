@@ -6,7 +6,7 @@ appId: ${APP_ID}
 - assertVisible: "Single crochet"
 - tapOn: "Patterns"
 - assertVisible: "Patterns"
-- assertVisible: "Keep every project within reach"
+- assertVisible: "New pattern"
 - tapOn: "Guides"
 - assertVisible: "Guides"
 - assertVisible: "No guides yet"
