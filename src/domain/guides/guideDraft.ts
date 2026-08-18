@@ -28,3 +28,10 @@ export function normalizeGuideCreator(raw: string): string | undefined {
 
   return value === '' ? undefined : value;
 }
+
+/** Optional guide notes: trimmed, with blank collapsing to `undefined` (SQL `NULL`). */
+export function normalizeGuideNotes(raw: string): string | undefined {
+  const value = raw.trim();
+
+  return value === '' ? undefined : value;
+}

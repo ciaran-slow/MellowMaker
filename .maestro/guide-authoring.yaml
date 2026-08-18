@@ -1,0 +1,70 @@
+appId: ${APP_ID}
+---
+# Structured guide authoring + the offline working view (FR-GU-01/02/03/05/06/08,
+# NFR-01/09). Reuses guides.yaml's offline manual-import path to reach a saved
+# guide, then authors steps, completes them, and asserts persistence across a
+# restart. Android airplane mode mirrors dictionary.yaml; iOS airplane is a manual
+# Control-Centre step.
+- launchApp:
+    clearState: true
+- tapOn: "Guides"
+- assertVisible: "No guides yet"
+
+# Import a supported link manually while offline (metadata unavailable path).
+- tapOn: "Import from YouTube"
+- tapOn:
+    id: "guide-url-field"
+- inputText: "https://youtu.be/dQw4w9WgXcQ"
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - setAirplaneMode: enabled
+- tapOn: "Look up video"
+- assertVisible: "you can still create this guide"
+- tapOn:
+    id: "guide-title-field"
+- inputText: "Amigurumi Basics"
+- tapOn: "Create guide"
+# Land on the working view for the new guide.
+- assertVisible: "Amigurumi Basics"
+- assertVisible: "Video plays in the YouTube app"
+
+# Author two steps in the editor, the second reached by scrolling, and reorder.
+- tapOn: "Edit guide"
+- assertVisible: "Edit guide"
+- tapOn:
+    id: "guide-step-field"
+- inputText: "Chain 6"
+- tapOn:
+    id: "guide-step-timestamp-field"
+- inputText: "0:30"
+- tapOn: "Add step"
+- assertVisible: "Chain 6"
+- tapOn:
+    id: "guide-step-field"
+- inputText: "Single crochet 5"
+- tapOn: "Add step"
+- assertVisible: "Single crochet 5"
+# Move step 2 up, then return to the working view.
+- tapOn: "Move step 2 up"
+- tapOn: "Back to guide"
+
+# The placeholder message AND the step list are both visible; complete a step.
+- assertVisible: "Video plays in the YouTube app"
+- assertVisible: "Single crochet 5"
+- tapOn: "Mark step 1 complete"
+- assertVisible: "Completed"
+
+# Restart, still offline, and confirm the guide, its steps, and completion persist.
+- launchApp:
+    clearState: false
+- tapOn: "Guides"
+- tapOn: "Amigurumi Basics"
+- assertVisible: "Single crochet 5"
+- assertVisible: "Completed"
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - setAirplaneMode: disabled
