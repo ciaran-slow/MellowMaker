@@ -469,10 +469,16 @@ a button that calls `useGuidePlayer.seekToMs(ms)`, which seeks
 `seekTo(videoOffsetMsToSeconds(ms), true)` — the pure, absolute
 `videoOffsetMsToSeconds(ms) = max(0, ms)/1000` conversion (e.g. `42000 → 42`) —
 **only when `ready`**; before ready, after error, or after unmount it is a guarded
-no-op, so the instructions are never blocked. **Lifecycle (NFR-10):** a
-mounted-flag ref suppresses any `onReady`/`onError`/seek callback after unmount and
-the player ref is nulled on teardown, so no stale callback or state update
-survives navigation. **Retry (AC #3):** `retry()` returns the machine to `loading`
+no-op, so the instructions are never blocked. **Lifecycle (NFR-10 / AC#4):** the
+player is released on **blur, not only on unmount** — `GuideWorkingViewReady`
+drives `useGuidePlayer.release()` from `useFocusEffect`'s blur cleanup and
+`resume()` from its focus body. Because guide routes are flat, hidden bottom-tab
+screens, navigating away via the `canGoBack()===false` `replace('/guides')`
+fallback leaves the view **mounted** (only blurred); a purely unmount-tied release
+would leave the WebView running off-screen. On blur a `live` ref flips false
+(suppressing any in-flight `onReady`/`onError`/seek), the player ref is nulled, and
+the component unmounts the `<YoutubePlayer>` (real native WebView teardown); on
+focus it re-arms and remounts for a fresh load. **Retry (AC #3):** `retry()` returns the machine to `loading`
 and bumps a remount key only — it reads and writes **no** repository, so recovery
 can never duplicate or mutate local guide data. No implementation scrapes or
 reverse-engineers YouTube media URLs — playback is purely the sanctioned IFrame

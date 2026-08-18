@@ -25,28 +25,47 @@ const MAX_CONTENT_WIDTH = 640;
  *
  * States are text-first (FR-GU-06): while `loading` a polite live region says the
  * video is loading; `ready` shows the player; `error` tears the WebView down and
- * falls back to `GuidePlayerPlaceholder` with a reason message, a "Try again", and
- * an "Open in YouTube" link-out. In every status it is a self-contained card and a
- * **sibling above** the step list — it never wraps, gates, or disables the saved
- * instructions, completion, counter, or progress (the #10 guarantee, preserved).
+ * falls back to `GuidePlayerPlaceholder` — wrapped in an assertive `alert` region
+ * matching the screen's other failure states — with a reason message, a "Try
+ * again", and an "Open in YouTube" link-out. When the view is blurred (`!active`)
+ * the WebView is unmounted so no player runs off-screen (NFR-10). In every state
+ * it is a self-contained card and a **sibling above** the step list — it never
+ * wraps, gates, or disables the saved instructions, completion, counter, or
+ * progress (the #10 guarantee, preserved).
  */
 export function GuideVideoPlayer({
   player,
   videoId,
   sourceUrl,
 }: GuideVideoPlayerProps) {
-  const { attempt, errorMessage, onError, onReady, registerPlayer, retry, status } =
-    player;
+  const {
+    active,
+    attempt,
+    errorMessage,
+    onError,
+    onReady,
+    registerPlayer,
+    retry,
+    status,
+  } = player;
   const { width } = useWindowDimensions();
+
+  // Blurred: unmount the WebView entirely (real native release on navigate-away).
+  // The view is off-screen here, so nothing visible is lost; refocus re-mounts it.
+  if (!active) {
+    return null;
+  }
 
   if (status === 'error') {
     return (
-      <GuidePlayerPlaceholder
-        message={errorMessage}
-        onRetry={retry}
-        sourceUrl={sourceUrl}
-        title="Video can’t play right now"
-      />
+      <View accessible accessibilityRole="alert" accessibilityLiveRegion="assertive">
+        <GuidePlayerPlaceholder
+          message={errorMessage}
+          onRetry={retry}
+          sourceUrl={sourceUrl}
+          title="Video can’t play right now"
+        />
+      </View>
     );
   }
 

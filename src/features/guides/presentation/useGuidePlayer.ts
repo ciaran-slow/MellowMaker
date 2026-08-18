@@ -12,7 +12,12 @@ export interface GuidePlayer {
   readonly status: GuidePlaybackStatus;
   /** Display text for the current error; defined only when `status === 'error'`. */
   readonly errorMessage: string | undefined;
-  /** Remount key for the `<YoutubePlayer>`; bumped by `retry()` for a fresh load. */
+  /**
+   * Whether the owning view is focused. `false` after `release()` (view blurred),
+   * so the component unmounts the WebView instead of keeping it alive off-screen.
+   */
+  readonly active: boolean;
+  /** Remount key for the `<YoutubePlayer>`; bumped by `retry()`/`resume()` for a fresh load. */
   readonly attempt: number;
   /**
    * Callback ref for the `<YoutubePlayer ref>`. React calls it with the player's
@@ -24,10 +29,19 @@ export interface GuidePlayer {
   onReady(): void;
   /** The player reported an error → `error`, with `errorMessage` mapped from the reason. */
   onError(reason: string): void;
-  /** Seek the loaded video to a stored ms offset — a guarded no-op unless `ready`. */
+  /** Seek the loaded video to a stored ms offset — a guarded no-op unless active + ready. */
   seekToMs(ms: number): void;
   /** Return to `loading` and remount the player; touches no repository. */
   retry(): void;
+  /**
+   * Release the player on blur (NFR-10): mark inactive so the WebView unmounts,
+   * null the seek target, and suppress any in-flight callback. Idempotent. This
+   * fires on losing focus even when the view is not unmounted (e.g. the flat
+   * bottom-tab `replace('/guides')` fallback keeps the working view mounted).
+   */
+  release(): void;
+  /** Re-activate on focus: reset to `loading` and remount the player for a fresh load. */
+  resume(): void;
 }
 
 /**
@@ -59,10 +73,12 @@ export function useGuidePlayer(videoId: string): GuidePlayer {
     undefined,
   );
   const [attempt, setAttempt] = useState(0);
+  const [active, setActive] = useState(true);
   const [trackedVideoId, setTrackedVideoId] = useState(videoId);
 
-  // Cleared on unmount so no callback runs after teardown (NFR-10).
-  const mounted = useRef(true);
+  // `live` gates every callback synchronously: false once the view unmounts OR
+  // loses focus, so no stale callback survives teardown or blur (NFR-10).
+  const live = useRef(true);
   const playerRef = useRef<YoutubeIframeRef | null>(null);
 
   const registerPlayer = useCallback((instance: YoutubeIframeRef | null) => {
@@ -79,16 +95,16 @@ export function useGuidePlayer(videoId: string): GuidePlayer {
   }
 
   useEffect(() => {
-    mounted.current = true;
+    live.current = true;
 
     return () => {
-      mounted.current = false;
+      live.current = false;
       playerRef.current = null;
     };
   }, []);
 
   const onReady = useCallback(() => {
-    if (!mounted.current) {
+    if (!live.current) {
       return;
     }
     setStatus('ready');
@@ -96,7 +112,7 @@ export function useGuidePlayer(videoId: string): GuidePlayer {
   }, []);
 
   const onError = useCallback((reason: string) => {
-    if (!mounted.current) {
+    if (!live.current) {
       return;
     }
     setStatus('error');
@@ -105,7 +121,7 @@ export function useGuidePlayer(videoId: string): GuidePlayer {
 
   const seekToMs = useCallback(
     (ms: number) => {
-      if (!mounted.current || status !== 'ready' || playerRef.current === null) {
+      if (!live.current || status !== 'ready' || playerRef.current === null) {
         return;
       }
       playerRef.current.seekTo(videoOffsetMsToSeconds(ms), true);
@@ -114,9 +130,32 @@ export function useGuidePlayer(videoId: string): GuidePlayer {
   );
 
   const retry = useCallback(() => {
-    if (!mounted.current) {
+    if (!live.current) {
       return;
     }
+    setStatus('loading');
+    setErrorMessage(undefined);
+    setAttempt((previous) => previous + 1);
+  }, []);
+
+  const release = useCallback(() => {
+    if (!live.current) {
+      return;
+    }
+    // Suppress in-flight callbacks and drop the seek target immediately, then
+    // mark inactive so the component unmounts the WebView (real native release).
+    live.current = false;
+    playerRef.current = null;
+    setActive(false);
+  }, []);
+
+  const resume = useCallback(() => {
+    if (live.current) {
+      return;
+    }
+    // Re-arm on focus and remount the player for a fresh load.
+    live.current = true;
+    setActive(true);
     setStatus('loading');
     setErrorMessage(undefined);
     setAttempt((previous) => previous + 1);
@@ -125,11 +164,14 @@ export function useGuidePlayer(videoId: string): GuidePlayer {
   return {
     status,
     errorMessage,
+    active,
     attempt,
     registerPlayer,
     onReady,
     onError,
     seekToMs,
     retry,
+    release,
+    resume,
   };
 }

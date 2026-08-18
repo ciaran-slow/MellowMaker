@@ -214,6 +214,23 @@ function GuideWorkingViewReady({
   view,
 }: GuideWorkingViewReadyProps) {
   const player = useGuidePlayer(guide.videoId);
+  const { release, resume } = player;
+
+  // Release the WebView player on BLUR, not only on unmount (NFR-10 / AC#4).
+  // Guide routes are flat, hidden bottom-tab screens, so navigating away can
+  // leave this view mounted (the `canGoBack()===false` `replace('/guides')`
+  // fallback). `useFocusEffect`'s cleanup runs on blur regardless, so it releases
+  // the player and suppresses stale callbacks on both the unmounting back-history
+  // path and the still-mounted replace path. Focus re-arms and re-mounts it.
+  useFocusEffect(
+    useCallback(() => {
+      resume();
+
+      return () => {
+        release();
+      };
+    }, [release, resume]),
+  );
 
   // A stable owner so the counter's load effect resolves once; the counter is
   // keyed by this guide, so a count never leaks between guides or patterns

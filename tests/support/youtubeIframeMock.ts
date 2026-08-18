@@ -20,16 +20,27 @@ type CapturedProps = {
 export const mockSeekTo = jest.fn();
 
 let lastProps: CapturedProps | undefined;
+let liveCount = 0;
 
 /** The most recent props the mocked `<YoutubePlayer>` was rendered with. */
 export function getLastYoutubeProps(): CapturedProps | undefined {
   return lastProps;
 }
 
-/** Clears the seek spy and captured props between tests. */
+/**
+ * How many mocked `<YoutubePlayer>` (WebView) instances are currently mounted.
+ * Lets a test assert the player was actually torn down on blur/unmount — e.g.
+ * `0` after navigating away proves the WebView was released, not left running.
+ */
+export function youtubePlayerLiveCount(): number {
+  return liveCount;
+}
+
+/** Clears the seek spy, captured props, and live-instance count between tests. */
 export function resetYoutubeIframeMock(): void {
   mockSeekTo.mockClear();
   lastProps = undefined;
+  liveCount = 0;
 }
 
 const MockYoutubePlayer = React.forwardRef(function MockYoutubePlayer(
@@ -38,6 +49,15 @@ const MockYoutubePlayer = React.forwardRef(function MockYoutubePlayer(
 ) {
   lastProps = props;
   React.useImperativeHandle(ref, () => ({ seekTo: mockSeekTo }));
+  // Mirror a real WebView's lifecycle so a test can observe teardown: increment
+  // while mounted, decrement on unmount.
+  React.useEffect(() => {
+    liveCount += 1;
+
+    return () => {
+      liveCount -= 1;
+    };
+  }, []);
 
   return null;
 });
