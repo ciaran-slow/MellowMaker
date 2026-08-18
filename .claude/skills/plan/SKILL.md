@@ -173,6 +173,16 @@ pins the result to the argument, not to prior state. Alternating-value sequences
 (true→false→true) do **not** discharge this: a read-modify-write toggle passes
 them while diverging on a repeated tap.
 
+When the contract is a **resource release / teardown / lifecycle** guarantee
+("releases the player/subscription on navigating away", "no stale callbacks
+after unmount"), the falsifier must assert the release **observably occurred** —
+a teardown spy fired, or a live-instance/mount count returned to zero — **not**
+that a post-teardown call throws nothing or is a no-op, both of which pass
+whether or not the release ran. Name the test at the layer where release is
+actually driven: in this app, blur/focus cleanup only fires under a real
+navigator, so a release tied to navigation must be pinned by a router-level
+test, not a component-in-isolation unmount.
+
 ## 7. Post and confirm
 
 Write the plan to a temporary file, compare it once against every acceptance

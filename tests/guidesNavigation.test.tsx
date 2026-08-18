@@ -170,4 +170,53 @@ describe('guides navigation', () => {
     expect(() => getLastYoutubeProps()?.onError?.('HTML5_error')).not.toThrow();
     expect(mockSeekTo).not.toHaveBeenCalled();
   });
+
+  it('re-arms the player on returning to a guide after navigating away (resume, NFR-10 / AC#4)', async () => {
+    const database = await createAppDatabase();
+    const created = database.repositories.guides.saveImportedGuide({
+      guide: {
+        videoId: 'dQw4w9WgXcQ',
+        sourceUrl: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
+        title: 'Amigurumi Basics',
+        creator: 'Yarn Co',
+      },
+      steps: [{ instruction: 'Make a magic ring', origin: 'user' }],
+    });
+
+    // Land on the working view (still-mounted replace fallback), drive ready,
+    // then navigate away — the blur release tears the player down.
+    const result = renderRouter(routes, {
+      initialUrl: `/guides/${created.guide.id}`,
+    });
+    await result;
+
+    await screen.findByRole('header', { name: 'Amigurumi Basics' });
+    expect(youtubePlayerLiveCount()).toBeGreaterThan(0);
+    await act(async () => {
+      getLastYoutubeProps()?.onReady?.();
+    });
+    await fireEvent.press(screen.getByLabelText('Back to guides'));
+    await waitFor(() => {
+      expect(youtubePlayerLiveCount()).toBe(0);
+    });
+
+    // Re-enter the SAME guide from the library. The working view stayed mounted
+    // (only blurred), so refocus must fire `resume()`, re-arming a fresh live
+    // player. If resume left the player inactive (never re-set `active` / bumped
+    // the remount key), the count would stay 0 — the falsifier the blur→refocus
+    // path needs.
+    await fireEvent.press(screen.getByRole('tab', { name: 'Guides' }));
+    await fireEvent.press(
+      await screen.findByLabelText('Amigurumi Basics. By Yarn Co'),
+    );
+    await waitFor(() => {
+      expect(result.getPathname()).toBe(`/guides/${created.guide.id}`);
+    });
+    await waitFor(() => {
+      expect(youtubePlayerLiveCount()).toBeGreaterThan(0);
+    });
+    expect(
+      await screen.findByRole('header', { name: 'Amigurumi Basics' }),
+    ).toBeOnTheScreen();
+  });
 });

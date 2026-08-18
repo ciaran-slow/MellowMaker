@@ -517,6 +517,19 @@ focus mid-word. A list-owning screen re-reads its first page on focus
 (`useFocusEffect`) so a change made on a pushed editor is reflected on return,
 keeping SQLite authoritative without a global store.
 
+A screen that holds a **resource** — a media/WebView player, a subscription, or
+a timer — must release it on **blur** via `useFocusEffect`'s cleanup, not only on
+component unmount. The Stitches / Patterns / Guides routes are flat, hidden
+(`href: null`) bottom-tab screens with no nested Stack and no `unmountOnBlur`, so
+navigating away does **not** guarantee the screen unmounts — in particular the
+`canGoBack() === false → router.replace(...)` fallback leaves the departed view
+mounted but blurred. A release tied to unmount therefore leaks the resource
+off-screen (issue #11: the guide WebView player stayed alive after navigating
+away). Pair the blur `release()` with a focus `resume()` so the resource re-arms
+on return, and prove the release with a router-level test that asserts the
+resource was observably torn down — not merely that a post-teardown call does
+not throw.
+
 Two further shared conventions, introduced by the pattern editor (issue #5):
 
 - **Ordered-list reorder is button-driven.** Reorderable rows expose accessible
