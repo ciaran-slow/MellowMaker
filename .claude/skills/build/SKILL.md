@@ -169,7 +169,12 @@ clean. Restore the mutation with `git checkout -- <path>` / `git restore` — do
 NOT `rm -rf` an absolute path outside your worktree, and never delete
 `node_modules` (it is a symlink to the shared install; removing it from any
 worktree breaks every checkout). If nothing goes red, the contract is
-unfalsified — add the missing negative-branch test before continuing. Note in the PR body which guards you
+unfalsified — add the missing negative-branch test before continuing. For an
+**unconditional absolute write** stated as "set, not read-modify-write / not a
+toggle", there is no guard to invert — instead rewrite it into a
+prior-state-conditioned toggle and confirm a **duplicate same-value application**
+test goes red (two identical taps must not flip the result). If no such test
+exists, add one before opening the PR. Note in the PR body which guards you
 mutation-checked. This catches at build time exactly what an independent verify
 mutation pass would otherwise bounce back to you.
 

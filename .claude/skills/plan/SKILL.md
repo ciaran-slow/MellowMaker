@@ -165,6 +165,14 @@ guard living in a hook is not covered by a domain-module test that never
 exercises the guard. If a stated contract cannot be pinned this way, it is not
 yet buildable — resolve it before posting.
 
+When the contract is instead that a write is **absolute / a pure function of its
+argument** (an idempotent "set", not a toggle or an accumulate), the falsifier
+is a **repeated same-value application** — name a test that applies the identical
+input twice (or reaches the same target from two different prior states) and
+pins the result to the argument, not to prior state. Alternating-value sequences
+(true→false→true) do **not** discharge this: a read-modify-write toggle passes
+them while diverging on a repeated tap.
+
 ## 7. Post and confirm
 
 Write the plan to a temporary file, compare it once against every acceptance

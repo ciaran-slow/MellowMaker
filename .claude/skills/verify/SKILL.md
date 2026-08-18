@@ -213,11 +213,14 @@ contract, and a concrete failing input or runtime scenario. Separate blockers
 from optional follow-up. Do not manufacture findings when the work is sound.
 
 When you accept a coverage gap as a **non-blocking follow-up** — a real but
-non-blocking missing test — also append it to the carried-forward ledger in
-`docs/runbooks/test-debt.md` (issue/PR, the uncovered contract, where the test
-belongs) so it is tracked to closure instead of vanishing when the PR merges. A
-blocker is fixed in the PR and does not go in the ledger; this is only for gaps
-you are choosing to carry.
+non-blocking missing test — record it as a dedicated "Non-blocking coverage gap"
+section in the **posted PR review** (issue/PR, the uncovered contract, where the
+test belongs). The posted review is your only durable channel: you run in a
+transient worktree off the PR branch, so writing `docs/runbooks/test-debt.md`
+from there is pruned with the worktree and never reaches `main` — do **not** try
+to log the ledger from the review worktree. The issue-closing retro carries the
+row to `main` (or confirms it was fixed in-cycle). A blocker is fixed in the PR
+and is not a coverage-gap follow-up.
 
 Include:
 
