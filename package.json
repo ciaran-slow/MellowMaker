@@ -21,7 +21,8 @@
     "test:smoke:patterns": "maestro test -e APP_ID=$APP_ID .maestro/patterns.yaml",
     "test:smoke:patterns:viewer": "maestro test -e APP_ID=$APP_ID .maestro/pattern-viewer.yaml",
     "test:smoke:counter": "maestro test -e APP_ID=$APP_ID .maestro/counter.yaml",
-    "test:smoke:guides": "maestro test -e APP_ID=$APP_ID .maestro/guides.yaml"
+    "test:smoke:guides": "maestro test -e APP_ID=$APP_ID .maestro/guides.yaml",
+    "test:smoke:guides:authoring": "maestro test -e APP_ID=$APP_ID .maestro/guide-authoring.yaml"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.0.2",

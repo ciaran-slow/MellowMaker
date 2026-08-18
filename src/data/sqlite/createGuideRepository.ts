@@ -6,7 +6,9 @@ import type {
   GuideSummary,
   GuideWithSteps,
   ImportedGuide,
+  UpdateGuideDetailsInput,
 } from '../contracts/guideRepository';
+import { reorderPositions, type ReorderStatements } from './reorderPositions';
 import type { RepositoryContext } from './repositoryContext';
 
 interface GuideRow {
@@ -54,7 +56,30 @@ const INSERT_STEP = `INSERT INTO guide_step (${STEP_COLUMNS}) VALUES (?, ?, ?, ?
 // omitted. No `guide_step` row is ever read or written by a refresh.
 const REFRESH_GUIDE_METADATA =
   'UPDATE imported_guide SET creator = COALESCE(?, creator), thumbnail_url = COALESCE(?, thumbnail_url), metadata_synced_at = ?, updated_at = ? WHERE id = ?';
+// A deliberate maker edit rewrites the title (unlike a refresh, which never can).
+const UPDATE_GUIDE_DETAILS =
+  'UPDATE imported_guide SET title = ?, notes = ?, updated_at = ? WHERE id = ?';
+const SELECT_STEP_COUNT =
+  'SELECT COUNT(*) AS total FROM guide_step WHERE guide_id = ?';
+const SELECT_STEP_IDS =
+  'SELECT id FROM guide_step WHERE guide_id = ? ORDER BY position ASC, id ASC';
+const SELECT_STEP_PARENT = 'SELECT guide_id FROM guide_step WHERE id = ?';
+const UPDATE_GUIDE_STEP =
+  'UPDATE guide_step SET instruction = ?, video_offset_ms = ?, transcript_excerpt = ?, note = ?, user_modified_at = ?, updated_at = ? WHERE id = ?';
+const DELETE_STEP = 'DELETE FROM guide_step WHERE id = ?';
+// Completion is one absolute write; it deliberately does not touch the guide's
+// `updated_at`, so working state never churns library recency.
+const SET_STEP_COMPLETION =
+  'UPDATE guide_step SET completed_at = ?, updated_at = ? WHERE id = ?';
+const TOUCH_GUIDE = 'UPDATE imported_guide SET updated_at = ? WHERE id = ?';
 const DELETE_GUIDE = 'DELETE FROM imported_guide WHERE id = ?';
+
+const GUIDE_STEP_REORDER: ReorderStatements = {
+  offsetPositions:
+    'UPDATE guide_step SET position = position + ? WHERE guide_id = ?',
+  setPosition:
+    'UPDATE guide_step SET position = ?, updated_at = ? WHERE id = ? AND guide_id = ?',
+};
 
 interface GuideSummaryRow {
   readonly id: string;
@@ -209,6 +234,164 @@ export function createGuideRepository({
 
         return refreshed;
       });
+    },
+
+    updateGuideDetails(input: UpdateGuideDetailsInput): ImportedGuide {
+      const writtenAt = now();
+      connection.run(UPDATE_GUIDE_DETAILS, [
+        input.title,
+        input.notes ?? null,
+        writtenAt,
+        input.id,
+      ]);
+
+      const row = connection.first<GuideRow>(SELECT_GUIDE, [input.id]);
+      if (row === undefined) {
+        throw new Error('No guide carries the id passed to updateGuideDetails.');
+      }
+
+      return toGuide(row);
+    },
+
+    addGuideStep(guideId, input): GuideStep {
+      return transaction(() => {
+        const writtenAt = now();
+        const stepId = newId();
+        // Positions stay contiguous from zero (see deleteGuideStep), so the count
+        // is always MAX(position) + 1 and the append cannot collide with the
+        // UNIQUE (guide_id, position) constraint.
+        const position =
+          connection.first<{ readonly total: number }>(SELECT_STEP_COUNT, [
+            guideId,
+          ])?.total ?? 0;
+
+        connection.run(INSERT_STEP, [
+          stepId,
+          guideId,
+          position,
+          input.instruction,
+          input.videoOffsetMs ?? null,
+          input.transcriptExcerpt ?? null,
+          input.note ?? null,
+          null,
+          'user',
+          null,
+          writtenAt,
+          writtenAt,
+        ]);
+        connection.run(TOUCH_GUIDE, [writtenAt, guideId]);
+
+        return {
+          id: stepId,
+          guideId,
+          position,
+          instruction: input.instruction,
+          videoOffsetMs: input.videoOffsetMs,
+          transcriptExcerpt: input.transcriptExcerpt,
+          note: input.note,
+          completedAt: undefined,
+          origin: 'user',
+          userModifiedAt: undefined,
+          createdAt: writtenAt,
+          updatedAt: writtenAt,
+        };
+      });
+    },
+
+    updateGuideStep(stepId, input) {
+      transaction(() => {
+        const writtenAt = now();
+        connection.run(UPDATE_GUIDE_STEP, [
+          input.instruction,
+          input.videoOffsetMs ?? null,
+          input.transcriptExcerpt ?? null,
+          input.note ?? null,
+          writtenAt,
+          writtenAt,
+          stepId,
+        ]);
+        // Derive the parent from the step so a caller can never bump the wrong
+        // guide, mirroring the pattern repository's TOUCH_PATTERN_OF_STEP.
+        const parent = connection.first<{ readonly guide_id: string }>(
+          SELECT_STEP_PARENT,
+          [stepId],
+        );
+        if (parent !== undefined) {
+          connection.run(TOUCH_GUIDE, [writtenAt, parent.guide_id]);
+        }
+      });
+    },
+
+    deleteGuideStep(stepId) {
+      transaction(() => {
+        const parent = connection.first<{ readonly guide_id: string }>(
+          SELECT_STEP_PARENT,
+          [stepId],
+        );
+        if (parent === undefined) {
+          // Nothing to remove; a stale id is a no-op, not a fault.
+          return;
+        }
+
+        const guideId = parent.guide_id;
+        connection.run(DELETE_STEP, [stepId]);
+
+        const remainingIds = connection
+          .all<{ readonly id: string }>(SELECT_STEP_IDS, [guideId])
+          .map((row) => row.id);
+        const removedAt = now();
+        // Close the gap the delete left so positions stay contiguous from zero.
+        reorderPositions(
+          connection,
+          GUIDE_STEP_REORDER,
+          guideId,
+          remainingIds,
+          removedAt,
+        );
+        connection.run(TOUCH_GUIDE, [removedAt, guideId]);
+      });
+    },
+
+    reorderGuideSteps(guideId, orderedStepIds) {
+      transaction(() => {
+        const currentIds = connection
+          .all<{ readonly id: string }>(SELECT_STEP_IDS, [guideId])
+          .map((row) => row.id);
+        const requested = new Set(orderedStepIds);
+
+        if (
+          requested.size !== orderedStepIds.length ||
+          currentIds.length !== orderedStepIds.length ||
+          !currentIds.every((id) => requested.has(id))
+        ) {
+          throw new Error(
+            "A reorder must list each of the guide's current steps exactly once.",
+          );
+        }
+
+        const reorderedAt = now();
+        reorderPositions(
+          connection,
+          GUIDE_STEP_REORDER,
+          guideId,
+          orderedStepIds,
+          reorderedAt,
+        );
+        connection.run(TOUCH_GUIDE, [reorderedAt, guideId]);
+      });
+    },
+
+    setGuideStepCompleted(stepId, completed) {
+      // One absolute autocommit statement (no transaction, no read-modify-write):
+      // the target `completed_at` is a single instant or `NULL`, fixed by the
+      // boolean, so rapid taps commit in issue order and land on the last command
+      // per step.
+      const writtenAt = now();
+      connection.run(SET_STEP_COMPLETION, [
+        completed ? writtenAt : null,
+        writtenAt,
+        stepId,
+      ]);
     },
 
     deleteGuide(id) {

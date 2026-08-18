@@ -178,6 +178,33 @@ active position and one row per step for completion. Each has a single job, both
 cascade cleanly, and a viewer restores position and completion with two bounded
 reads.
 
+**Guide authoring and completion (issue #10) ship with no migration.** Structured
+guide authoring, the offline working view, and the guide counter reuse the
+version-1 schema unchanged: `guide_step` already carries instruction, optional
+`video_offset_ms`, `transcript_excerpt`, `note`, `completed_at`, `origin`, and a
+contiguous `position`, and `counter` already carries the `owner_kind = 'guide'`
+owner and its `guide_id` FK, so `LATEST_SCHEMA_VERSION` stays 1 and this issue
+adds no migration and no dependency. Guide steps follow the same conventions as
+pattern steps: an append lands at `position = current step count`, a delete
+re-compacts the remainder to `0..n-1`, and a reorder validates exact membership
+then runs the two-pass `reorderPositions` under `UNIQUE (guide_id, position)`.
+Guide **completion is the per-step `guide_step.completed_at` instant**, written by
+one absolute statement (`completed_at = now()` or `NULL`, no read-modify-write);
+it deliberately does **not** bump `imported_guide.updated_at`, because completion
+is working state and must not churn library recency — the same stance as pattern
+completion living in a separate table. Unlike a metadata refresh, a deliberate
+`updateGuideDetails` **does** rewrite the maker's title (and notes).
+
+**Guides derive current/next and store no active pointer.** A guide has **no
+`guide_progress` table** and #10 adds none (that would be a migration). The guide
+working view reuses the pure `resolvePatternProgressView` with
+`activeStepId: undefined`, so **current is always the first incomplete step**;
+completing an out-of-order step never moves current (first-incomplete is
+unchanged). The consequence is deliberate: guides have no persisted "Work on step
+N" selection like the pattern viewer, only completion state and the derived
+place. Timestamps are **display/authoring only** in #10 — a step badge, never a
+seek (the player is #11).
+
 The interactive pattern viewer (issue #6) reads these two tables and derives the
 maker's place rather than storing it. Completion is the per-step `completed_at`
 instant; the maker's position is the single `pattern_progress.active_step_id`.
@@ -418,6 +445,19 @@ proving spike (a canonical id renders and seeks in `react-native-youtube-iframe`
 on both iOS and Android under EAS, with the offline link-out fallback) is deferred
 to #11.
 
+**Player seam and display-only timestamps (issue #10).** Issue #10 ships the
+guide working view with the video region as a `GuidePlayerPlaceholder`: a 16:9
+card carrying the video-unavailable/offline message and an "Open in YouTube"
+link-out (React Native `Linking`, no dependency), rendered as a **sibling above
+the always-rendered step list** and marked with a `TODO(#11)` mount point. It
+**never gates, wraps, or disables the instructions** — the saved steps and
+progress stay fully readable and interactive in every state, offline included
+(FR-GU-06). #11 conditionally replaces the placeholder with the real WebView
+player at that same seam. In #10 a step timestamp is **display/authoring only** —
+entered by the maker, parsed to `video_offset_ms`, and rendered as a badge;
+tapping a step never seeks (there is no player). Seek-to-timestamp (FR-GU-04) is
+#11.
+
 ## 10. UI and interaction architecture
 
 The design system follows the “Playful Craft” direction in `vision.md`:
@@ -526,6 +566,22 @@ Two conventions introduced by the interactive pattern viewer (issue #6):
   NFR-08). The reusable `CraftCounter` control is presentational only and
   owner-generic, so the guide working views (#10/#11) reuse it unchanged; its
   read failure is screen-local and retryable, never blacking out the step list.
+- **The guide working view (issue #10) inherits both conventions unchanged.**
+  `useGuideViewer` applies completion through the same synchronous serialized
+  write-then-re-read runner, and each completion is one absolute
+  `setGuideStepCompleted` statement (`completed_at = now()` or `NULL`, no
+  read-modify-write, no `!state` toggle), so rapid taps commit in issue order and
+  land on the last command per step. Because a guide's completion lives on the
+  step rows, the runner re-reads `getGuideWithSteps` rather than a separate
+  progress table. The guide counter reuses
+  `getOrCreatePrimaryCounter({ kind: 'guide', id })` + `useCounter` +
+  `CraftCounter` unchanged, keyed by the guide id and isolated from every other
+  pattern and guide by the `guide_id` column and its per-owner unique index — the
+  "no new plumbing" reuse #7 intended. `useCounter` lives under
+  `src/features/patterns/presentation` and the guide screen imports it
+  cross-feature; feature→feature is not restricted by the boundary lint (which
+  restricts domain/data/platform/ui edges only), so this is deliberate reuse
+  rather than a second convention.
 
 ## 12. Error handling and observability
 

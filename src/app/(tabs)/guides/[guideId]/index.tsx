@@ -1,9 +1,9 @@
 import { useLocalSearchParams } from 'expo-router';
 
-import { GuideDetailScreen } from '@/features/guides/presentation/GuideDetailScreen';
+import { GuideWorkingViewScreen } from '@/features/guides/presentation/GuideWorkingViewScreen';
 
-export default function GuideDetailRoute() {
+export default function GuideWorkingViewRoute() {
   const { guideId } = useLocalSearchParams<{ guideId: string }>();
 
-  return <GuideDetailScreen guideId={guideId} />;
+  return <GuideWorkingViewScreen guideId={guideId} />;
 }
