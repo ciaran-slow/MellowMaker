@@ -156,6 +156,27 @@ describe('GuideRepository additions', () => {
       ).toBe(durableAt);
     });
 
+    it('is an absolute write, not a toggle: repeated same-value taps are idempotent', () => {
+      const guideId = newGuide();
+      const step = guides.addGuideStep(guideId, { instruction: 'A' });
+
+      // Two identical "complete" taps must leave it completed — a
+      // read-modify-write toggle would flip the second tap back to null.
+      guides.setGuideStepCompleted(step.id, true);
+      guides.setGuideStepCompleted(step.id, true);
+      expect(
+        guides.getGuideWithSteps(guideId)?.steps[0]?.completedAt,
+      ).toEqual(expect.any(Number));
+
+      // Two identical "reopen" taps must leave it incomplete — a toggle would
+      // flip the second back to completed.
+      guides.setGuideStepCompleted(step.id, false);
+      guides.setGuideStepCompleted(step.id, false);
+      expect(
+        guides.getGuideWithSteps(guideId)?.steps[0]?.completedAt,
+      ).toBeUndefined();
+    });
+
     it('does not bump the guide updated_at when a step is completed', () => {
       const guideId = newGuide();
       const step = guides.addGuideStep(guideId, { instruction: 'A' });

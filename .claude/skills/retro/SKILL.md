@@ -54,6 +54,13 @@ Judge whether the plan was buildable as written, whether the build followed it,
 and whether verify caught what mattered. Route every durable fix into the
 `plan`, `build`, or `verify` skill, a repo doc, or a script — never memory.
 
+If the verify review recorded a **non-blocking coverage gap**, own its
+durable landing: either (a) confirm it was fixed in-cycle, or (b) commit the row
+to `docs/runbooks/test-debt.md` as part of the retro follow-up. The retro commit
+is the durable home — verify runs in a transient worktree and cannot land it
+itself, so an un-carried gap is lost. (Prefer fixing a one-test gap over
+ledgering it.)
+
 ## Inputs to Review
 
 Look across the full context that shaped the outcome:
