@@ -162,8 +162,16 @@ ordering and numeric/time boundaries.
 to satisfy a plan-stated "only / never / exactly / does not" contract (for
 example an `if (stepId === currentBefore)` that suppresses an action), before
 opening the PR: temporarily invert or delete that guard, run the suite, and
-confirm a specific test goes **red for the right reason** (the assertion that
-pins the contract, not an unrelated failure). Then restore the guard, confirm
+confirm a test goes **red for the right reason** (the assertion that
+pins the contract, not an unrelated failure). Require that **every** test whose
+name or description asserts the guarded contract goes red under the mutation —
+a contract-naming test that stays **green** is itself an unfalsified
+(non-falsifier) test to fix, even when another test does go red. In particular,
+a **"does not throw" / "is a no-op" / "does not crash"** assertion is not a
+falsifier for a resource-release/cleanup/lifecycle contract: it passes whether
+or not the release fired. Such a contract must be pinned by asserting the
+release **observably happened** (a teardown spy fired, or a live-instance/mount
+count returned to zero). Then restore the guard, confirm
 the suite is green, and confirm `git status`/`git diff` show the working tree
 clean. Restore the mutation with `git checkout -- <path>` / `git restore` — do
 NOT `rm -rf` an absolute path outside your worktree, and never delete
