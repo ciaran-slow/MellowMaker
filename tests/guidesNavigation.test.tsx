@@ -7,6 +7,8 @@ import {
 
 import { createAppDatabase } from '@/platform/database/createAppDatabase';
 
+import { getLastYoutubeProps } from './support/youtubeIframeMock';
+
 const routes = 'src/app';
 
 describe('guides navigation', () => {
@@ -91,5 +93,43 @@ describe('guides navigation', () => {
     expect(
       database.repositories.guides.getGuideWithSteps(created.guide.id),
     ).toBeUndefined();
+  });
+
+  it('releases the player on navigating away — a stale callback after unmount is a no-op (NFR-10)', async () => {
+    const database = await createAppDatabase();
+    const created = database.repositories.guides.saveImportedGuide({
+      guide: {
+        videoId: 'dQw4w9WgXcQ',
+        sourceUrl: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
+        title: 'Amigurumi Basics',
+      },
+      steps: [{ instruction: 'Make a magic ring', origin: 'user' }],
+    });
+
+    const result = renderRouter(routes, {
+      initialUrl: `/guides/${created.guide.id}`,
+    });
+    await result;
+
+    await screen.findByRole('header', { name: 'Amigurumi Basics' });
+
+    // Capture the mounted player's error callback, then navigate away so the
+    // working view (and its player) unmount.
+    const staleOnError = getLastYoutubeProps()?.onError;
+    expect(staleOnError).toBeDefined();
+
+    await fireEvent.press(screen.getByLabelText('Back to guides'));
+
+    // The working view (and its player) unmount when we leave the route.
+    await waitFor(() => {
+      expect(
+        screen.queryByRole('header', { name: 'Amigurumi Basics' }),
+      ).not.toBeOnTheScreen();
+    });
+    expect(result.getPathname()).not.toBe(`/guides/${created.guide.id}`);
+
+    // The captured callback fires after unmount: the mounted-flag guard makes it
+    // a no-op rather than a state update on an unmounted component.
+    expect(() => staleOnError?.('HTML5_error')).not.toThrow();
   });
 });

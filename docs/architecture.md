@@ -43,7 +43,7 @@ SQLite is the source of truth for core application state. Network services enric
 | Local persistence | `expo-sqlite` `~57.0.1`, one application-owned database behind a synchronous connection boundary |
 | Identifier generation | `expo-crypto` `~57.0.1` `randomUUID()`, injected into the data layer rather than imported by it |
 | Bundled stitch content | One committed JSON document under `src/data/seed`, validated against one documented schema in the test suite and applied through `StitchRepository` |
-| Video | YouTube plays through the **YouTube IFrame Player API in a WebView** (`react-native-youtube-iframe` over `react-native-webview`), added when issue #11 implements playback (see §9). `expo-video` stays in the stack only for possible future non-YouTube media. |
+| Video | YouTube plays through the **YouTube IFrame Player API in a WebView** (`react-native-youtube-iframe` `2.4.1` over `react-native-webview` `13.16.1`), added by issue #11 (see §9.1). `expo-video` stays in the stack only for possible future non-YouTube media. |
 | Styling | NativeWind v4 |
 | Motion | React Native Reanimated |
 | Platforms | iOS and Android |
@@ -202,8 +202,8 @@ working view reuses the pure `resolvePatternProgressView` with
 completing an out-of-order step never moves current (first-incomplete is
 unchanged). The consequence is deliberate: guides have no persisted "Work on step
 N" selection like the pattern viewer, only completion state and the derived
-place. Timestamps are **display/authoring only** in #10 — a step badge, never a
-seek (the player is #11).
+place. Timestamps are display/authoring only in #10; **issue #11 makes a
+timestamped step badge a button that seeks the player** (§9.1).
 
 The interactive pattern viewer (issue #6) reads these two tables and derives the
 maker's place rather than storing it. Completion is the per-step `completed_at`
@@ -430,7 +430,7 @@ with the owner's approval) plays YouTube inside **YouTube's own official IFrame
 player, rendered in a WebView** via `react-native-youtube-iframe` over
 `react-native-webview`—both Expo-managed-workflow compatible (NFR-07). It plays
 within YouTube's player (no ToS violation) and exposes `seekTo(seconds)`, exactly
-what FR-GU-04 needs. When online it embeds beside the timestamped steps; when the
+what FR-GU-04 needs. When online it embeds above the timestamped steps; when the
 video is unavailable or offline it degrades to a **link-out to the YouTube app**
 plus the saved steps and progress read from SQLite (FR-GU-06). The WebView and any
 player subscription are released on view teardown (NFR-10). These offline-first
@@ -438,25 +438,45 @@ guarantees are unchanged: saved guide text, steps, and progress never depend on
 the network. `expo-video` remains in the stack only for possible future
 first-party/self-hosted media.
 
-**Dependency intent.** `react-native-youtube-iframe` and `react-native-webview`
-are the intended playback dependencies; they are **added when issue #11 implements
-playback**, not by this decision record, which adds no code or dependencies. A
-proving spike (a canonical id renders and seeks in `react-native-youtube-iframe`
-on both iOS and Android under EAS, with the offline link-out fallback) is deferred
-to #11.
+**Dependencies (added by issue #11).** `react-native-webview` `13.16.1` (the
+version Expo SDK 57 pins in `bundledNativeModules.json`; native module,
+autolinked, no config plugin) and `react-native-youtube-iframe` `2.4.1` (pure JS
+wrapper over the WebView; no native code of its own, peer `react-native-webview
+>=7` satisfied). Both resolve via autolinking, so **no `app.json` config plugin or
+prebuild change** is required. These are the project's first two runtime
+dependencies; nothing else — and no `expo-video` — was added. Jest **mocks
+`react-native-youtube-iframe`** (a `forwardRef` stub exposing a `seekTo` spy) so
+the suites run without a real WebView; no `transformIgnorePatterns` change is
+needed. The on-device proving spike (a canonical id renders and seeks on iOS and
+Android under EAS, with the offline link-out fallback) remains an on-device check,
+logged in `docs/runbooks/smoke-verification.md`.
 
-**Player seam and display-only timestamps (issue #10).** Issue #10 ships the
-guide working view with the video region as a `GuidePlayerPlaceholder`: a 16:9
-card carrying the video-unavailable/offline message and an "Open in YouTube"
-link-out (React Native `Linking`, no dependency), rendered as a **sibling above
-the always-rendered step list** and marked with a `TODO(#11)` mount point. It
-**never gates, wraps, or disables the instructions** — the saved steps and
-progress stay fully readable and interactive in every state, offline included
-(FR-GU-06). #11 conditionally replaces the placeholder with the real WebView
-player at that same seam. In #10 a step timestamp is **display/authoring only** —
-entered by the maker, parsed to `video_offset_ms`, and rendered as a badge;
-tapping a step never seeks (there is no player). Seek-to-timestamp (FR-GU-04) is
-#11.
+**Player seam — filled by issue #11.** Issue #10 shipped the guide working view
+with the video region as a `GuidePlayerPlaceholder` seam (a 16:9 card + "Open in
+YouTube" link-out) marked `TODO(#11)`. Issue #11 fills that seam: a
+`GuideVideoPlayer` component, driven by a `useGuidePlayer(videoId)` hook, mounts
+YouTube's IFrame player at the seam, keyed to the guide's canonical `videoId`, as
+a **sibling above the always-rendered step list**. It **never gates, wraps, or
+disables the instructions** — the saved steps, completion, counter, and progress
+stay fully readable and interactive in every player state, offline included
+(FR-GU-06). The player runs a text status machine: `loading` (a polite
+"Loading video…" live region) → `ready` (the embedded player) → `error`. On
+`error` the WebView is torn down and the widened `GuidePlayerPlaceholder` renders
+the reason text mapped from the player's `onError` reason
+(`video_not_found`/`embed_not_allowed`/connectivity default), a "Try again", and
+the "Open in YouTube" link-out. **Seek (FR-GU-04):** a timestamped step's badge is
+a button that calls `useGuidePlayer.seekToMs(ms)`, which seeks
+`seekTo(videoOffsetMsToSeconds(ms), true)` — the pure, absolute
+`videoOffsetMsToSeconds(ms) = max(0, ms)/1000` conversion (e.g. `42000 → 42`) —
+**only when `ready`**; before ready, after error, or after unmount it is a guarded
+no-op, so the instructions are never blocked. **Lifecycle (NFR-10):** a
+mounted-flag ref suppresses any `onReady`/`onError`/seek callback after unmount and
+the player ref is nulled on teardown, so no stale callback or state update
+survives navigation. **Retry (AC #3):** `retry()` returns the machine to `loading`
+and bumps a remount key only — it reads and writes **no** repository, so recovery
+can never duplicate or mutate local guide data. No implementation scrapes or
+reverse-engineers YouTube media URLs — playback is purely the sanctioned IFrame
+embed of `videoId` (AC #5).
 
 ## 10. UI and interaction architecture
 
@@ -693,8 +713,10 @@ transcripts are **optional/manual** (no compliant provider exists); playback use
 the **YouTube IFrame Player API in a WebView**—not `expo-video`, which cannot
 compliantly play YouTube—with a link-out and offline saved-guide fallback; and no
 design depends on scraped media URLs or a client-embedded secret. Playback is
-implemented in #11, which adds `react-native-youtube-iframe`/`react-native-webview`
-at that time; URL parsing **and the oEmbed metadata path are implemented in #9**
+implemented in **#11**, which adds `react-native-youtube-iframe` `2.4.1` and
+`react-native-webview` `13.16.1` (autolinked, no config plugin) and fills the #10
+player seam with the `GuideVideoPlayer`/`useGuidePlayer` timestamp-seek surface;
+URL parsing **and the oEmbed metadata path are implemented in #9**
 (§9.1), which added **no dependency** — metadata uses the injected platform global
 `fetch` behind a `GuideMetadataGateway` contract. `expo-video` stays in the stack
 only for possible future non-YouTube media.
