@@ -28,7 +28,6 @@ appId: ${APP_ID}
 - tapOn: "Create guide"
 # Land on the working view for the new guide.
 - assertVisible: "Amigurumi Basics"
-- assertVisible: "Video plays in the YouTube app"
 
 # Author two steps in the editor, the second reached by scrolling, and reorder.
 - tapOn: "Edit guide"
@@ -50,8 +49,7 @@ appId: ${APP_ID}
 - tapOn: "Move step 2 up"
 - tapOn: "Back to guide"
 
-# The placeholder message AND the step list are both visible; complete a step.
-- assertVisible: "Video plays in the YouTube app"
+# The step list is usable regardless of the player state; complete a step.
 - assertVisible: "Single crochet 5"
 - tapOn: "Mark step 1 complete"
 - assertVisible: "Completed"

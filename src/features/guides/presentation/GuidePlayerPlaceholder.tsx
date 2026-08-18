@@ -7,22 +7,33 @@ import tokens from '@/ui/theme/tokens.json';
 
 type GuidePlayerPlaceholderProps = {
   sourceUrl: string;
+  /** Card header; defaults to the offline "plays in the YouTube app" copy. */
+  title?: string;
+  /** Body copy; defaults to the offline reassurance line. */
+  message?: string | undefined;
+  /** When present, render a "Try again" control that calls it (recovery, #11). */
+  onRetry?: () => void;
 };
 
+const DEFAULT_TITLE = 'Video plays in the YouTube app';
+const DEFAULT_MESSAGE =
+  'Your saved steps and progress below work without the video, even offline.';
+
 /**
- * The video region of the guide working view. In #10 there is no player yet, so
- * this always renders: a 16:9 card carrying the video-unavailable / offline
- * message and an "Open in YouTube" link-out (React Native `Linking`, no new
- * dependency, offline-tolerant). It is a **sibling above** the step list and
- * never wraps, gates, or disables it — the saved instructions below stay fully
- * readable and interactive in every state (FR-GU-06).
- *
- * TODO(#11): mount the react-native-youtube-iframe WebView player here.
- * It must remain a sibling above the step list and must never gate or disable it;
- * when the video is unavailable or offline it degrades back to this placeholder.
+ * The video region's text fallback. In #10 this was the only video surface; #11
+ * makes it the loading/offline/error fallback body of `GuideVideoPlayer`. It is a
+ * 16:9 card carrying a header, a message, and an "Open in YouTube" link-out
+ * (React Native `Linking`, no new dependency, offline-tolerant), and — when
+ * `onRetry` is supplied — a "Try again" control. It is a **sibling above** the
+ * step list and never wraps, gates, or disables it: the saved instructions below
+ * stay fully readable and interactive in every state, offline included
+ * (FR-GU-06).
  */
 export function GuidePlayerPlaceholder({
   sourceUrl,
+  title = DEFAULT_TITLE,
+  message = DEFAULT_MESSAGE,
+  onRetry,
 }: GuidePlayerPlaceholderProps) {
   return (
     <CraftCard accent="blue">
@@ -39,11 +50,19 @@ export function GuidePlayerPlaceholder({
         />
       </View>
       <Text accessibilityRole="header" className="text-heading text-ink">
-        Video plays in the YouTube app
+        {title}
       </Text>
-      <Text className="text-body text-ink">
-        Your saved steps and progress below work without the video, even offline.
-      </Text>
+      <Text className="text-body text-ink">{message}</Text>
+      {onRetry === undefined ? null : (
+        <CraftPressable
+          accessibilityHint="Reloads the video without changing your saved steps"
+          accessibilityLabel="Try again to load the video"
+          className="items-center self-start bg-yellow px-6 py-3"
+          onPress={onRetry}
+        >
+          <Text className="text-label text-ink">Try again</Text>
+        </CraftPressable>
+      )}
       <CraftPressable
         accessibilityHint="Opens this guide's video in YouTube"
         accessibilityLabel="Open in YouTube"

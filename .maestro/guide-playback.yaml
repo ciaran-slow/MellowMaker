@@ -1,0 +1,69 @@
+appId: ${APP_ID}
+---
+# Compliant YouTube playback fallback + timestamp seek surface (FR-GU-04/06,
+# NFR-10). Reuses guides.yaml's offline manual-import path to reach a saved
+# guide's working view, authors one timestamped step, then asserts that offline
+# the video degrades to the text fallback + "Open in YouTube" link-out while the
+# saved steps and counter stay fully interactive. The online IFrame render and
+# the real seek LANDING on the playing video need network + a real WebView and
+# are a manual/on-device check (see docs/runbooks/smoke-verification.md). Android
+# airplane mode mirrors dictionary.yaml; iOS airplane is a manual Control-Centre
+# step.
+- launchApp:
+    clearState: true
+- tapOn: "Guides"
+- assertVisible: "No guides yet"
+
+# Import a supported link manually while offline (metadata unavailable path).
+- tapOn: "Import from YouTube"
+- tapOn:
+    id: "guide-url-field"
+- inputText: "https://youtu.be/dQw4w9WgXcQ"
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - setAirplaneMode: enabled
+- tapOn: "Look up video"
+- assertVisible: "you can still create this guide"
+- tapOn:
+    id: "guide-title-field"
+- inputText: "Amigurumi Basics"
+- tapOn: "Create guide"
+- assertVisible: "Amigurumi Basics"
+
+# Author one timestamped step, then return to the working view.
+- tapOn: "Edit guide"
+- assertVisible: "Edit guide"
+- tapOn:
+    id: "guide-step-field"
+- inputText: "Chain 6"
+- tapOn:
+    id: "guide-step-timestamp-field"
+- inputText: "0:42"
+- tapOn: "Add step"
+- assertVisible: "Chain 6"
+- tapOn: "Back to guide"
+
+# Offline, the player degrades to the text fallback with the "Open in YouTube"
+# link-out; the saved steps below stay usable (never gated by playback).
+- assertVisible: "Open in YouTube"
+- assertVisible: "Chain 6"
+- assertVisible: "Video timestamp 0:42"
+
+# The saved step still completes and the counter still counts, playback aside.
+- tapOn: "Mark step 1 complete"
+- assertVisible: "Completed"
+- tapOn: "Increase Rows"
+- assertVisible: "Rows: 1"
+
+# Recovery: "Try again" reloads the player only and never disturbs saved data.
+- tapOn: "Try again to load the video"
+- assertVisible: "Chain 6"
+- assertVisible: "Completed"
+
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - setAirplaneMode: disabled

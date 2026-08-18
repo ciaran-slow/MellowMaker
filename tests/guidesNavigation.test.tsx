@@ -1,3 +1,4 @@
+import { act } from '@testing-library/react-native';
 import {
   fireEvent,
   renderRouter,
@@ -6,6 +7,12 @@ import {
 } from 'expo-router/testing-library';
 
 import { createAppDatabase } from '@/platform/database/createAppDatabase';
+
+import {
+  getLastYoutubeProps,
+  mockSeekTo,
+  youtubePlayerLiveCount,
+} from './support/youtubeIframeMock';
 
 const routes = 'src/app';
 
@@ -91,5 +98,76 @@ describe('guides navigation', () => {
     expect(
       database.repositories.guides.getGuideWithSteps(created.guide.id),
     ).toBeUndefined();
+  });
+
+  it('releases the WebView player on navigating away, even on the still-mounted replace fallback (NFR-10 / AC#4)', async () => {
+    const database = await createAppDatabase();
+    const created = database.repositories.guides.saveImportedGuide({
+      guide: {
+        videoId: 'dQw4w9WgXcQ',
+        sourceUrl: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
+        title: 'Amigurumi Basics',
+      },
+      steps: [{ instruction: 'Make a magic ring', origin: 'user' }],
+    });
+
+    // Landing straight on the working view means `canGoBack()` is false, so "Back
+    // to guides" takes the `replace('/guides')` fallback — which, in the flat
+    // bottom-tab navigator, leaves this view MOUNTED (only blurred). This is the
+    // exact path that a purely unmount-tied release would miss.
+    const result = renderRouter(routes, {
+      initialUrl: `/guides/${created.guide.id}`,
+    });
+    await result;
+
+    await screen.findByRole('header', { name: 'Amigurumi Basics' });
+
+    // The WebView player is live while focused; drive it ready so a stale seek
+    // would fire if the release did not run.
+    expect(youtubePlayerLiveCount()).toBeGreaterThan(0);
+    const readyBefore = getLastYoutubeProps()?.onReady;
+    await act(async () => {
+      readyBefore?.();
+    });
+
+    await fireEvent.press(screen.getByLabelText('Back to guides'));
+
+    // Navigating away releases the player: the WebView is torn down (no live
+    // instance) — regardless of whether the screen itself unmounted.
+    await waitFor(() => {
+      expect(youtubePlayerLiveCount()).toBe(0);
+    });
+    expect(result.getPathname()).not.toBe(`/guides/${created.guide.id}`);
+  });
+
+  it('suppresses a stale seek after navigating away (NFR-10)', async () => {
+    const database = await createAppDatabase();
+    const created = database.repositories.guides.saveImportedGuide({
+      guide: {
+        videoId: 'dQw4w9WgXcQ',
+        sourceUrl: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
+        title: 'Amigurumi Basics',
+      },
+      steps: [{ instruction: 'Make a magic ring', origin: 'user', videoOffsetMs: 42000 }],
+    });
+
+    const result = renderRouter(routes, {
+      initialUrl: `/guides/${created.guide.id}`,
+    });
+    await result;
+
+    await screen.findByRole('header', { name: 'Amigurumi Basics' });
+    await act(async () => {
+      getLastYoutubeProps()?.onReady?.();
+    });
+
+    await fireEvent.press(screen.getByLabelText('Back to guides'));
+    await waitFor(() => {
+      expect(youtubePlayerLiveCount()).toBe(0);
+    });
+
+    // A stale player callback fired after blur is a no-op, and no seek escapes.
+    expect(() => getLastYoutubeProps()?.onError?.('HTML5_error')).not.toThrow();
+    expect(mockSeekTo).not.toHaveBeenCalled();
   });
 });

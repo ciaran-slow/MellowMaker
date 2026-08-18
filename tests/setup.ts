@@ -4,12 +4,17 @@ import {
   createExpoSqliteModuleMock,
   resetExpoSqliteMock,
 } from './support/expoSqliteMock';
+import {
+  resetYoutubeIframeMock,
+  youtubeIframeMockModule,
+} from './support/youtubeIframeMock';
 
 // Jest hoists `jest.mock` above these imports, so the factories may only close
 // over `mock`-prefixed bindings. The factory bodies themselves run later, once a
 // test first requires the mocked module.
 const mockExpoSqliteModule = createExpoSqliteModuleMock;
 const mockRandomUUID = randomUUID;
+const mockYoutubeIframeModule = youtubeIframeMockModule;
 
 // Component and router tests run the real migrations and repositories against an
 // in-memory database, so gating and initialization failures are observable.
@@ -21,8 +26,14 @@ jest.mock('expo-crypto', () => ({
   randomUUID: () => mockRandomUUID(),
 }));
 
+// The compliant YouTube player renders a WebView-hosted IFrame that cannot run
+// in Jest. Every suite gets the shared stub; the guide playback/working-view
+// suites import its handles to drive readiness/errors and assert the seek unit.
+jest.mock('react-native-youtube-iframe', () => mockYoutubeIframeModule);
+
 afterEach(() => {
   resetExpoSqliteMock();
+  resetYoutubeIframeMock();
 });
 
 jest.mock('react-native-reanimated', () => {

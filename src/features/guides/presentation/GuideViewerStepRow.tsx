@@ -18,6 +18,12 @@ type GuideViewerStepRowProps = {
   note: string | undefined;
   onComplete(): void;
   onReopen(): void;
+  /**
+   * Seek the player to a step's saved offset (FR-GU-04). When provided and the
+   * step has a timestamp, the badge becomes a button; the player guards the call,
+   * so pressing it while playback is loading/errored is a safe no-op.
+   */
+  onSeek?: (videoOffsetMs: number) => void;
 };
 
 const STATUS_WORD: Record<StepView['status'], string> = {
@@ -39,13 +45,16 @@ const STATUS_PILL_CLASS: Record<StepView['status'], string> = {
  * depends on colour alone. The completion control is an accessible checkbox. A
  * saved timestamp renders as a badge, and the optional transcript excerpt and
  * maker note render as labelled lines. Unlike the pattern viewer there is **no
- * "Work on step N"** control (guides persist no active pointer) and tapping the
- * row or badge never seeks — the player is #11.
+ * "Work on step N"** control (guides persist no active pointer). A timestamped
+ * step's badge is a button that seeks the player to that offset (FR-GU-04) when
+ * an `onSeek` handler is supplied; the completion checkbox stays a separate
+ * control, so seek and completion never conflate.
  */
 export function GuideViewerStepRow({
   note,
   onComplete,
   onReopen,
+  onSeek,
   step,
   total,
   transcriptExcerpt,
@@ -106,7 +115,7 @@ export function GuideViewerStepRow({
             >
               {STATUS_WORD[step.status]}
             </Text>
-            {videoOffsetMs === undefined ? null : (
+            {videoOffsetMs === undefined ? null : onSeek === undefined ? (
               <View
                 accessibilityLabel={timestampBadgeLabel(videoOffsetMs)}
                 className="flex-row items-center gap-1 rounded-pill bg-background px-3 py-1"
@@ -121,6 +130,24 @@ export function GuideViewerStepRow({
                   {formatStepTimestamp(videoOffsetMs)}
                 </Text>
               </View>
+            ) : (
+              <CraftPressable
+                accessibilityHint="Seeks the video to this step"
+                accessibilityLabel={timestampBadgeLabel(videoOffsetMs)}
+                accessibilityRole="button"
+                className="flex-row items-center gap-1 rounded-pill bg-background px-3 py-1"
+                onPress={() => onSeek(videoOffsetMs)}
+              >
+                <MaterialCommunityIcons
+                  accessibilityElementsHidden
+                  color={tokens.colors.ink}
+                  name="clock-outline"
+                  size={tokens.typography.label.fontSize}
+                />
+                <Text className="text-label text-ink">
+                  {formatStepTimestamp(videoOffsetMs)}
+                </Text>
+              </CraftPressable>
             )}
           </View>
 
