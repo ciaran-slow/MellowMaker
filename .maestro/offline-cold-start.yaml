@@ -1,0 +1,104 @@
+appId: ${APP_ID}
+---
+# Cross-area airplane-mode cold start (AC1 / FR-DA-04 / NFR-01; release
+# acceptance 5). The existing airplane smoke (dictionary.yaml) is dictionary-only;
+# this walks dictionary -> pattern -> counter -> saved-guide text and proves an
+# acknowledged counter/checklist value survives a cold relaunch with no network.
+# `setAirplaneMode` exists only on Android, so the toggle is guarded and the flow
+# stays platform-neutral; the iOS airplane half is the documented manual step in
+# docs/architecture.md section 14. Fields are selected by testID; controls and
+# rows by their unique accessible names.
+- launchApp:
+    clearState: true
+
+# Build acknowledged local state while online: a pattern with two steps, one
+# completed step, and a counter bumped to a known value.
+- tapOn: "Patterns"
+- assertVisible: "No patterns yet"
+- tapOn: "Create your first pattern"
+- assertVisible: "New pattern"
+- tapOn:
+    id: "pattern-title-field"
+- inputText: "Offline Nest"
+- tapOn:
+    id: "pattern-step-field"
+- inputText: "Chain 20"
+- tapOn: "Add step"
+- tapOn:
+    id: "pattern-step-field"
+- inputText: "Single crochet across"
+- tapOn: "Add step"
+- tapOn: "Create pattern"
+
+# The viewer mounts with the counter at 0. Bump it to 2 and complete step 1 —
+# both are single absolute autocommitted writes (architecture section 11).
+- assertVisible: "Offline Nest"
+- assertVisible: "Rows: 0"
+- tapOn: "Increase Rows"
+- tapOn: "Increase Rows"
+- assertVisible: "Rows: 2"
+- tapOn: "Mark step 1 complete"
+- assertVisible: "1 of 2 steps done"
+
+# Save a guide's text. The live oEmbed success path can't be asserted
+# deterministically, so this forces the metadata-unavailable manual path with
+# Android airplane mode (mirroring guides.yaml) and authors one readable step.
+- tapOn: "Guides"
+- tapOn: "Import from YouTube"
+- tapOn:
+    id: "guide-url-field"
+- inputText: "https://youtu.be/dQw4w9WgXcQ"
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - setAirplaneMode: enabled
+- tapOn: "Look up video"
+- assertVisible: "you can still create this guide"
+- tapOn:
+    id: "guide-title-field"
+- inputText: "Amigurumi Basics"
+- tapOn: "Create guide"
+- assertVisible: "Amigurumi Basics"
+- tapOn: "Edit guide"
+- assertVisible: "Edit guide"
+- tapOn:
+    id: "guide-step-field"
+- inputText: "Make a magic ring"
+- tapOn: "Add step"
+- assertVisible: "Make a magic ring"
+- tapOn: "Back to guide"
+
+# Cold relaunch, still offline, with the existing data (release acceptance 5 +
+# FR-DA-04). On Android airplane mode is already enabled from the import above.
+- launchApp:
+    clearState: false
+
+# Dictionary reads from local storage offline.
+- tapOn: "Stitches"
+- assertVisible: "Single crochet, sc, Beginner"
+- tapOn:
+    id: "stitch-search-field"
+- inputText: "  DC  "
+- assertVisible: "Double crochet, dc, Beginner"
+- eraseText
+
+# The pattern, its completed step, and the exact counter value survived the
+# termination (NFR-02): the counter shows 2, not 0.
+- tapOn: "Patterns"
+- assertVisible: "Offline Nest"
+- tapOn: "Offline Nest"
+- assertVisible: "Rows: 2"
+- assertVisible: "1 of 2 steps done"
+
+# The saved guide's authored step is readable offline.
+- tapOn: "Guides"
+- assertVisible: "Amigurumi Basics"
+- tapOn: "Amigurumi Basics"
+- assertVisible: "Make a magic ring"
+
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - setAirplaneMode: disabled
