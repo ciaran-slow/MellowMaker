@@ -332,6 +332,8 @@ PRD0 has no account or cloud synchronization requirement. SQLite is authoritativ
 
 An import should stage and validate remote data before committing it locally. A failed refresh must leave the last saved guide usable. PRD0 does not download YouTube media for offline playback.
 
+The offline-first core is a **test-enforced boundary** (issue #12). Cold start, the bundled seed, and every core read/write path — dictionary, patterns, step progress, counters, and saved-guide text — reference no network gateway or `fetch`. This is pinned by `tests/offlineColdStart.test.tsx`: a behavioural airplane-mode cold start that runs the real migrations plus a populated baseline and exercises each core flow with the global `fetch` stubbed to throw, asserting it is never called, and a static import guard asserting the enumerated core modules match no network token while the two allowlisted feature files (`useGuideImport`, `useGuideEditor`) do. The guard complements the layer lint (`scripts/check-architecture-boundaries.js`): the lint stops `src/data`/`src/domain` importing `src/platform`, but feature presentation may legitimately import the metadata gateway, so the guard is what pins the *feature* core paths. This issue resolves no new open architectural decision — the migration-failure contract (visible, non-destructive, retry-only, never resets or wipes) is already recorded in sections 7.5 and 12.
+
 ## 9. YouTube integration
 
 The importer has three separate responsibilities:
