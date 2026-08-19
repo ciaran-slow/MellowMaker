@@ -135,7 +135,11 @@ probes in the branch.
 
 Restore and clean **only** with git, scoped to the current worktree:
 `git checkout -- <path>` / `git restore <path>` to revert probes, and
-`git clean` only against `git status`-listed paths. **Never `rm -rf` an absolute
+`git clean` only against `git status`-listed paths. This is safe here precisely
+because you probe the **committed PR head**: `git checkout -- <path>` restores
+to that commit, never to the default branch. (A build mutating its own
+still-uncommitted work must commit first, or the same command would wipe it —
+that trap does not apply to you, since the PR content is already committed.) **Never `rm -rf` an absolute
 path outside your worktree, and never delete `node_modules`** — under the repo's
 worktree setup it is a symlink to the shared install, so removing it from any
 worktree destroys every checkout's dependencies. When in doubt, revert by path
