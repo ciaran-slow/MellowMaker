@@ -635,7 +635,13 @@ Use user-actionable states rather than raw exceptions:
 - corrupted or incomplete provider response;
 - media playback failure.
 
-Log technical context in development without recording pattern text, notes, transcript content, or other maker-created data unnecessarily. Production telemetry is not part of PRD0 unless introduced by a separate decision.
+Log technical context in development without recording pattern text, notes, transcript content, or other maker-created data unnecessarily.
+
+**Telemetry (PRD0 decision 7 — resolved, issue #13).** PRD0 ships **no analytics, crash reporting, or telemetry**; no maker-created content or usage data leaves the device (NFR-13). Introducing any such SDK is a future deliberate decision that carries its own privacy disclosure. This is enforced, not merely stated: `tests/analyticsAbsent.test.ts` denylists analytics/crash dependencies and Expo plugins (with a planted-dependency non-tautology arm), and `tests/secretsAudit.test.ts` walks the committed trees for any credential/telemetry DSN. The no-egress guarantee for core content is proven by the #12 offline suite (`tests/offlineColdStart.test.tsx`), and `tests/youtubeOembedGateway.test.ts` pins that the single sanctioned network call is a pure function of the public 11-character video id, carrying no maker content.
+
+**Logging hygiene (NFR-12).** Production source under `src/` uses **no direct `console.*`** call. Any future diagnostic logging must go through a code/context-only seam that records error codes, ids, and versions — never pattern text, notes, transcript excerpts, or other maker content — mirroring the `DatabaseError` stance (§7.6). `tests/loggingHygiene.test.ts` walks `src/` and enforces the no-`console.*` invariant (with a synthetic-offender non-tautology arm).
+
+**Untrusted provider content (FR-GU-07).** Remote oEmbed title/creator/thumbnail/author-url fields are display-only untrusted data. `mapOembedResponse` (architecture §9.1) hardens them at the platform boundary (issue #13): `title`/`creator` are kept **verbatim** only within `MAX_METADATA_TEXT_LENGTH` (500) and otherwise coerced to `undefined` (not truncated — a partial hostile string still misleads); `thumbnailUrl`/`creatorUrl` are kept only when they parse as absolute `http(s)` URLs, so a `javascript:`/`data:`/relative value can never reach an `<Image>` or a link-out. Free text is never stripped/escaped at the boundary because React Native `<Text>` renders it literally, never as markup; `tests/guideRemoteContentSafeRender.test.tsx` pins that a hostile title renders as inert literal text and nothing executes.
 
 ## 13. Build and configuration
 
@@ -742,7 +748,13 @@ URL parsing **and the oEmbed metadata path are implemented in #9**
 `fetch` behind a `GuideMetadataGateway` contract. `expo-video` stays in the stack
 only for possible future non-YouTube media.
 
-The remaining decision is:
-- analytics, crash reporting, and privacy policy.
+The analytics/crash-reporting/telemetry question is resolved: issue #13 confirmed
+**no analytics, crash reporting, or telemetry in PRD0** (PRD0 decision 7) — nothing
+leaves the device (NFR-13). The stance and its enforcing guards are recorded in
+§12. Adopting any such SDK could only reopen this as a deliberate post-PRD0
+decision carrying its own privacy disclosure.
 
-An open decision must not be resolved by quietly adding a dependency. Update this document when the repository adopts the answer.
+The only remaining PRD0 decision is the minimum supported iOS/Android versions
+for the first EAS release (PRD0 decision 8), which belongs to the EAS/release
+issue (#16). An open decision must not be resolved by quietly adding a
+dependency. Update this document when the repository adopts any future answer.

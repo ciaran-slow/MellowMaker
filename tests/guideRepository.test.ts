@@ -295,6 +295,40 @@ describe('GuideRepository additions', () => {
     });
   });
 
+  describe('untrusted title round-trips without local corruption (issue #13, AC1)', () => {
+    it('stores and reads a SQL-injection-style title byte-identical, table intact', () => {
+      // A payload that would matter to a naive string-built query. Repositories
+      // parameterize SQL (NFR-15), so it must round-trip as data, never execute.
+      const injection = "Robert'); DROP TABLE imported_guide;--";
+      const saved = guides.saveImportedGuide(
+        baseGuide('dQw4w9WgXcQ', injection),
+      );
+
+      // Byte-identical read back through both accessors.
+      expect(guides.getGuideWithSteps(saved.guide.id)?.guide.title).toBe(
+        injection,
+      );
+      expect(guides.findGuideByVideoId('dQw4w9WgXcQ')?.guide.title).toBe(
+        injection,
+      );
+
+      // The table survives: a second, distinct guide still saves and lists,
+      // proving `DROP TABLE` was inert data, not executed DDL.
+      const second = guides.saveImportedGuide(
+        baseGuide('bbbbbbbbbbb', '<script>alert(1)</script>'),
+      );
+      const listed = guides.listGuides();
+      expect(listed.map((guide) => guide.id)).toStrictEqual([
+        second.guide.id,
+        saved.guide.id,
+      ]);
+      // The markup title also round-trips verbatim (no strip/escape at the DB).
+      expect(guides.getGuideWithSteps(second.guide.id)?.guide.title).toBe(
+        '<script>alert(1)</script>',
+      );
+    });
+  });
+
   describe('dedup on canonical video id', () => {
     it('finds an existing guide and refuses a second create for the same video', () => {
       const saved = guides.saveImportedGuide(baseGuide('dQw4w9WgXcQ', 'First'));
