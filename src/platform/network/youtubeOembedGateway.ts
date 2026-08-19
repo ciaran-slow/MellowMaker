@@ -22,15 +22,63 @@ export interface YoutubeOembedGatewayDeps {
 
 const DEFAULT_TIMEOUT_MS = 10_000;
 
-function readString(value: unknown): string | undefined {
-  return typeof value === 'string' ? value : undefined;
+/**
+ * Upper bound on displayed free-text provider fields (`title`/`creator`). A field
+ * longer than this is treated as a hostile payload, not display data, and is
+ * coerced to `undefined` (issue #13). It is deliberately NOT truncated — a
+ * truncated hostile string is still hostile, and a partial title misleads the
+ * maker about what they imported.
+ */
+export const MAX_METADATA_TEXT_LENGTH = 500;
+
+/**
+ * Free text kept verbatim when it is a string within the length bound, else
+ * `undefined`. The value is NOT sanitized/stripped: React Native `<Text>` renders
+ * it literally (never as markup), and stripping `<`/`>` would corrupt legitimate
+ * titles. The only defense the boundary owes is a length bound (issue #13).
+ */
+function readBoundedString(value: unknown): string | undefined {
+  return typeof value === 'string' && value.length <= MAX_METADATA_TEXT_LENGTH
+    ? value
+    : undefined;
 }
 
 /**
- * Maps a raw oEmbed body into the owned metadata type. Only the four safe string
- * fields are read; each is kept only when it is actually a string, else left
- * `undefined`. The provider `html`/`width`/`height` embed snippet is ignored and
- * never returned, so provider markup can never be surfaced or rendered (FR-GU-07
+ * A provider-supplied URL kept only when it is a string that parses as an
+ * absolute URL whose scheme is exactly `http:` or `https:`. Everything else —
+ * `javascript:`, `data:`, `file:`, `blob:`, relative, or unparseable — coerces to
+ * `undefined`, so no unsafe URI can reach an `<Image>`/`Linking.openURL` sink
+ * (issue #13, FR-GU-07 boundary; NFR-12).
+ */
+function readHttpUrl(value: unknown): string | undefined {
+  if (typeof value !== 'string') {
+    return undefined;
+  }
+
+  let parsed: URL;
+  try {
+    parsed = new URL(value);
+  } catch {
+    return undefined;
+  }
+
+  return parsed.protocol === 'http:' || parsed.protocol === 'https:'
+    ? value
+    : undefined;
+}
+
+/**
+ * Maps a raw oEmbed body into the owned metadata type. Only the four safe fields
+ * are read, each hardened at this boundary (issue #13):
+ *
+ * - `title`/`creator` are kept verbatim only when a string within
+ *   `MAX_METADATA_TEXT_LENGTH`; oversized/non-string values coerce to `undefined`.
+ * - `creatorUrl`/`thumbnailUrl` are kept only when they parse as absolute
+ *   `http(s)` URLs; a `javascript:`/`data:`/relative/garbage value coerces to
+ *   `undefined` so it can never reach an `<Image>` or link-out.
+ *
+ * The provider `html`/`width`/`height` embed snippet is ignored and never
+ * returned, so provider markup can never be surfaced or rendered (FR-GU-07
  * boundary; NFR-12), and no transcript field exists to claim (FR-YT-08). Exported
  * for direct unit testing.
  */
@@ -41,10 +89,10 @@ export function mapOembedResponse(body: unknown): GuideMetadata {
       : {};
 
   return {
-    title: readString(source.title),
-    creator: readString(source.author_name),
-    creatorUrl: readString(source.author_url),
-    thumbnailUrl: readString(source.thumbnail_url),
+    title: readBoundedString(source.title),
+    creator: readBoundedString(source.author_name),
+    creatorUrl: readHttpUrl(source.author_url),
+    thumbnailUrl: readHttpUrl(source.thumbnail_url),
   };
 }
 

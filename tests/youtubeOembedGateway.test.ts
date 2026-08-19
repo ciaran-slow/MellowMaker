@@ -1,6 +1,7 @@
 import {
   createYoutubeOembedGateway,
   mapOembedResponse,
+  MAX_METADATA_TEXT_LENGTH,
 } from '@/platform/network/youtubeOembedGateway';
 
 /** Builds a fake `fetch` returning one canned response, capturing the request. */
@@ -64,6 +65,63 @@ describe('mapOembedResponse', () => {
       thumbnailUrl: undefined,
     });
   });
+
+  // Issue #13 (AC1 / FR-GU-07 / NFR-12): the boundary mapper hardening. Fixtures
+  // are hostile literals pinned to exact expected values, not derived from the
+  // mapper, so an off-by-one bound or a dropped scheme-check goes red here.
+  describe('hardening: hostile / oversized / unsafe payloads', () => {
+    it('keeps a markup-laden title VERBATIM as a plain string (no strip, no escape)', () => {
+      const hostile = '<script>alert(1)</script>';
+      const metadata = mapOembedResponse({ title: hostile });
+
+      // The exact bytes survive — proving the boundary neither corrupts nor
+      // sanitizes free text; it is `<Text>` at the render layer that keeps it
+      // literal (see guideRemoteContentSafeRender.test.tsx).
+      expect(metadata.title).toBe(hostile);
+    });
+
+    it('coerces an over-length title/creator to undefined but keeps the boundary length', () => {
+      const atBound = 'a'.repeat(MAX_METADATA_TEXT_LENGTH);
+      const overBound = 'a'.repeat(MAX_METADATA_TEXT_LENGTH + 1);
+
+      expect(mapOembedResponse({ title: atBound }).title).toBe(atBound);
+      expect(mapOembedResponse({ title: overBound }).title).toBeUndefined();
+      expect(
+        mapOembedResponse({ author_name: overBound }).creator,
+      ).toBeUndefined();
+      expect(mapOembedResponse({ author_name: atBound }).creator).toBe(atBound);
+    });
+
+    it('rejects a non-http(s) or unparseable thumbnail_url to undefined', () => {
+      expect(
+        mapOembedResponse({ thumbnail_url: 'javascript:alert(1)' }).thumbnailUrl,
+      ).toBeUndefined();
+      expect(
+        mapOembedResponse({
+          thumbnail_url: 'data:text/html;base64,PHNjcmlwdD4=',
+        }).thumbnailUrl,
+      ).toBeUndefined();
+      expect(
+        mapOembedResponse({ thumbnail_url: '/relative.jpg' }).thumbnailUrl,
+      ).toBeUndefined();
+      expect(
+        mapOembedResponse({ thumbnail_url: 'not a url' }).thumbnailUrl,
+      ).toBeUndefined();
+      expect(
+        mapOembedResponse({ thumbnail_url: 'https://i.ytimg.com/x.jpg' })
+          .thumbnailUrl,
+      ).toBe('https://i.ytimg.com/x.jpg');
+    });
+
+    it('rejects a non-http(s) author_url to undefined and keeps a valid one', () => {
+      expect(
+        mapOembedResponse({ author_url: 'javascript:void(0)' }).creatorUrl,
+      ).toBeUndefined();
+      expect(
+        mapOembedResponse({ author_url: 'http://youtube.com/@x' }).creatorUrl,
+      ).toBe('http://youtube.com/@x');
+    });
+  });
 });
 
 describe('createYoutubeOembedGateway.fetchMetadata', () => {
@@ -87,6 +145,26 @@ describe('createYoutubeOembedGateway.fetchMetadata', () => {
     });
     expect(calls[0]).toContain('https://www.youtube.com/oembed?url=');
     expect(calls[0]).toContain(encodeURIComponent('watch?v=dQw4w9WgXcQ'));
+  });
+
+  // Issue #13 (AC3 / NFR-13): the sole sanctioned network call is a pure function
+  // of the PUBLIC 11-char video id and carries no maker content. #12's offline
+  // suite proves core reads/writes never touch the network; this pins that the
+  // one request that does exist leaks nothing. Falsifier: a mutation that
+  // appended a title/notes param, or sent anything but the id, changes this URL.
+  it('requests only a URL derived from the public video id, carrying no maker content', async () => {
+    const { fetchFn, calls } = stubFetch({ status: 200, json: async () => OK_BODY });
+    const gateway = createYoutubeOembedGateway({ fetchFn });
+
+    await gateway.fetchMetadata('dQw4w9WgXcQ');
+
+    const expectedUrl =
+      'https://www.youtube.com/oembed?url=' +
+      encodeURIComponent('https://www.youtube.com/watch?v=dQw4w9WgXcQ') +
+      '&format=json';
+    expect(calls).toHaveLength(1);
+    expect(calls[0]).toBe(expectedUrl);
+    expect(calls[0]).toContain('dQw4w9WgXcQ');
   });
 
   it('reports not-found for a 404 (private / removed video)', async () => {

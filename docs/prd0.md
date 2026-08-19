@@ -272,7 +272,12 @@ These decisions should be resolved in the issue that first implements them:
    and offline saved-guide fallback. `expo-video` is retained only for possible
    future non-YouTube media. See §5, FR-GU-04, `docs/vision.md`, and
    `docs/architecture.md` §9.
-7. Whether analytics or crash reporting is appropriate and what privacy disclosure it requires.
+7. ~~Whether analytics or crash reporting is appropriate and what privacy
+   disclosure it requires.~~ Resolved (issue #13): **no analytics, crash
+   reporting, or telemetry in PRD0** — nothing leaves the device (NFR-13).
+   Enforced by `tests/analyticsAbsent.test.ts` (dependency/plugin denylist) and
+   the #12 offline no-egress suite. Any future adoption requires a separate
+   decision with its own privacy disclosure. See `docs/architecture.md` §12.
 8. Minimum supported iOS and Android versions for the first EAS release.
 
 ## 14. Traceability to the vision
