@@ -161,7 +161,9 @@ ordering and numeric/time boundaries.
 **Mutation self-check on contract guards.** For each conditional guard you write
 to satisfy a plan-stated "only / never / exactly / does not" contract (for
 example an `if (stepId === currentBefore)` that suppresses an action), before
-opening the PR: temporarily invert or delete that guard, run the suite, and
+opening the PR — and **after committing the implementation and its tests**
+(§9), never while they are still uncommitted — temporarily invert or delete that
+guard, run the suite, and
 confirm a test goes **red for the right reason** (the assertion that
 pins the contract, not an unrelated failure). Require that **every** test whose
 name or description asserts the guarded contract goes red under the mutation —
@@ -173,8 +175,13 @@ or not the release fired. Such a contract must be pinned by asserting the
 release **observably happened** (a teardown spy fired, or a live-instance/mount
 count returned to zero). Then restore the guard, confirm
 the suite is green, and confirm `git status`/`git diff` show the working tree
-clean. Restore the mutation with `git checkout -- <path>` / `git restore` — do
-NOT `rm -rf` an absolute path outside your worktree, and never delete
+clean. Restore the mutation with `git checkout -- <path>` / `git restore`, which
+returns the file to your **committed** implementation. This is exactly why the
+implementation must be committed first: on **uncommitted** work,
+`git checkout -- <path>` reverts the **entire file to `HEAD` (the default
+branch)** and destroys the very work under test — commit (or `git stash` and
+restore) before mutating so the restore lands on your intended work, not on
+`HEAD`. Do NOT `rm -rf` an absolute path outside your worktree, and never delete
 `node_modules` (it is a symlink to the shared install; removing it from any
 worktree breaks every checkout). If nothing goes red, the contract is
 unfalsified — add the missing negative-branch test before continuing. For an
