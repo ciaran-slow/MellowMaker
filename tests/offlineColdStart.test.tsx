@@ -196,32 +196,63 @@ describe('static core-network boundary guard', () => {
     });
   }
 
+  const guidePresentationDir = path.join(
+    repoRoot,
+    'src/features/guides/presentation',
+  );
+
+  // The two feature files that legitimately reach the network gateway (import
+  // and metadata refresh). Excluded from the core scan, but separately asserted
+  // to DO reference the gateway so the guard cannot pass vacuously.
+  const allowlistedGatewayConsumers: readonly string[] = [
+    'useGuideImport.ts',
+    'useGuideEditor.ts',
+  ].map((name) => path.join(guidePresentationDir, name));
+
+  // Issue #11 WebView/IFrame playback seam — live video, not a core saved-data
+  // read/write, so it is outside the offline core boundary.
+  const guidePlayerSeam: readonly string[] = [
+    'GuideVideoPlayer.tsx',
+    'GuidePlayerPlaceholder.tsx',
+    'useGuidePlayer.ts',
+    'guidePlayback.ts',
+  ].map((name) => path.join(guidePresentationDir, name));
+
+  // Every OTHER guide-presentation file is a core saved-data path. Discover them
+  // by WALKING the directory (not a hand-list) so a newly-added file joins the
+  // scan by default — a file wired to the network can never silently escape the
+  // guard just by being added.
+  const guideCoreModules = walk(guidePresentationDir).filter(
+    (file) =>
+      !allowlistedGatewayConsumers.includes(file) &&
+      !guidePlayerSeam.includes(file),
+  );
+
   // Every core module: all of the data/domain layers, the whole dictionary and
-  // pattern presentation surfaces, and the saved-guide read/working-view surface
-  // (the player seam is #11 and is not a core saved-data path).
+  // pattern presentation surfaces, and the walked saved-guide surface.
   const coreModules: readonly string[] = [
     ...walk(path.join(repoRoot, 'src/data')),
     ...walk(path.join(repoRoot, 'src/domain')),
     ...walk(path.join(repoRoot, 'src/features/dictionary/presentation')),
     ...walk(path.join(repoRoot, 'src/features/patterns/presentation')),
-    'src/features/guides/presentation/useGuideLibrary.ts',
-    'src/features/guides/presentation/useGuideViewer.ts',
-    'src/features/guides/presentation/GuidesScreen.tsx',
-    'src/features/guides/presentation/GuideListRow.tsx',
-    'src/features/guides/presentation/GuideWorkingViewScreen.tsx',
-    'src/features/guides/presentation/GuideViewerStepRow.tsx',
-  ]
-    .map((entry) => (path.isAbsolute(entry) ? entry : path.join(repoRoot, entry)))
-    .filter((entry) => !GUARD_EXCLUSIONS.includes(entry));
-
-  const allowlistedGatewayConsumers: readonly string[] = [
-    'src/features/guides/presentation/useGuideImport.ts',
-    'src/features/guides/presentation/useGuideEditor.ts',
-  ].map((entry) => path.join(repoRoot, entry));
+    ...guideCoreModules,
+  ].filter((entry) => !GUARD_EXCLUSIONS.includes(entry));
 
   it('scans a non-trivial set of core modules', () => {
     // A regression that emptied the walk would make the guard vacuously pass.
     expect(coreModules.length).toBeGreaterThan(20);
+  });
+
+  it('keeps the guide-seam exclusions live (no stale/renamed entry)', () => {
+    // The scan defaults to network-free, so a file is only skipped by being on
+    // an explicit exclusion list. If a seam/allowlist file is renamed, its stale
+    // entry must surface here rather than silently exempting the new path.
+    const present = new Set(walk(guidePresentationDir));
+    const stale = [...allowlistedGatewayConsumers, ...guidePlayerSeam].filter(
+      (file) => !present.has(file),
+    );
+
+    expect(stale).toStrictEqual([]);
   });
 
   it('references no network seam from any core module', () => {
