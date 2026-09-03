@@ -71,9 +71,10 @@ PRD0 includes:
 1. The maker pastes a supported YouTube URL.
 2. MellowMaker validates it and retrieves available title, thumbnail, and creator metadata.
 3. The maker reviews and edits the guide details.
-4. They create or refine ordered instructions with timestamps and optional transcript excerpts or notes.
+4. They create or refine ordered instructions with timestamps and optional transcript excerpts or notes — typing them, or pasting the video's own chapter list or transcript text and confirming the draft steps it produces.
 5. They save the guide and follow it beside the embedded video.
 6. Later, without connectivity, they can still read the saved guide and see their progress; video playback clearly reports that a connection may be required.
+7. When they want to work the tutorial as a project of their own, they save the guide as a pattern in their library, keeping the source video link in its notes.
 
 ## 7. Functional requirements
 
@@ -100,6 +101,7 @@ Seed updates must not overwrite maker-created data.
 - **FR-PA-05:** Pattern and step changes shall persist locally without network access.
 - **FR-PA-06:** The library shall provide a clear empty state that leads to pattern creation.
 - **FR-PA-07:** The library shall use one consistent initial organization method. Tags, folders, and advanced filtering are not all required for PRD0.
+- **FR-PA-08:** A maker shall be able to save an imported guide as a pattern. The conversion is a one-time snapshot of the guide's steps in order with the source video link recorded in the pattern's notes; the resulting pattern shall be independent of the guide, and deleting the guide shall not alter or remove it. (Resolved by decision 9; see `docs/architecture.md` §9.3 and issue #51.)
 
 ### 7.3 Interactive pattern viewer
 
@@ -144,6 +146,7 @@ Seed updates must not overwrite maker-created data.
 - **FR-GU-06:** Video-unavailable and offline states shall preserve access to saved instructions and progress.
 - **FR-GU-07:** Remote titles, creator names, and transcript text shall be treated as display-only untrusted content.
 - **FR-GU-08:** Automatically generated breakdowns are optional for PRD0. Manual timestamped authoring is the required fallback.
+- **FR-GU-09:** A maker shall be able to paste text they copied out of YouTube — the video's description chapter list, or its transcript panel — into the app and have it turned into a reviewable draft of timestamped steps that are written only on explicit confirmation. The app shall not fetch that text itself, shall keep only the text that becomes a step, and shall never persist the raw paste. (Resolved by decision 9; see `docs/architecture.md` §9.2 and issue #50.)
 
 ### 7.7 Local data and startup
 
@@ -232,8 +235,24 @@ PRD0 is releasable when all of the following are demonstrated:
 - Offline YouTube video downloading
 - Guaranteed automatic transcript extraction for every video
 - Fully automatic generation of a correct crochet pattern from a video
+- Model-assisted (LLM) cleanup of guide steps, in any shape — deferred by decision 9 with no backend in this cycle
 - General-purpose web administration or backend services
 - Crafts other than crochet
+
+Decision 9 (issue #45) leaves the two transcript/pattern non-goals above **fully
+intact**, and they are restated here deliberately rather than softened:
+
+- **"Guaranteed automatic transcript extraction for every video" remains out of
+  scope.** FR-GU-09 adds no extraction at all. The app fetches no transcript,
+  caption, chapter, or description text; it only accepts what the maker has
+  already copied out of YouTube themselves. Nothing is guaranteed for any video —
+  a video with no chapters and no transcript panel yields nothing to paste, and
+  manual timestamped authoring stays the required fallback (FR-GU-08).
+- **"Fully automatic generation of a correct crochet pattern from a video" remains
+  out of scope.** FR-GU-09 produces a *draft* the maker reviews and explicitly
+  confirms, and FR-PA-08 copies steps the maker already has; neither generates a
+  pattern, and neither claims correctness. The model-assisted cleanup that would
+  aim at automatic generation is the deferred item added above.
 
 ## 13. Product decisions still required
 
@@ -279,6 +298,23 @@ These decisions should be resolved in the issue that first implements them:
    the #12 offline no-egress suite. Any future adoption requires a separate
    decision with its own privacy disclosure. See `docs/architecture.md` §12.
 8. Minimum supported iOS and Android versions for the first EAS release.
+9. ~~How an imported YouTube guide becomes usable making instructions and a
+   pattern.~~ Resolved (issue #45): the app **accepts text the maker pastes** out
+   of YouTube and derives timestamped steps from it — **description chapters as
+   the primary source, transcript cues as the fallback, behind one auto-detecting
+   paste field** — storing only the text that becomes a step and never the raw
+   paste; **the app still fetches nothing and nothing leaves the device**
+   (NFR-13). A guide converts to a pattern as a **notes-only snapshot**: the steps
+   are copied in order, the source link is recorded in `pattern.notes`, there is
+   **no** foreign key and **no** migration, and deleting the guide leaves the
+   pattern untouched. **Model-assisted (LLM) cleanup is deferred with no backend
+   in this cycle** — a client-held provider key is barred outright by NFR-11/13,
+   and a backend would require a vision/PRD revision, a privacy policy, Apple
+   5.1.2(i) consent, a Play data-safety declaration, and an ongoing bill; if ever
+   revisited it must be on-device only, as its own post-PRD0 decision. Implemented
+   by **#50** (paste → guide steps) and **#51** (save as pattern); neither adds a
+   dependency and `LATEST_SCHEMA_VERSION` stays `1`. See FR-GU-09, FR-PA-08, §12,
+   and `docs/architecture.md` §9.2–9.3.
 
 ## 14. Traceability to the vision
 
@@ -288,6 +324,6 @@ These decisions should be resolved in the issue that first implements them:
 | Target audience | Section 3 |
 | Stitch dictionary | Journey A and Section 7.1 |
 | Pattern library and viewer | Journey B and Sections 7.2–7.4 |
-| YouTube guide importer | Journey C and Sections 7.5–7.6 |
+| YouTube guide importer | Journey C and Sections 7.5–7.6, plus FR-PA-08 in Section 7.2 for saving a guide as a pattern |
 | Playful Craft design system | Sections 8 and 9 |
 | Technical stack and deployment | Sections 10 and 11 |

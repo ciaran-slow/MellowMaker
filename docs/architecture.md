@@ -336,11 +336,12 @@ The offline-first core is a **test-enforced boundary** (issue #12). Cold start, 
 
 ## 9. YouTube integration
 
-The importer has three separate responsibilities:
+The importer has four separate responsibilities:
 
 1. **URL parsing:** Normalize supported YouTube URL forms into a canonical video identifier.
 2. **Enrichment:** Fetch available title, thumbnail, creator, and transcript-related data through a provider adapter.
 3. **Guide authoring:** Let the maker create or edit timestamped steps and instruction text regardless of transcript availability.
+4. **Step derivation from maker-pasted text:** Turn text the *maker* copied out of YouTube — a description chapter list, or transcript-panel cues — into a reviewable draft of timestamped steps the maker confirms. The app never fetches this text (§9.2).
 
 Automatic transcript extraction or structured breakdown is optional when no compliant, reliable provider is available; manual timestamped guide creation is the required fallback. Provider credentials must never be embedded in the client bundle. Introducing a server-side credential proxy is a separate architectural decision, not an implicit part of the mobile app.
 
@@ -419,7 +420,11 @@ captions, and popular "transcript API" libraries scrape YouTube's internal
 `timedtext` endpoint (non-compliant and brittle). Transcript support therefore
 ships as an **optional manual field**—a maker-entered excerpt or note per step—and
 the app never claims a transcript exists when none was provided. This is the only
-PRD0 path; no scraping dependency is added.
+PRD0 path; no scraping dependency is added. Issue #45 later widened how that field
+is *populated*—the maker may paste text they copied out of YouTube themselves
+instead of retyping it (§9.2)—but it did **not** widen what the app retrieves:
+this "no compliant source, the app fetches nothing" finding is unchanged and
+still governs.
 
 **Playback — YouTube IFrame Player API in a WebView (FR-GU-04, FR-GU-06).**
 Recorded blocking evidence for AC #4: `expo-video` plays a `VideoSource` pointing
@@ -485,6 +490,150 @@ and bumps a remount key only — it reads and writes **no** repository, so recov
 can never duplicate or mutate local guide data. No implementation scrapes or
 reverse-engineers YouTube media URLs — playback is purely the sanctioned IFrame
 embed of `videoId` (AC #5).
+
+### 9.2 Guide steps from maker-pasted text — resolved (issue #45)
+
+Issue #45 resolved how a YouTube guide becomes usable steps. Before it, a guide
+was a video identity plus hand-typed steps: `useGuideImport.createGuide` calls
+`guides.saveImportedGuide({ guide, steps: [] })` — literally an empty array — so
+`docs/vision.md` §3C's "structured breakdown" had no implementation. The approved
+model is **step derivation from text the maker pastes**, implemented in **#50**.
+
+**The app fetches nothing.** §9.1's constraint is unchanged and absolute: the only
+sanctioned network call remains the key-free oEmbed lookup. Transcripts, captions,
+chapters, and descriptions are never retrieved by MellowMaker — no API, no
+scraping, no `timedtext`. What changes is only that the app will *accept* such
+text when **the maker** selects it in YouTube's own UI, on a page they are
+lawfully viewing, and pastes it into their own local guide. The app performs no
+access, no automation, and no reproduction of its own, and the text never leaves
+the device (NFR-13). This is materially the same content FR-GU-03 already lets a
+maker type by hand; accepting a paste changes the ergonomics, not what is stored.
+
+**Description chapters are the primary source; transcript cues are the fallback.**
+Both are accepted behind **one auto-detecting paste field** — the maker is never
+asked to choose a mode. Two research findings drive that ordering:
+
+- A caption transcript is **not a step list**. YouTube's "Show transcript" panel
+  emits caption *cues* of roughly 2–6 seconds, split mid-phrase; a 20-minute
+  tutorial yields on the order of 300–600 of them. Emitting one step per cue
+  would produce hundreds of fragments — worse than the empty list, and a breach
+  of NFR-09's bounded lists. Cues must therefore be **merged** into coarse blocks
+  that the maker curates, which is exactly the "optional breakdown, manual
+  authoring is the required fallback" stance of FR-GU-08.
+- **Chapter timestamps in the video description are creator-authored and
+  semantic.** YouTube's chapter rules require the first timestamp to be `00:00`,
+  at least three timestamps in ascending order, and a ten-second minimum per
+  chapter — so a description that reads `0:00 Materials / 1:12 Magic ring /
+  2:40 Round 1` already *is* a step list, with a meaningful label and a working
+  seek target per entry, at 3–30 steps rather than 400. It needs almost no
+  heuristics.
+
+Platform reality reinforces the ordering: the transcript panel is a **web-only**
+feature and does not exist in the YouTube iOS/Android app, whereas the
+description is ordinary long-press-selectable text right there in the app.
+On the platform MellowMaker actually ships, pasting the description is a
+realistic gesture and pasting the transcript is a chore.
+
+**Retention: only the derived steps are stored — never the raw paste.** The
+pasted blob is transient input; the artefact is the steps. Only the text that
+becomes a step's `instruction`/`transcript_excerpt` reaches SQLite. Pasted text is
+maker content and is never logged and never placed in an error message body
+(NFR-12).
+
+**Recorded contract for #50.**
+
+- Parsing is a **pure function** in `src/domain/guides/`, which the lint-enforced
+  boundaries keep free of `src/ui`, `expo-sqlite`, and `react-native`, and which
+  the walk-based `offlineColdStart` guard keeps network-free by default.
+- It reuses `parseStepTimestamp`/`formatStepTimestamp` from `guideStepDraft.ts` —
+  one time grammar in the app, already returning whole milliseconds that match
+  `video_offset_ms`. No second time grammar is introduced.
+- It must tolerate **both clipboard shapes** (timestamp alone on its line with
+  text following, and timestamp inline with its text), because YouTube's "Toggle
+  timestamps" affects the displayed panel, not reliably the clipboard.
+- Cue merging takes the **first** cue's offset for the merged block; input and
+  output are bounded so NFR-09 holds.
+- **Nothing is written until the maker confirms**: parse to an in-memory draft,
+  show a review list, write on an explicit tap — the same draft-then-commit shape
+  `PatternEditorScreen` uses in create mode, and the same explicit-consent stance
+  FR-YT-06 requires of import.
+- Parsed steps are written with **`origin = 'import'`**; a later maker edit stamps
+  `user_modified_at` and leaves `origin` unchanged. The column is fully modelled
+  in schema version 1 and, until #50, entirely unexercised — it exists so a
+  re-import cannot silently discard maker edits.
+- The paste field is a plain multiline text input written to with the OS paste
+  menu. **`expo-clipboard` is deliberately not adopted**: a *programmatic*
+  pasteboard read raises the iOS 16 "Allow Paste" prompt while a user-initiated
+  paste does not, so reading the clipboard ourselves would buy a dependency and a
+  permission prompt for nothing.
+- **FR-YT-08 is unaffected.** Parsed steps are maker-supplied and must never be
+  presented as fetched or as "the transcript we retrieved". `GuideMetadata`
+  structurally keeps no transcript field, so neither can be claimed.
+
+**No dependency and no migration.** Schema version 1 already carries
+`guide_step.video_offset_ms`, `transcript_excerpt`, `note`, `origin`, and
+`user_modified_at`; `LATEST_SCHEMA_VERSION` stays `1` and `package.json` gains
+nothing.
+
+**Two contract gaps #50 must close**, carried onto that issue: `addGuideStep`
+hard-codes `origin: 'user'` and `saveImportedGuide` — the only path that can write
+`origin: 'import'` — is only ever called with `steps: []`, so appending parsed
+steps needs a new bulk repository method writing `origin: 'import'` in one
+transaction; and `normalizeYoutubeUrl` parses `startSeconds` from `t`/`start` and
+documents it as deliberately unconsumed, which `useGuideImport` drops on the
+floor — whether a pasted `?t=` seeds a first step is for #50's plan to settle.
+
+**Model-assisted (LLM) step cleanup is deferred, with no backend in this cycle.**
+Three shapes were assessed and none is adopted for PRD0:
+
+- A **provider key in the client** is rejected mechanically, not as a preference:
+  `EXPO_PUBLIC_` values are inlined in plain text into the compiled app, so a
+  hosted-model key is extractable by any user of the binary (OWASP Mobile M1).
+  That is exactly what NFR-11/13, issue #8's AC #5, decision #13, and
+  `tests/secretsAudit.test.ts` forbid.
+- **Our own backend proxy** would mean maker-authored craft notes leaving the
+  device to a third-party model. It contradicts NFR-13, PRD0 §12, and §15's "a
+  general-purpose backend" non-goal, and would require a `docs/vision.md` and
+  PRD0 revision, a published privacy policy, an in-app disclosure and explicit
+  consent under Apple App Review guideline 5.1.2(i), a Google Play Data safety
+  declaration, and an ongoing per-request bill with no offline story — a large
+  product commitment bought for a small quality gain over the chapter path.
+- **On-device inference** is the only shape that could ever keep "nothing leaves
+  the device" intact, but it needs a native module and config plugin plus either a
+  large bundled/downloaded model or platform-divergent system models. If model
+  assistance is ever wanted, it is this shape, and it must be its own post-PRD0
+  decision with its own bundle-size and platform-parity spike — never a rider on
+  the paste path.
+
+### 9.3 Save as pattern from a guide — resolved (issue #45)
+
+Issue #45 also resolved how a guide becomes a pattern, implemented in **#51**.
+`docs/vision.md` §3B promises "personal or **imported** patterns", but no import
+path existed: nothing under `src/features/patterns`, `src/domain/patterns`, or
+`patternRepository.ts` referenced a guide at all.
+
+The approved model is a **notes-only snapshot**. "Save as pattern" reads the
+guide with `getGuideWithSteps`, seeds a review screen, and on explicit confirm
+composes over the existing `PatternRepository.createPattern({ title, notes,
+steps })`, which already writes a pattern and its ordered steps in one
+transaction. **All** steps convert, in position order, not only the completed
+ones, and no completion state carries over.
+
+The conversion is **lossy by construction, deliberately**. `pattern_step` is
+`(id, pattern_id, position, instruction, created_at, updated_at)` — no
+`video_offset_ms`, no `transcript_excerpt`, no per-step `note`, no `origin` — and
+`CreatePatternInput.steps` is a bare `readonly string[]`. Timestamps, transcript
+excerpts, and per-step notes are therefore dropped from the steps, and the source
+is recorded **once** in `pattern.notes` as the canonical
+`https://www.youtube.com/watch?v=<id>` URL.
+
+**Snapshot, not link — no foreign key and no migration.** A real
+`pattern.source_guide_id` column was considered and **rejected**: it would force
+this repository's first-ever migration (schema version 2) and a separate
+`ON DELETE SET NULL` vs `CASCADE` call, for no product gain. Consequently editing
+the guide after the conversion does not change the pattern, and `deleteGuide`
+leaves the pattern and every one of its steps intact — a cascade structurally
+cannot reach it. `LATEST_SCHEMA_VERSION` stays `1` and no dependency is added.
 
 ## 10. UI and interaction architecture
 
@@ -811,6 +960,10 @@ Every release candidate should exercise, on both platforms where applicable:
 - User accounts, cloud backup, or cross-device synchronization
 - Social/community features or a pattern marketplace
 - Offline downloading of YouTube video
+- Fetching transcripts, captions, chapters, or descriptions from YouTube (§9.2:
+  the maker may paste such text; the app never retrieves it)
+- Model-assisted (LLM) step cleanup in any shape — deferred by issue #45, with no
+  backend in this cycle (§9.2)
 - A general-purpose backend
 - Desktop-specific behavior
 - Supporting crafts other than crochet in PRD0
@@ -857,6 +1010,25 @@ URL parsing **and the oEmbed metadata path are implemented in #9**
 (§9.1), which added **no dependency** — metadata uses the injected platform global
 `fetch` behind a `GuideMetadataGateway` contract. `expo-video` stays in the stack
 only for possible future non-YouTube media.
+
+How a guide becomes usable steps and a pattern is resolved: issue #45 confirmed
+the model recorded in sections 9.2 and 9.3. The app **accepts text the maker
+pastes** out of YouTube and derives timestamped steps from it — **description
+chapters as the primary source, transcript cues as the fallback, behind one
+auto-detecting paste field** — storing only the text that becomes a step and
+never the raw paste; **the app still fetches nothing**, so §9.1's source model is
+unchanged. A guide converts to a pattern as a **notes-only snapshot** — the steps
+are copied, the source link is recorded in `pattern.notes`, there is no foreign
+key and no migration, and deleting the guide leaves the pattern untouched.
+**Model-assisted (LLM) cleanup is deferred with no backend in this cycle**: a
+client-held provider key is non-compliant outright, a backend would cost NFR-13, a
+vision/PRD revision, a privacy policy, Apple 5.1.2(i) consent, a Play data-safety
+declaration, and an ongoing bill, and on-device inference is the only shape that
+could ever preserve "nothing leaves the device" — it would be its own post-PRD0
+decision with its own spike. The two implementing issues are **#50** (paste →
+guide steps) and **#51** (save a guide as a pattern); neither adds a dependency
+and `LATEST_SCHEMA_VERSION` stays `1` for both. Model assistance could only
+reopen this as a deliberate post-PRD0 decision, on-device only.
 
 The analytics/crash-reporting/telemetry question is resolved: issue #13 confirmed
 **no analytics, crash reporting, or telemetry in PRD0** (PRD0 decision 7) — nothing
