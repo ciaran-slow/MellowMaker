@@ -8,11 +8,16 @@ import { progressSummaryLabel } from '@/features/patterns/presentation/patternLa
 import { PatternViewerStepRow } from '@/features/patterns/presentation/PatternViewerStepRow';
 import { useCounter } from '@/features/patterns/presentation/useCounter';
 import { usePatternViewer } from '@/features/patterns/presentation/usePatternViewer';
+import { CraftAnnouncement } from '@/ui/accessibility/CraftAnnouncement';
+import { useAnnouncement } from '@/ui/accessibility/useAnnouncement';
 import { CraftCard } from '@/ui/components/CraftCard';
 import { CraftCounter } from '@/ui/components/CraftCounter';
 import { CraftPressable } from '@/ui/components/CraftPressable';
 import { useScreenContentInsets } from '@/ui/components/screenLayout';
 import tokens from '@/ui/theme/tokens.json';
+
+const READ_FAILED_TITLE = "We couldn't read this pattern";
+const COUNTER_FAILED_TITLE = "We couldn't load this counter";
 
 type PatternViewerScreenProps = {
   patternId: string;
@@ -74,6 +79,14 @@ export function PatternViewerScreen({ patternId }: PatternViewerScreenProps) {
 
   const { state } = viewer;
 
+  // VoiceOver never reads a live region, so the failure titles are spoken
+  // through the iOS announcement seam as well (A11Y-07); Android hears the
+  // assertive alert regions below.
+  useAnnouncement(state.status === 'failed' ? READ_FAILED_TITLE : undefined);
+  useAnnouncement(
+    counter.state.status === 'failed' ? COUNTER_FAILED_TITLE : undefined,
+  );
+
   const currentIndex =
     state.status === 'ready'
       ? state.view.steps.findIndex(
@@ -111,15 +124,13 @@ export function PatternViewerScreen({ patternId }: PatternViewerScreenProps) {
               {state.pattern.title}
             </Text>
             <View className="flex-row items-center justify-between gap-3">
-              <Text
-                accessibilityLiveRegion="polite"
+              <CraftAnnouncement
                 className="flex-1 text-label text-ink"
-              >
-                {progressSummaryLabel(
+                message={progressSummaryLabel(
                   state.view.completedCount,
                   state.view.totalCount,
                 )}
-              </Text>
+              />
               <CraftPressable
                 accessibilityHint="Change this pattern's steps, title, or notes"
                 accessibilityLabel="Edit pattern"
@@ -162,7 +173,7 @@ export function PatternViewerScreen({ patternId }: PatternViewerScreenProps) {
                     accessibilityRole="header"
                     className="text-heading text-ink"
                   >
-                    We couldn&apos;t load this counter
+                    {COUNTER_FAILED_TITLE}
                   </Text>
                   <Text className="text-body text-ink">
                     Your count is saved on this device. Nothing was changed.
@@ -181,12 +192,10 @@ export function PatternViewerScreen({ patternId }: PatternViewerScreenProps) {
               The polite live region below speaks completion and position
               changes to a screen reader (A11Y-07).
             */}
-            <Text
-              accessibilityLiveRegion="polite"
+            <CraftAnnouncement
               className="text-label text-ink opacity-70"
-            >
-              {state.announcement}
-            </Text>
+              message={state.announcement}
+            />
           </>
         ) : null}
       </View>
@@ -236,7 +245,7 @@ export function PatternViewerScreen({ patternId }: PatternViewerScreenProps) {
                   accessibilityRole="header"
                   className="flex-1 text-heading text-ink"
                 >
-                  We couldn&apos;t read this pattern
+                  {READ_FAILED_TITLE}
                 </Text>
               </View>
               <Text className="text-body text-ink">
@@ -280,10 +289,10 @@ export function PatternViewerScreen({ patternId }: PatternViewerScreenProps) {
               </CraftCard>
               <CraftPressable
                 accessibilityLabel="Edit pattern"
-                className="items-center bg-pink px-6 py-3"
+                className="items-center bg-pinkStrong px-6 py-3"
                 onPress={openEditor}
               >
-                <Text className="text-label text-ink">Edit pattern</Text>
+                <Text className="text-label text-surface">Edit pattern</Text>
               </CraftPressable>
             </View>
           }

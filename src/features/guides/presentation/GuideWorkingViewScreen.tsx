@@ -15,6 +15,8 @@ import { progressSummaryLabel } from '@/features/guides/presentation/guideStepLa
 import { useGuidePlayer } from '@/features/guides/presentation/useGuidePlayer';
 import { useGuideViewer } from '@/features/guides/presentation/useGuideViewer';
 import { useCounter } from '@/features/patterns/presentation/useCounter';
+import { CraftAnnouncement } from '@/ui/accessibility/CraftAnnouncement';
+import { useAnnouncement } from '@/ui/accessibility/useAnnouncement';
 import { CraftCard } from '@/ui/components/CraftCard';
 import { CraftCounter } from '@/ui/components/CraftCounter';
 import { CraftPressable } from '@/ui/components/CraftPressable';
@@ -23,6 +25,9 @@ import {
   type ScreenContentInsets,
 } from '@/ui/components/screenLayout';
 import tokens from '@/ui/theme/tokens.json';
+
+const OPEN_FAILED_TITLE = "We couldn't open this guide";
+const COUNTER_FAILED_TITLE = "We couldn't load this counter";
 
 type GuideWorkingViewScreenProps = {
   guideId: string;
@@ -76,6 +81,10 @@ export function GuideWorkingViewScreen({
   }, [router, guideId]);
 
   const { state } = viewer;
+
+  // VoiceOver never reads a live region, so the failure title is spoken through
+  // the iOS announcement seam as well (A11Y-07).
+  useAnnouncement(state.status === 'failed' ? OPEN_FAILED_TITLE : undefined);
 
   return (
     <View
@@ -147,7 +156,7 @@ export function GuideWorkingViewScreen({
                   accessibilityRole="header"
                   className="flex-1 text-heading text-ink"
                 >
-                  We couldn&apos;t open this guide
+                  {OPEN_FAILED_TITLE}
                 </Text>
               </View>
               <Text className="text-body text-ink">
@@ -240,6 +249,9 @@ function GuideWorkingViewReady({
     [guideId],
   );
   const counter = useCounter(counterOwner);
+  useAnnouncement(
+    counter.state.status === 'failed' ? COUNTER_FAILED_TITLE : undefined,
+  );
 
   const currentIndex = view.steps.findIndex(
     (step) => step.id === view.currentStepId,
@@ -252,12 +264,10 @@ function GuideWorkingViewReady({
           {guide.title}
         </Text>
         <View className="flex-row items-center justify-between gap-3">
-          <Text
-            accessibilityLiveRegion="polite"
+          <CraftAnnouncement
             className="flex-1 text-label text-ink"
-          >
-            {progressSummaryLabel(view.completedCount, view.totalCount)}
-          </Text>
+            message={progressSummaryLabel(view.completedCount, view.totalCount)}
+          />
           <CraftPressable
             accessibilityHint="Change this guide's steps, title, or notes"
             accessibilityLabel="Edit guide"
@@ -308,7 +318,7 @@ function GuideWorkingViewReady({
           >
             <CraftCard accent="pink">
               <Text accessibilityRole="header" className="text-heading text-ink">
-                We couldn&apos;t load this counter
+                {COUNTER_FAILED_TITLE}
               </Text>
               <Text className="text-body text-ink">
                 Your count is saved on this device. Nothing was changed.
@@ -328,12 +338,10 @@ function GuideWorkingViewReady({
           The polite live region below speaks completion and position changes
           to a screen reader (A11Y-07).
         */}
-        <Text
-          accessibilityLiveRegion="polite"
+        <CraftAnnouncement
           className="text-label text-ink opacity-70"
-        >
-          {announcement}
-        </Text>
+          message={announcement}
+        />
       </View>
 
       <FlatList
@@ -358,10 +366,10 @@ function GuideWorkingViewReady({
             </CraftCard>
             <CraftPressable
               accessibilityLabel="Edit guide"
-              className="items-center bg-pink px-6 py-3"
+              className="items-center bg-pinkStrong px-6 py-3"
               onPress={onOpenEditor}
             >
-              <Text className="text-label text-ink">Edit guide</Text>
+              <Text className="text-label text-surface">Edit guide</Text>
             </CraftPressable>
           </View>
         }

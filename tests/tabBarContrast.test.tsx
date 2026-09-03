@@ -8,11 +8,17 @@ import tokens from '@/ui/theme/tokens.json';
 import { contrastRatio } from './support/contrast';
 
 describe('tab bar visual contract', () => {
-  it('uses a readable active foreground and keeps pink as a selected accent', async () => {
+  it('uses a readable active foreground and a strong-pink selected indicator', async () => {
     expect(
       contrastRatio(tabBarColors.activeForeground, tabBarColors.surface),
     ).toBeGreaterThanOrEqual(4.5);
-    expect(tabBarColors.selectedAccent).toBe(tokens.colors.pink);
+    // The selected-tab bar is a non-text UI indicator (WCAG 1.4.11, 3:1). The
+    // bright pink measured 2.64:1 against the white tab surface (issue #14);
+    // the strong companion clears it.
+    expect(tabBarColors.selectedAccent).toBe(tokens.colors.pinkStrong);
+    expect(
+      contrastRatio(tabBarColors.selectedAccent, tabBarColors.surface),
+    ).toBeGreaterThanOrEqual(3);
 
     await render(
       <CraftTabBarButton

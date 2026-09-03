@@ -90,11 +90,15 @@ export function CraftConfirmDialog({
           <CraftPressable
             accessibilityLabel={confirmLabel}
             className={`flex-1 items-center px-6 py-3 ${
-              destructive ? 'bg-pink' : 'bg-yellow'
+              destructive ? 'bg-pinkStrong' : 'bg-yellow'
             }`}
             onPress={onConfirm}
           >
-            <Text className="text-label text-ink">{confirmLabel}</Text>
+            <Text
+              className={`text-label ${destructive ? 'text-surface' : 'text-ink'}`}
+            >
+              {confirmLabel}
+            </Text>
           </CraftPressable>
         </View>
       </View>

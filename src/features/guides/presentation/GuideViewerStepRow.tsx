@@ -33,8 +33,8 @@ const STATUS_WORD: Record<StepView['status'], string> = {
 };
 
 const STATUS_PILL_CLASS: Record<StepView['status'], string> = {
-  completed: 'bg-teal text-ink',
-  current: 'bg-blue text-surface',
+  completed: 'bg-tealStrong text-surface',
+  current: 'bg-blueStrong text-surface',
   todo: 'bg-yellow text-ink',
 };
 
@@ -80,7 +80,7 @@ export function GuideViewerStepRow({
         >
           <MaterialCommunityIcons
             accessibilityElementsHidden
-            color={isCompleted ? tokens.colors.teal : tokens.colors.ink}
+            color={isCompleted ? tokens.colors.tealStrong : tokens.colors.ink}
             name={isCompleted ? 'check-bold' : 'checkbox-blank-circle-outline'}
             size={tokens.typography.heading.fontSize}
           />

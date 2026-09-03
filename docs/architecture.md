@@ -493,6 +493,8 @@ The design system follows the “Playful Craft” direction in `vision.md`:
 - off-white `#F9F8F6` application backgrounds;
 - white `#FFFFFF` cards with soft shadows;
 - pink `#FF6B8B`, yellow `#FFD166`, teal `#06D6A0`, and blue `#118AB2` accents;
+- strong companions pink `#C15169`, teal `#048765`, and blue `#1080A6` for any
+  accent that carries text or a selection indicator (issue #14);
 - deep ink `#26547C` text;
 - chunky rounded surfaces, friendly typography, and clear hierarchy.
 
@@ -568,6 +570,60 @@ Two conventions introduced by the interactive pattern viewer (issue #6):
   accent bar and marker on the current step), so meaning survives without colour
   (A11Y-01/03, UX-05). A completion announcement and the progress summary use a
   polite live region.
+
+Four conventions introduced by the accessibility pass (issue #14):
+
+- **Bright accents are decorative; text and indicators sit on a strong accent.**
+  Measured against the documented palette, ink on pink is 2.93:1, ink on blue
+  2.01:1, ink on teal 4.21:1, white on blue 3.96:1, and the pink selected-tab
+  bar 2.64:1 against the white tab surface — all below WCAG AA (A11Y-04). The
+  three `*Strong` tokens clear 4.5:1 with `text-surface` and 3:1 against the
+  backdrop, so they are valid both as a text surface and as a non-text
+  indicator. The bright hexes are unchanged and keep to `CraftCard` stripes,
+  step accent bars, the tab bar's yellow divider, and decorative icons. The
+  yellow accent already carries ink at 5.51:1 and has no companion.
+  `tests/accessibilityContrast.test.ts` is the **walk-based** guard: every
+  `.tsx` under `src/` is scanned by default, a bright accent may never appear
+  as `bg-*` or `text-*`, every `className` and every `CraftPressable` pairing a
+  token background with a token text or icon colour must clear the threshold,
+  and the strong tokens are pinned to literal hexes.
+- **Announcements have two platform paths behind one seam.** React Native's
+  `accessibilityLiveRegion` is honoured on Android only; VoiceOver never reads
+  it, so without more every counter change, step completion, error, and loading
+  completion was spoken on Android and silent on iOS (A11Y-07).
+  `useAnnouncement(message)` (`src/ui/accessibility/`) calls
+  `AccessibilityInfo.announceForAccessibility` on **iOS only** — Android keeps
+  its live region, and announcing on both would double-speak — never on first
+  render (so a screen does not talk over its own initial focus), only when the
+  message changes from the immediately previous one, and never for an
+  `undefined`/empty message. `CraftAnnouncement` renders the live-region `Text`
+  and runs the hook, and is the primitive for a status line that stays mounted
+  (the counter's announcement, a viewer's progress summary and completion
+  announcement, the guide editor's refresh status). A **transition into a
+  state** — loading→ready result counts, a read/save failure, an import
+  outcome, a playback failure — is announced by the **owning screen** with
+  `useAnnouncement` over its state, because a region that mounts already
+  showing its text would be skipped by the first-render rule; the existing
+  `alert`/live-region markup stays as Android's path. The hook only ever
+  announces text the maker can already see; it never synthesizes wording or
+  logs anything (NFR-12).
+- **Essential text never clamps.** Step instructions, notes, the counter value
+  and controls, and error/empty bodies carry no `numberOfLines`, and nothing in
+  `src/` sets `allowFontScaling={false}` or `maxFontSizeMultiplier`, so a large
+  system text size reads the whole instruction (A11Y-05, UX-03). Only the three
+  list-row previews may clamp — the full text is one tap away on the detail
+  screen. `tests/textScaling.test.tsx` walks `src/` with that allowlist as the
+  only exemption and asserts the allowlist is live.
+- **Reduced motion is pinned at the hook.** `usePressScale`'s gate is asserted
+  in `tests/usePressScale.test.tsx` on both branches with literal values (0.96
+  press scale, spring back to 1; nothing animated and a literal 1 under reduced
+  motion), and `CraftPressable` is asserted to call `onPress` synchronously
+  either way, so motion can never sit between a tap and its durable write
+  (A11Y-06, UX-04). Status without colour (A11Y-03) is pinned by
+  `tests/nonColorStatus.test.tsx`, which reads only roles, states, and rendered
+  words. The one raw `Pressable` in `src/` — `DatabaseGate`'s retry, kept raw
+  because it renders before the database exists — carries an explicit name and
+  a full 48×48 target.
 
 ## 11. State, forms, and concurrency
 
@@ -686,6 +742,18 @@ still work.
 Configured CI runs a clean npm install, lint, strict type checking, and the full
 Jest suite. Maestro runs against locally installed targets using a caller-supplied
 application identifier until the EAS issue provides dedicated artifacts.
+
+Four walk-based guards under `tests/` pin repository-wide contracts rather than
+one file's behaviour, all defaulting every `src/` file to "included" so a new
+file cannot escape them: `offlineColdStart` (no network seam in the core),
+`loggingHygiene` (no `console.*`), `accessibilityContrast` (no bright accent
+under text, every token pairing legible), and `textScaling` (no clamp outside
+list previews). `.maestro/accessibility.yaml` (`npm run test:smoke:accessibility`)
+asserts the inputs a screen reader relies on — unique accessible names, status in
+words, and the spoken counter text — because Maestro cannot drive VoiceOver or
+TalkBack; the screen-reader pass itself is manual (iOS VoiceOver on a physical
+iPhone, recorded on issue #14; Android TalkBack is tracked in
+[`runbooks/smoke-verification.md`](./runbooks/smoke-verification.md) for #16).
 
 Every release candidate should exercise, on both platforms where applicable:
 

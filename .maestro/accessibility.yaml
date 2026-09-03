@@ -1,0 +1,64 @@
+appId: ${APP_ID}
+---
+# The accessibility contracts a screen reader relies on (issue #14; A11Y-01,
+# A11Y-03, A11Y-07; release acceptance 10). Maestro cannot drive VoiceOver or
+# TalkBack, so this flow asserts the *inputs* to a screen reader instead: every
+# control is reachable by its unique accessible name, status is spelled out in
+# words (never colour alone), and the counter's spoken value text is present after
+# each change. The real screen-reader pass is a manual step recorded on the issue
+# (iOS VoiceOver run; Android TalkBack tracked in
+# docs/runbooks/smoke-verification.md for #16). Everything is local SQLite, so
+# the flow runs identically on iOS and Android.
+- launchApp:
+    clearState: true
+
+# Tabs are reachable by their accessible names and expose selection.
+- tapOn: "Patterns"
+- assertVisible: "No patterns yet"
+
+# Create a two-step pattern through named controls only.
+- tapOn: "Create your first pattern"
+- tapOn:
+    id: "pattern-title-field"
+- inputText: "Test Scarf"
+- tapOn:
+    id: "pattern-step-field"
+- inputText: "Chain 20"
+- tapOn: "Add step"
+- tapOn:
+    id: "pattern-step-field"
+- inputText: "Single crochet across"
+- tapOn: "Add step"
+- tapOn: "Create pattern"
+
+# Status is stated in words, not only colour (A11Y-03): the first step is the
+# current step, the rest to do.
+- assertVisible: "Test Scarf"
+- assertVisible: "Current step"
+- assertVisible: "To do"
+- assertVisible: "0 of 2 steps done"
+
+# Completing a step is an accessible checkbox by name; the status word and the
+# spoken completion announcement text both update (A11Y-07).
+- tapOn: "Mark step 1 complete"
+- assertVisible: "Completed"
+- assertVisible: "Step 1 completed. Now on step 2."
+- assertVisible: "1 of 2 steps done"
+
+# The counter exposes name + value as one spoken label and announces each change.
+- assertVisible: "Rows: 0"
+- tapOn: "Increase Rows"
+- assertVisible: "Rows: 1"
+- tapOn: "Decrease Rows"
+- assertVisible: "Rows: 0"
+
+# Reset is disabled at zero — no confirmation may open (state, not colour).
+- tapOn: "Reset Rows"
+- assertNotVisible: "Reset this counter?"
+
+# The destructive confirmation names its consequence in words and cancels by name.
+- tapOn: "Edit pattern"
+- tapOn: "Delete pattern"
+- assertVisible: "Delete this pattern?"
+- tapOn: "Keep pattern"
+- assertNotVisible: "Delete this pattern?"

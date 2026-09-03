@@ -1,4 +1,5 @@
 import { fireEvent, render, screen } from '@testing-library/react-native';
+import { AccessibilityInfo, Platform } from 'react-native';
 import { useReducedMotion } from 'react-native-reanimated';
 
 import { CraftCounter } from '@/ui/components/CraftCounter';
@@ -37,6 +38,7 @@ async function renderCounter(
 
 describe('CraftCounter', () => {
   afterEach(() => {
+    jest.restoreAllMocks();
     // The shared reanimated mock returns a jest.fn; reset it between tests so a
     // reduced-motion override never leaks.
     (useReducedMotion as jest.Mock).mockReturnValue(false);
@@ -127,5 +129,43 @@ describe('CraftCounter', () => {
 
     const region = screen.getByText('Rows: 1');
     expect(region.props.accessibilityLiveRegion).toBe('polite');
+  });
+
+  it('speaks a changed announcement once on iOS and stays quiet on an unrelated re-render', async () => {
+    // VoiceOver never reads a live region; the shared CraftAnnouncement
+    // primitive also announces the same text on iOS (issue #14, A11Y-07).
+    jest.replaceProperty(Platform, 'OS', 'ios');
+    const announce = jest
+      .spyOn(AccessibilityInfo, 'announceForAccessibility')
+      .mockImplementation(() => {});
+    announce.mockClear();
+    const handlers = {
+      onIncrement: jest.fn(),
+      onDecrement: jest.fn(),
+      onReset: jest.fn(),
+      onRename: jest.fn(),
+    };
+    const counter = (announcement: string, value: number) => (
+      <CraftCounter
+        announcement={announcement}
+        label="Rows"
+        onDecrement={handlers.onDecrement}
+        onIncrement={handlers.onIncrement}
+        onRename={handlers.onRename}
+        onReset={handlers.onReset}
+        value={value}
+      />
+    );
+
+    const { rerender } = await render(counter('', 0));
+    expect(announce).not.toHaveBeenCalled();
+
+    await rerender(counter('Rows: 1', 1));
+    expect(announce).toHaveBeenCalledTimes(1);
+    expect(announce).toHaveBeenCalledWith('Rows: 1');
+
+    // An unrelated re-render with the same announcement is silent.
+    await rerender(counter('Rows: 1', 1));
+    expect(announce).toHaveBeenCalledTimes(1);
   });
 });

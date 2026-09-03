@@ -17,16 +17,36 @@ import {
   type GuideImport,
   type ImportPhase,
 } from '@/features/guides/presentation/useGuideImport';
+import { useAnnouncement } from '@/ui/accessibility/useAnnouncement';
 import { CraftCard } from '@/ui/components/CraftCard';
 import { CraftPressable } from '@/ui/components/CraftPressable';
 import { CraftTextField } from '@/ui/components/CraftTextField';
 import { Screen } from '@/ui/components/Screen';
 import tokens from '@/ui/theme/tokens.json';
 
+const DUPLICATE_TITLE = 'You already imported this guide';
+
 export function GuideImportScreen() {
   const router = useRouter();
   const guideImport = useGuideImport();
   const { phase } = guideImport;
+
+  // Import outcomes are spoken on iOS through the announcement seam (A11Y-07):
+  // a rejected link, an already-imported video, and metadata that could not be
+  // fetched. Announced here, over the phase, rather than inside the child forms
+  // — those mount already showing the text, which the seam's first-render rule
+  // would skip. The alert regions in the children remain Android's path.
+  useAnnouncement(
+    phase.kind === 'input' && phase.urlError !== undefined
+      ? urlRejectionMessage(phase.urlError)
+      : undefined,
+  );
+  useAnnouncement(phase.kind === 'duplicate' ? DUPLICATE_TITLE : undefined);
+  useAnnouncement(
+    phase.kind === 'review' && phase.metadata !== 'ok'
+      ? metadataUnavailableMessage(phase.metadata.unavailable)
+      : undefined,
+  );
 
   function goBack() {
     if (router.canGoBack()) {
@@ -131,17 +151,17 @@ function UrlEntryForm({ onSubmit, urlError }: UrlEntryFormProps) {
           accessibilityRole="alert"
           accessibilityLiveRegion="assertive"
         >
-          <Text className="text-label text-pink">
+          <Text className="text-label text-pinkStrong">
             {urlRejectionMessage(urlError)}
           </Text>
         </View>
       )}
       <CraftPressable
         accessibilityLabel="Look up video"
-        className="items-center bg-teal px-6 py-3"
+        className="items-center bg-tealStrong px-6 py-3"
         onPress={submit}
       >
-        <Text className="text-label text-ink">Look up video</Text>
+        <Text className="text-label text-surface">Look up video</Text>
       </CraftPressable>
     </View>
   );
@@ -165,7 +185,7 @@ function DuplicateNotice({
       <View accessible accessibilityRole="alert" accessibilityLiveRegion="polite">
         <CraftCard accent="blue">
           <Text accessibilityRole="header" className="text-heading text-ink">
-            You already imported this guide
+            {DUPLICATE_TITLE}
           </Text>
           <Text className="text-body text-ink">
             “{title}” is already in your guides. Open it to keep making.
@@ -174,7 +194,7 @@ function DuplicateNotice({
       </View>
       <CraftPressable
         accessibilityLabel="Open guide"
-        className="items-center bg-pink px-6 py-3"
+        className="items-center bg-pinkStrong px-6 py-3"
         onPress={() => {
           router.replace({
             pathname: '/guides/[guideId]',
@@ -182,7 +202,7 @@ function DuplicateNotice({
           });
         }}
       >
-        <Text className="text-label text-ink">Open guide</Text>
+        <Text className="text-label text-surface">Open guide</Text>
       </CraftPressable>
       <CraftPressable
         accessibilityLabel="Import another guide"
@@ -260,7 +280,7 @@ function GuideReviewForm({ onCreate, onRetryFetch, phase }: GuideReviewFormProps
           value={title}
         />
         {titleResult.ok ? null : (
-          <Text className="text-label text-pink">{titleResult.message}</Text>
+          <Text className="text-label text-pinkStrong">{titleResult.message}</Text>
         )}
       </View>
 
@@ -291,11 +311,11 @@ function GuideReviewForm({ onCreate, onRetryFetch, phase }: GuideReviewFormProps
 
       <CraftPressable
         accessibilityLabel="Create guide"
-        className="items-center bg-pink px-6 py-3"
+        className="items-center bg-pinkStrong px-6 py-3"
         disabled={!titleResult.ok}
         onPress={create}
       >
-        <Text className="text-label text-ink">Create guide</Text>
+        <Text className="text-label text-surface">Create guide</Text>
       </CraftPressable>
     </View>
   );

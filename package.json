@@ -24,7 +24,8 @@
     "test:smoke:guides": "maestro test -e APP_ID=$APP_ID .maestro/guides.yaml",
     "test:smoke:guides:authoring": "maestro test -e APP_ID=$APP_ID .maestro/guide-authoring.yaml",
     "test:smoke:guides:playback": "maestro test -e APP_ID=$APP_ID .maestro/guide-playback.yaml",
-    "test:smoke:offline": "maestro test -e APP_ID=$APP_ID .maestro/offline-cold-start.yaml"
+    "test:smoke:offline": "maestro test -e APP_ID=$APP_ID .maestro/offline-cold-start.yaml",
+    "test:smoke:accessibility": "maestro test -e APP_ID=$APP_ID .maestro/accessibility.yaml"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.0.2",

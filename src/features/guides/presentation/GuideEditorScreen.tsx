@@ -20,12 +20,16 @@ import {
   useGuideEditor,
   type GuideEditor,
 } from '@/features/guides/presentation/useGuideEditor';
+import { CraftAnnouncement } from '@/ui/accessibility/CraftAnnouncement';
+import { useAnnouncement } from '@/ui/accessibility/useAnnouncement';
 import { CraftCard } from '@/ui/components/CraftCard';
 import { CraftConfirmDialog } from '@/ui/components/CraftConfirmDialog';
 import { CraftPressable } from '@/ui/components/CraftPressable';
 import { CraftTextField } from '@/ui/components/CraftTextField';
 import { Screen } from '@/ui/components/Screen';
 import tokens from '@/ui/theme/tokens.json';
+
+const SAVE_FAILED_TITLE = "We couldn't save that change";
 
 type GuideEditorScreenProps = {
   guideId: string;
@@ -50,6 +54,7 @@ export function GuideEditorScreen({ guideId }: GuideEditorScreenProps) {
   }
 
   const { state } = editor;
+  useAnnouncement(state.status === 'failed' ? SAVE_FAILED_TITLE : undefined);
 
   return (
     <View className="flex-1 bg-background">
@@ -109,7 +114,7 @@ export function GuideEditorScreen({ guideId }: GuideEditorScreenProps) {
                     accessibilityRole="header"
                     className="flex-1 text-heading text-ink"
                   >
-                    We couldn&apos;t save that change
+                    {SAVE_FAILED_TITLE}
                   </Text>
                 </View>
                 <Text className="text-body text-ink">
@@ -207,7 +212,7 @@ function EditGuideForm({
           value={title}
         />
         {titleResult.ok ? null : (
-          <Text className="text-label text-pink">{titleResult.message}</Text>
+          <Text className="text-label text-pinkStrong">{titleResult.message}</Text>
         )}
       </View>
 
@@ -229,38 +234,36 @@ function EditGuideForm({
 
       <CraftPressable
         accessibilityLabel="Save details"
-        className="items-center bg-teal px-6 py-3"
+        className="items-center bg-tealStrong px-6 py-3"
         disabled={!titleResult.ok}
         onPress={saveDetails}
       >
-        <Text className="text-label text-ink">Save details</Text>
+        <Text className="text-label text-surface">Save details</Text>
       </CraftPressable>
 
       <GuideStepsSection editor={editor} steps={steps} />
 
-      <View accessibilityLiveRegion="polite">
-        {refresh.kind === 'updated' ? (
-          <Text className="text-label text-ink">
-            Guide details updated from YouTube.
-          </Text>
-        ) : null}
-        {refresh.kind === 'unavailable' ? (
-          <Text className="text-label text-ink">
-            Couldn&apos;t refresh — your saved guide is unchanged.
-          </Text>
-        ) : null}
-      </View>
+      <CraftAnnouncement
+        className="text-label text-ink"
+        message={
+          refresh.kind === 'updated'
+            ? 'Guide details updated from YouTube.'
+            : refresh.kind === 'unavailable'
+              ? "Couldn't refresh — your saved guide is unchanged."
+              : ''
+        }
+      />
 
       <CraftPressable
         accessibilityLabel="Refresh metadata from YouTube"
-        className="flex-row items-center justify-center gap-2 bg-blue px-6 py-3"
+        className="flex-row items-center justify-center gap-2 bg-blueStrong px-6 py-3"
         disabled={refresh.kind === 'refreshing'}
         onPress={editor.refreshMetadata}
       >
         {refresh.kind === 'refreshing' ? (
-          <ActivityIndicator color={tokens.colors.ink} />
+          <ActivityIndicator color={tokens.colors.surface} />
         ) : null}
-        <Text className="text-label text-ink">Refresh metadata from YouTube</Text>
+        <Text className="text-label text-surface">Refresh metadata from YouTube</Text>
       </CraftPressable>
 
       <CraftPressable
@@ -269,7 +272,7 @@ function EditGuideForm({
         className="items-center bg-surface px-6 py-3"
         onPress={onRequestDelete}
       >
-        <Text className="text-label text-pink">Delete guide</Text>
+        <Text className="text-label text-pinkStrong">Delete guide</Text>
       </CraftPressable>
     </View>
   );
@@ -337,6 +340,9 @@ function AddGuideStepField({ onAdd }: AddGuideStepFieldProps) {
   const [timestampError, setTimestampError] = useState<string | undefined>(
     undefined,
   );
+  // The inline alerts below are Android's path; iOS hears the same text here.
+  useAnnouncement(instructionError);
+  useAnnouncement(timestampError);
 
   function submit() {
     const instructionResult = validateGuideStepInstruction(instruction);
@@ -388,7 +394,7 @@ function AddGuideStepField({ onAdd }: AddGuideStepFieldProps) {
         <Text
           accessibilityLiveRegion="assertive"
           accessibilityRole="alert"
-          className="text-label text-pink"
+          className="text-label text-pinkStrong"
         >
           {instructionError}
         </Text>
@@ -408,7 +414,7 @@ function AddGuideStepField({ onAdd }: AddGuideStepFieldProps) {
         <Text
           accessibilityLiveRegion="assertive"
           accessibilityRole="alert"
-          className="text-label text-pink"
+          className="text-label text-pinkStrong"
         >
           {timestampError}
         </Text>
@@ -437,10 +443,10 @@ function AddGuideStepField({ onAdd }: AddGuideStepFieldProps) {
       />
       <CraftPressable
         accessibilityLabel="Add step"
-        className="items-center bg-teal px-6 py-3"
+        className="items-center bg-tealStrong px-6 py-3"
         onPress={submit}
       >
-        <Text className="text-label text-ink">Add step</Text>
+        <Text className="text-label text-surface">Add step</Text>
       </CraftPressable>
     </View>
   );

@@ -3,7 +3,10 @@ import YoutubePlayer from 'react-native-youtube-iframe';
 
 import { GuidePlayerPlaceholder } from '@/features/guides/presentation/GuidePlayerPlaceholder';
 import type { GuidePlayer } from '@/features/guides/presentation/useGuidePlayer';
+import { useAnnouncement } from '@/ui/accessibility/useAnnouncement';
 import { CraftCard } from '@/ui/components/CraftCard';
+
+const PLAYBACK_FAILED_TITLE = 'Video can’t play right now';
 
 type GuideVideoPlayerProps = {
   player: GuidePlayer;
@@ -50,6 +53,14 @@ export function GuideVideoPlayer({
   } = player;
   const { width } = useWindowDimensions();
 
+  // A playback failure is spoken on iOS through the announcement seam
+  // (A11Y-07); the assertive alert region below remains Android's path.
+  useAnnouncement(
+    status === 'error'
+      ? [PLAYBACK_FAILED_TITLE, errorMessage].filter(Boolean).join(' ')
+      : undefined,
+  );
+
   // Blurred: unmount the WebView entirely (real native release on navigate-away).
   // The view is off-screen here, so nothing visible is lost; refocus re-mounts it.
   if (!active) {
@@ -63,7 +74,7 @@ export function GuideVideoPlayer({
           message={errorMessage}
           onRetry={retry}
           sourceUrl={sourceUrl}
-          title="Video can’t play right now"
+          title={PLAYBACK_FAILED_TITLE}
         />
       </View>
     );

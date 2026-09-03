@@ -8,6 +8,7 @@ import Animated, {
   withSpring,
 } from 'react-native-reanimated';
 
+import { CraftAnnouncement } from '@/ui/accessibility/CraftAnnouncement';
 import { CraftCard } from '@/ui/components/CraftCard';
 import { CraftConfirmDialog } from '@/ui/components/CraftConfirmDialog';
 import { CraftPressable } from '@/ui/components/CraftPressable';
@@ -204,12 +205,10 @@ export function CraftCounter({
         <Text className="text-label text-ink">Reset</Text>
       </CraftPressable>
 
-      <Text
-        accessibilityLiveRegion="polite"
+      <CraftAnnouncement
         className="text-label text-ink opacity-70"
-      >
-        {announcement}
-      </Text>
+        message={announcement}
+      />
 
       <CraftConfirmDialog
         body={`This sets ${label} back to 0. Your pattern and progress are not affected.`}

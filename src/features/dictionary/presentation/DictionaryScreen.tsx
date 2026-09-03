@@ -6,17 +6,31 @@ import { normalizeStitchQuery } from '@/domain/stitches/stitchQuery';
 import { resultSummaryLabel } from '@/features/dictionary/presentation/stitchLabels';
 import { StitchListRow } from '@/features/dictionary/presentation/StitchListRow';
 import { useStitchCatalog } from '@/features/dictionary/presentation/useStitchCatalog';
+import { useAnnouncement } from '@/ui/accessibility/useAnnouncement';
 import { CraftCard } from '@/ui/components/CraftCard';
 import { CraftPressable } from '@/ui/components/CraftPressable';
 import { CraftTextField } from '@/ui/components/CraftTextField';
 import { useScreenContentInsets } from '@/ui/components/screenLayout';
 import tokens from '@/ui/theme/tokens.json';
 
+const READ_FAILED_TITLE = "We couldn't read your stitch dictionary";
+
 export function DictionaryScreen() {
   const [query, setQuery] = useState('');
   const contentInsets = useScreenContentInsets();
   const { state, loadMore, retry } = useStitchCatalog(query);
   const isSearch = normalizeStitchQuery(query) !== '';
+
+  // Loading completion and failure are spoken on iOS through the announcement
+  // seam (A11Y-07); the live regions below remain Android's path. Announced at
+  // the screen so the loading→ready transition is seen — a region that mounts
+  // already showing its text is skipped by the seam's first-render rule.
+  useAnnouncement(
+    state.status === 'ready'
+      ? resultSummaryLabel(state.stitches.length, isSearch)
+      : undefined,
+  );
+  useAnnouncement(state.status === 'failed' ? READ_FAILED_TITLE : undefined);
 
   return (
     <View
@@ -90,7 +104,7 @@ export function DictionaryScreen() {
                   accessibilityRole="header"
                   className="flex-1 text-heading text-ink"
                 >
-                  We couldn&apos;t read your stitch dictionary
+                  {READ_FAILED_TITLE}
                 </Text>
               </View>
               <Text className="text-body text-ink">

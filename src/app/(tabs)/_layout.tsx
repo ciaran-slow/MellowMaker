@@ -7,7 +7,7 @@ import tokens from '@/ui/theme/tokens.json';
 
 export const tabBarColors = {
   activeForeground: tokens.colors.ink,
-  selectedAccent: tokens.colors.pink,
+  selectedAccent: tokens.colors.pinkStrong,
   surface: tokens.colors.surface,
 } as const;
 

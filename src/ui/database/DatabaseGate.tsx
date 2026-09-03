@@ -5,10 +5,13 @@ import { useReducedMotion } from 'react-native-reanimated';
 
 import type { AppDatabase } from '@/data/contracts/appDatabase';
 import { DatabaseError } from '@/data/contracts/databaseError';
+import { useAnnouncement } from '@/ui/accessibility/useAnnouncement';
 import { CraftCard } from '@/ui/components/CraftCard';
 import { Screen } from '@/ui/components/Screen';
 import { RepositoriesContext } from '@/ui/database/repositoriesContext';
 import tokens from '@/ui/theme/tokens.json';
+
+const OPEN_FAILED_TITLE = "We couldn't open your saved making data";
 
 /** Token pairs the accessibility contrast test asserts against. */
 export const databaseGateColors = {
@@ -41,6 +44,9 @@ export function DatabaseGate({ children, initialize }: DatabaseGateProps) {
   const [attempt, setAttempt] = useState(0);
   const [state, setState] = useState<GateState>({ status: 'initializing' });
   const reduceMotion = useReducedMotion();
+  // VoiceOver never reads a live region, so the failure title is spoken through
+  // the iOS announcement seam as well (A11Y-07).
+  useAnnouncement(state.status === 'failed' ? OPEN_FAILED_TITLE : undefined);
 
   useEffect(() => {
     let cancelled = false;
@@ -102,7 +108,7 @@ export function DatabaseGate({ children, initialize }: DatabaseGateProps) {
                 accessibilityRole="header"
                 className="flex-1 text-heading text-ink"
               >
-                We couldn&apos;t open your saved making data
+                {OPEN_FAILED_TITLE}
               </Text>
             </View>
             <Text className="text-body text-ink">
@@ -113,12 +119,14 @@ export function DatabaseGate({ children, initialize }: DatabaseGateProps) {
           </CraftCard>
         </View>
         <Pressable
+          accessibilityLabel="Try again"
           accessibilityRole="button"
           className="items-center justify-center rounded-large px-6 py-3"
           onPress={retry}
           style={{
             backgroundColor: databaseGateColors.retryBackground,
             minHeight: tokens.touch.minimum,
+            minWidth: tokens.touch.minimum,
           }}
         >
           <Text
