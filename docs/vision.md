@@ -46,6 +46,7 @@ Crocheting is a joyful, creative craft, but modern makers often juggle multiple 
   * **Backgrounds:** Clean, bright off-white backdrop (`#F9F8F6`) to let rich colors pop.
   * **Cards & Containers:** Crisp white cards (`#FFFFFF`) with soft, friendly shadows.
   * **Dopamine Accents:** Playful pink (`#FF6B8B`), sunny yellow (`#FFD166`), fresh success teal (`#06D6A0`), pop blue (`#118AB2`), and deep ink text (`#26547C`).
+  * **Strong Accents (text surfaces only):** deeper companions to three of the accents — pink `#C15169`, teal `#048765`, blue `#1080A6` — used wherever text or a selection indicator sits on an accent, so labels stay legible (at least 4.5:1 with white text, 3:1 against the backdrop) while the bright accents keep to decorative fills, borders, and bars. Yellow already carries ink text legibly and needs no companion.
 * **Shape & Typography:**
   * **Rounded Corners:** Chunky, friendly border radii (`rounded-3xl`) for buttons, cards, and interactive elements.
   * **Typography:** Clean, highly legible sans-serif font weights optimized for quick glances while holding a crochet hook.

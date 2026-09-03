@@ -55,7 +55,7 @@ export function GuideListRow({ guide }: GuideListRowProps) {
             Imported from YouTube
           </Text>
         ) : (
-          <Text className="text-body text-ink" numberOfLines={1}>
+          <Text className="text-body text-ink" numberOfLines={2}>
             {guide.creator}
           </Text>
         )}

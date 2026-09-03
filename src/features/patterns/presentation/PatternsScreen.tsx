@@ -6,15 +6,29 @@ import { ActivityIndicator, FlatList, Text, View } from 'react-native';
 import { libraryCountLabel } from '@/features/patterns/presentation/patternLabels';
 import { PatternListRow } from '@/features/patterns/presentation/PatternListRow';
 import { usePatternLibrary } from '@/features/patterns/presentation/usePatternLibrary';
+import { useAnnouncement } from '@/ui/accessibility/useAnnouncement';
 import { CraftCard } from '@/ui/components/CraftCard';
 import { CraftPressable } from '@/ui/components/CraftPressable';
 import { useScreenContentInsets } from '@/ui/components/screenLayout';
 import tokens from '@/ui/theme/tokens.json';
 
+const READ_FAILED_TITLE = "We couldn't read your patterns";
+
 export function PatternsScreen() {
   const router = useRouter();
   const contentInsets = useScreenContentInsets();
   const { state, loadMore, retry, reload } = usePatternLibrary();
+
+  // Loading completion and failure are spoken on iOS through the announcement
+  // seam (A11Y-07); the live regions below remain Android's path. Announced at
+  // the screen so the loading→ready transition is seen — a region that mounts
+  // already showing its text is skipped by the seam's first-render rule.
+  useAnnouncement(
+    state.status === 'ready' && state.patterns.length > 0
+      ? libraryCountLabel(state.patterns.length)
+      : undefined,
+  );
+  useAnnouncement(state.status === 'failed' ? READ_FAILED_TITLE : undefined);
 
   // Returning from the editor re-reads the library so a created, renamed, or
   // deleted pattern is reflected without a global store.
@@ -45,16 +59,16 @@ export function PatternsScreen() {
         <CraftPressable
           accessibilityHint="Starts a new pattern"
           accessibilityLabel="New pattern"
-          className="flex-row items-center justify-center gap-2 bg-pink px-6 py-3"
+          className="flex-row items-center justify-center gap-2 bg-pinkStrong px-6 py-3"
           onPress={openNewPattern}
         >
           <MaterialCommunityIcons
             accessibilityElementsHidden
-            color={tokens.colors.ink}
+            color={tokens.colors.surface}
             name="plus-circle"
             size={tokens.typography.heading.fontSize}
           />
-          <Text className="text-label text-ink">New pattern</Text>
+          <Text className="text-label text-surface">New pattern</Text>
         </CraftPressable>
         {state.status === 'ready' && state.patterns.length > 0 ? (
           <Text accessibilityLiveRegion="polite" className="text-label text-ink">
@@ -95,7 +109,7 @@ export function PatternsScreen() {
                   accessibilityRole="header"
                   className="flex-1 text-heading text-ink"
                 >
-                  We couldn&apos;t read your patterns
+                  {READ_FAILED_TITLE}
                 </Text>
               </View>
               <Text className="text-body text-ink">
@@ -140,10 +154,10 @@ export function PatternsScreen() {
               <CraftPressable
                 accessibilityHint="Starts a new pattern"
                 accessibilityLabel="Create your first pattern"
-                className="items-center bg-pink px-6 py-3"
+                className="items-center bg-pinkStrong px-6 py-3"
                 onPress={openNewPattern}
               >
-                <Text className="text-label text-ink">
+                <Text className="text-label text-surface">
                   Create your first pattern
                 </Text>
               </CraftPressable>

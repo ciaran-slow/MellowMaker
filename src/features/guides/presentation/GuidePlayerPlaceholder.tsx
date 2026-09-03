@@ -66,7 +66,7 @@ export function GuidePlayerPlaceholder({
       <CraftPressable
         accessibilityHint="Opens this guide's video in YouTube"
         accessibilityLabel="Open in YouTube"
-        className="flex-row items-center gap-2 self-start bg-teal px-6 py-3"
+        className="flex-row items-center gap-2 self-start bg-tealStrong px-6 py-3"
         onPress={() => {
           // Best-effort: offline or a missing YouTube app leaves the saved steps
           // below as the fallback. A rejected open is swallowed, not a crash.
@@ -75,11 +75,11 @@ export function GuidePlayerPlaceholder({
       >
         <MaterialCommunityIcons
           accessibilityElementsHidden
-          color={tokens.colors.ink}
+          color={tokens.colors.surface}
           name="open-in-new"
           size={tokens.typography.body.fontSize}
         />
-        <Text className="text-label text-ink">Open in YouTube</Text>
+        <Text className="text-label text-surface">Open in YouTube</Text>
       </CraftPressable>
     </CraftCard>
   );

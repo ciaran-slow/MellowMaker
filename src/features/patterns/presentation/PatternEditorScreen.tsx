@@ -18,12 +18,15 @@ import {
   usePatternEditor,
   type PatternEditor,
 } from '@/features/patterns/presentation/usePatternEditor';
+import { useAnnouncement } from '@/ui/accessibility/useAnnouncement';
 import { CraftCard } from '@/ui/components/CraftCard';
 import { CraftConfirmDialog } from '@/ui/components/CraftConfirmDialog';
 import { CraftPressable } from '@/ui/components/CraftPressable';
 import { CraftTextField } from '@/ui/components/CraftTextField';
 import { Screen } from '@/ui/components/Screen';
 import tokens from '@/ui/theme/tokens.json';
+
+const SAVE_FAILED_TITLE = "We couldn't save that change";
 
 type PatternEditorScreenProps = {
   patternId?: string;
@@ -49,6 +52,7 @@ export function PatternEditorScreen({ patternId }: PatternEditorScreenProps) {
   }
 
   const { state } = editor;
+  useAnnouncement(state.status === 'failed' ? SAVE_FAILED_TITLE : undefined);
 
   return (
     <View className="flex-1 bg-background">
@@ -120,7 +124,7 @@ export function PatternEditorScreen({ patternId }: PatternEditorScreenProps) {
                     accessibilityRole="header"
                     className="flex-1 text-heading text-ink"
                   >
-                    We couldn&apos;t save that change
+                    {SAVE_FAILED_TITLE}
                   </Text>
                 </View>
                 <Text className="text-body text-ink">
@@ -231,7 +235,7 @@ function CreatePatternForm({ onCreate, onCreated }: CreatePatternFormProps) {
           value={title}
         />
         {titleResult.ok ? null : (
-          <Text className="text-label text-pink">{titleResult.message}</Text>
+          <Text className="text-label text-pinkStrong">{titleResult.message}</Text>
         )}
       </View>
 
@@ -267,11 +271,11 @@ function CreatePatternForm({ onCreate, onCreated }: CreatePatternFormProps) {
 
       <CraftPressable
         accessibilityLabel="Create pattern"
-        className="items-center bg-pink px-6 py-3"
+        className="items-center bg-pinkStrong px-6 py-3"
         disabled={!titleResult.ok}
         onPress={create}
       >
-        <Text className="text-label text-ink">Create pattern</Text>
+        <Text className="text-label text-surface">Create pattern</Text>
       </CraftPressable>
     </View>
   );
@@ -328,7 +332,7 @@ function EditPatternForm({
           value={title}
         />
         {titleResult.ok ? null : (
-          <Text className="text-label text-pink">{titleResult.message}</Text>
+          <Text className="text-label text-pinkStrong">{titleResult.message}</Text>
         )}
       </View>
 
@@ -336,11 +340,11 @@ function EditPatternForm({
 
       <CraftPressable
         accessibilityLabel="Save details"
-        className="items-center bg-teal px-6 py-3"
+        className="items-center bg-tealStrong px-6 py-3"
         disabled={!titleResult.ok}
         onPress={saveDetails}
       >
-        <Text className="text-label text-ink">Save details</Text>
+        <Text className="text-label text-surface">Save details</Text>
       </CraftPressable>
 
       <StepsSection
@@ -383,7 +387,7 @@ function EditPatternForm({
         className="items-center bg-surface px-6 py-3"
         onPress={onRequestDelete}
       >
-        <Text className="text-label text-pink">Delete pattern</Text>
+        <Text className="text-label text-pinkStrong">Delete pattern</Text>
       </CraftPressable>
     </View>
   );
@@ -476,6 +480,8 @@ type AddStepFieldProps = {
 function AddStepField({ onAdd }: AddStepFieldProps) {
   const [value, setValue] = useState('');
   const [error, setError] = useState<string | undefined>(undefined);
+  // The inline alert below is Android's path; iOS hears the same text here.
+  useAnnouncement(error);
 
   function submit() {
     const result = validateStepInstruction(value);
@@ -509,17 +515,17 @@ function AddStepField({ onAdd }: AddStepFieldProps) {
         <Text
           accessibilityLiveRegion="assertive"
           accessibilityRole="alert"
-          className="text-label text-pink"
+          className="text-label text-pinkStrong"
         >
           {error}
         </Text>
       )}
       <CraftPressable
         accessibilityLabel="Add step"
-        className="items-center bg-teal px-6 py-3"
+        className="items-center bg-tealStrong px-6 py-3"
         onPress={submit}
       >
-        <Text className="text-label text-ink">Add step</Text>
+        <Text className="text-label text-surface">Add step</Text>
       </CraftPressable>
     </View>
   );

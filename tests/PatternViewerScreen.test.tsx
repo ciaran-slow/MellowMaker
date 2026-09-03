@@ -1,4 +1,5 @@
 import { act, fireEvent, render, screen } from '@testing-library/react-native';
+import { AccessibilityInfo, Platform } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import type { Repositories } from '@/data/contracts/appDatabase';
@@ -286,5 +287,44 @@ describe('PatternViewerScreen', () => {
     expect(
       screen.getByRole('header', { name: 'Test Scarf' }),
     ).toBeOnTheScreen();
+  });
+
+  it('speaks step completion and the progress summary on iOS (A11Y-07)', async () => {
+    jest.replaceProperty(Platform, 'OS', 'ios');
+    const announce = jest
+      .spyOn(AccessibilityInfo, 'announceForAccessibility')
+      .mockImplementation(() => {});
+    announce.mockClear();
+    await render(tree(repositories, patternId));
+    await screen.findByRole('header', { name: 'Test Scarf' });
+    announce.mockClear();
+
+    await fireEvent.press(screen.getByLabelText('Mark step 1 complete'));
+
+    const spoken = announce.mock.calls.map(([text]) => text);
+    expect(spoken).toContain('Step 1 completed. Now on step 2.');
+    expect(spoken).toContain('1 of 3 steps done');
+  });
+
+  it('speaks the same read-failure title the alert renders, on iOS', async () => {
+    jest.replaceProperty(Platform, 'OS', 'ios');
+    const announce = jest
+      .spyOn(AccessibilityInfo, 'announceForAccessibility')
+      .mockImplementation(() => {});
+    announce.mockClear();
+    const failing: Repositories = {
+      ...repositories,
+      progress: {
+        ...repositories.progress,
+        getProgress: jest.fn<PatternProgress, [string]>(() => {
+          throw new Error('simulated read failure');
+        }),
+      },
+    };
+
+    await render(tree(failing, patternId));
+    await screen.findByRole('alert');
+
+    expect(announce).toHaveBeenCalledWith("We couldn't read this pattern");
   });
 });

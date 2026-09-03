@@ -4,6 +4,7 @@ import { Text, View } from 'react-native';
 
 import { validateStepInstruction } from '@/domain/patterns/patternDraft';
 import { stepAccessibilityLabel } from '@/features/patterns/presentation/patternLabels';
+import { useAnnouncement } from '@/ui/accessibility/useAnnouncement';
 import { CraftPressable } from '@/ui/components/CraftPressable';
 import { CraftTextField } from '@/ui/components/CraftTextField';
 import tokens from '@/ui/theme/tokens.json';
@@ -42,6 +43,8 @@ export function PatternStepEditorRow({
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(instruction);
   const [error, setError] = useState<string | undefined>(undefined);
+  // The inline alert below is Android's path; iOS hears the same text here.
+  useAnnouncement(error);
 
   function beginEdit() {
     setDraft(instruction);
@@ -92,7 +95,7 @@ export function PatternStepEditorRow({
             <Text
               accessibilityLiveRegion="assertive"
               accessibilityRole="alert"
-              className="text-label text-pink"
+              className="text-label text-pinkStrong"
             >
               {error}
             </Text>
@@ -100,10 +103,10 @@ export function PatternStepEditorRow({
           <View className="flex-row gap-3">
             <CraftPressable
               accessibilityLabel={`Save step ${number}`}
-              className="flex-1 items-center bg-teal px-6 py-3"
+              className="flex-1 items-center bg-tealStrong px-6 py-3"
               onPress={saveEdit}
             >
-              <Text className="text-label text-ink">Save</Text>
+              <Text className="text-label text-surface">Save</Text>
             </CraftPressable>
             <CraftPressable
               accessibilityLabel={`Cancel editing step ${number}`}

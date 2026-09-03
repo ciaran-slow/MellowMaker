@@ -4,10 +4,13 @@ import { ActivityIndicator, Text, View } from 'react-native';
 
 import { DIFFICULTY_LABEL } from '@/features/dictionary/presentation/stitchLabels';
 import { useStitchDetail } from '@/features/dictionary/presentation/useStitchDetail';
+import { useAnnouncement } from '@/ui/accessibility/useAnnouncement';
 import { CraftCard } from '@/ui/components/CraftCard';
 import { CraftPressable } from '@/ui/components/CraftPressable';
 import { Screen } from '@/ui/components/Screen';
 import tokens from '@/ui/theme/tokens.json';
+
+const READ_FAILED_TITLE = "We couldn't read your stitch dictionary";
 
 type StitchDetailScreenProps = {
   stitchId: string;
@@ -16,6 +19,7 @@ type StitchDetailScreenProps = {
 export function StitchDetailScreen({ stitchId }: StitchDetailScreenProps) {
   const router = useRouter();
   const { state, retry } = useStitchDetail(stitchId);
+  useAnnouncement(state.status === 'failed' ? READ_FAILED_TITLE : undefined);
 
   return (
     <Screen accessibilityLabel="Stitch detail screen">
@@ -83,7 +87,7 @@ export function StitchDetailScreen({ stitchId }: StitchDetailScreenProps) {
                   accessibilityRole="header"
                   className="flex-1 text-heading text-ink"
                 >
-                  We couldn&apos;t read your stitch dictionary
+                  {READ_FAILED_TITLE}
                 </Text>
               </View>
               <Text className="text-body text-ink">

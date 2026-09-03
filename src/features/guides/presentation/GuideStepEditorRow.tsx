@@ -14,6 +14,7 @@ import {
   editorStepAccessibilityLabel,
   timestampBadgeLabel,
 } from '@/features/guides/presentation/guideStepLabels';
+import { useAnnouncement } from '@/ui/accessibility/useAnnouncement';
 import { CraftPressable } from '@/ui/components/CraftPressable';
 import { CraftTextField } from '@/ui/components/CraftTextField';
 import tokens from '@/ui/theme/tokens.json';
@@ -72,6 +73,9 @@ export function GuideStepEditorRow({
   const [timestampError, setTimestampError] = useState<string | undefined>(
     undefined,
   );
+  // The inline alerts below are Android's path; iOS hears the same text here.
+  useAnnouncement(instructionError);
+  useAnnouncement(timestampError);
 
   function beginEdit() {
     setDraftInstruction(instruction);
@@ -173,7 +177,7 @@ export function GuideStepEditorRow({
             <Text
               accessibilityLiveRegion="assertive"
               accessibilityRole="alert"
-              className="text-label text-pink"
+              className="text-label text-pinkStrong"
             >
               {instructionError}
             </Text>
@@ -192,7 +196,7 @@ export function GuideStepEditorRow({
             <Text
               accessibilityLiveRegion="assertive"
               accessibilityRole="alert"
-              className="text-label text-pink"
+              className="text-label text-pinkStrong"
             >
               {timestampError}
             </Text>
@@ -222,10 +226,10 @@ export function GuideStepEditorRow({
           <View className="flex-row gap-3">
             <CraftPressable
               accessibilityLabel={`Save step ${number}`}
-              className="flex-1 items-center bg-teal px-6 py-3"
+              className="flex-1 items-center bg-tealStrong px-6 py-3"
               onPress={saveEdit}
             >
-              <Text className="text-label text-ink">Save</Text>
+              <Text className="text-label text-surface">Save</Text>
             </CraftPressable>
             <CraftPressable
               accessibilityLabel={`Cancel editing step ${number}`}

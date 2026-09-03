@@ -50,7 +50,7 @@ export function CraftTabBarButton({
         {
           minHeight: tokens.touch.minimum,
           minWidth: tokens.touch.minimum,
-          borderTopColor: isSelected ? tokens.colors.pink : 'transparent',
+          borderTopColor: isSelected ? tokens.colors.pinkStrong : 'transparent',
           borderTopWidth: isSelected ? tokens.spacing[1] : 0,
           borderRadius: isSelected ? tokens.radii.medium : 0,
         },
