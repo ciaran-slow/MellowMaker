@@ -10,6 +10,7 @@
     "web": "expo start --web",
     "lint": "eslint . && npm run lint:architecture",
     "lint:architecture": "node scripts/check-architecture-boundaries.js",
+    "check:provenance": "node scripts/check-stage-provenance.js",
     "generate:types": "expo customize tsconfig.json",
     "typecheck": "npm run generate:types && tsc --noEmit",
     "test": "jest",

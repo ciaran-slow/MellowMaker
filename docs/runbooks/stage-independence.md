@@ -1,0 +1,98 @@
+# Runbook — Stage independence and provenance
+
+The per-issue workflow is **plan → build → verify → retro**, and its whole value
+rests on one property: each stage runs in a **fresh context**, so the reviewer
+does not inherit the builder's assumptions. Issue #14 ran plan, build, verify,
+and the blocker fix in **one conversation**. The review found a real blocker, so
+the cycle was not wasted — but nothing in the workflow detected the collapse, and
+the PR body's builder attribution ("Claude Opus 5") was wrong-or-right with no
+way to tell, because the session model had been switched to a different model
+immediately before `/build`. A stage's own claim about which model it is cannot
+be trusted after a mid-session switch.
+
+This runbook defines (1) the precondition each stage checks before starting and
+(2) the provenance block each stage posts, so independence is a **checkable
+record** rather than an assumption.
+
+## 1. The fresh-context precondition
+
+Before doing any stage work, check whether **this same context already ran a
+prior stage of this same issue**. Positive signals, any one of which means the
+context is shared:
+
+- this conversation already posted the plan comment on the issue;
+- this conversation already created the issue branch, committed to it, or opened
+  the PR;
+- this conversation already posted a PR review for this issue;
+- an earlier `/plan`, `/build`, or `/verify` invocation for this issue number
+  appears in the transcript;
+- the working tree already contains this issue's implementation and the
+  conversation authored it.
+
+Being in a fresh **git worktree** is not the same as a fresh **context**. The
+worktree isolates files; only a new conversation isolates judgment.
+
+If the context is shared, **stop and tell the user to start the stage in a fresh
+context**, preferably with a different model. Do not silently proceed. If the
+user explicitly directs the stage to continue anyway, it runs under two
+obligations:
+
+1. Lead the posted artifact (plan comment, PR body, or review) with an
+   **`Independence: COMPROMISED`** line naming which stages shared the context.
+2. State what would have to be re-run independently before merge, and treat the
+   pass as advisory. A verify pass in a shared context never upgrades an
+   acceptance criterion from "unproven" to "proven" on its own.
+
+## 2. The stage-provenance block (mandatory in every posted artifact)
+
+Every stage ends its posted artifact with this block, verbatim keys, one per
+line:
+
+```
+Stage-Provenance:
+  stage: plan | build | verify
+  context: fresh | shared
+  prior-stages-in-this-context: none | plan, build, verify
+  model: <the model id the harness reports for this run> | unverifiable
+  model-switched-mid-session: no | yes | unknown
+```
+
+Rules for filling it in:
+
+- **`model` is a claim, not proof.** Write the id only when you can read it from
+  the harness for *this* run. If the session model was switched at any point, or
+  you are reporting it from memory of how the session started, write
+  `unverifiable`. A confident wrong model id is worse than an honest
+  `unverifiable`: it makes the next stage believe an independence check passed.
+- **`model-switched-mid-session: yes` forces `model: unverifiable`.** These two
+  fields never disagree.
+- `context: shared` requires the `Independence: COMPROMISED` disclosure in §1.
+
+## 3. Checking the record
+
+```sh
+node scripts/check-stage-provenance.js <issue> [<pr>]
+```
+
+The script reads the issue comments and the PR body and reviews through `gh`,
+extracts every provenance block, and exits non-zero when:
+
+- a stage's artifact carries no block;
+- any block declares `context: shared`;
+- any block declares an unverifiable or switched model **without** saying so.
+
+It warns (without failing) when two stages report the same model id, which is
+allowed but weaker than running verify on a different model.
+
+The `verify` stage runs this before reporting, and reports the result as part of
+its independence statement. The `retro` stage runs it over the closed cycle and
+treats any failure as a finding to route into a skill or doc — never into
+memory.
+
+## 4. Why not enforce it in CI
+
+Provenance describes *how the work was produced*, not what the code does, and it
+lives on GitHub artifacts rather than in the tree — CI has no honest way to
+verify a model id either. The check is a stage-run gate operated by the verify
+and retro stages, deliberately outside `npm run lint` / `npm run test:ci` so a
+green build never implies an independence claim was validated.

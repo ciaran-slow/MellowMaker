@@ -26,6 +26,20 @@ Before any branch, commit, or push, confirm the checkout is a Git repository
 whose `origin` resolves to the canonical URL. Never change or push another
 repository's remote to make it fit.
 
+## 0. Confirm this is a fresh context
+
+Before loading the contract, check whether **this same conversation already ran
+a prior stage of this same issue** — an earlier `/plan` or `/verify` for this
+issue number, a plan comment this context posted, or a review it published. A
+fresh git worktree is not a fresh context: the worktree isolates files, only a
+new conversation isolates judgment, and a builder who also wrote the plan will
+implement the plan's mistakes faithfully.
+
+If the context is shared, stop and tell the user to build in a fresh context.
+If the user directs you to continue anyway, follow
+`docs/runbooks/stage-independence.md`: lead the PR body with an
+`Independence: COMPROMISED` line naming the stages that shared the context.
+
 ## 1. Load the contract
 
 Read, in order:
@@ -183,8 +197,9 @@ branch)** and destroys the very work under test — commit (or `git stash` and
 restore) before mutating so the restore lands on your intended work, not on
 `HEAD`. Do NOT `rm -rf` an absolute path outside your worktree, and never delete
 `node_modules` (it is a symlink to the shared install; removing it from any
-worktree breaks every checkout). If nothing goes red, the contract is
-unfalsified — add the missing negative-branch test before continuing. For an
+worktree breaks every checkout). If nothing goes red, the contract is either
+unfalsified **or double-defended** — settle which with the redundant-defences
+rule below before adding a test. For an
 **unconditional absolute write** stated as "set, not read-modify-write / not a
 toggle", there is no guard to invert — instead rewrite it into a
 prior-state-conditioned toggle and confirm a **duplicate same-value application**
@@ -192,6 +207,34 @@ test goes red (two identical taps must not flip the result). If no such test
 exists, add one before opening the PR. Note in the PR body which guards you
 mutation-checked. This catches at build time exactly what an independent verify
 mutation pass would otherwise bounce back to you.
+
+**Redundant defences: mutate them together, or record the redundancy.** A
+contract is often upheld by more than one mechanism at once — a value guard *and*
+an effect's dependency array, a memo key *and* a caller-side check, a type
+constraint *and* a runtime branch. Removing one leaves the other standing, the
+suite stays green, and the mutation proves nothing either way. Before concluding
+"unfalsified", enumerate every mechanism that independently upholds the contract
+and **mutate all of them together**. #14's M4 dropped an effect's dependency
+array and stayed green because a `previous`-value guard covered the same
+contract on its own; M4′ dropped both and turned two tests red — the contract
+was falsifiable and merely double-defended. Then **record the redundancy in the
+PR body** (which defences uphold the contract, and that no single-point mutation
+is red), so the next reader does not re-diagnose it as a coverage hole. Only
+when mutating every defence together still leaves the suite green is the
+contract genuinely unfalsified; add the missing negative-branch test then.
+
+**Plant the mutation in every carrier the guard claims to cover.** For an
+enumeration/walk guard, a single mutation in the obvious syntactic form proves
+only that form. Plant the same violation in each distinct place the value can be
+written — the JSX attribute, an object/variant map, a ternary, a shared
+constant, and an ancestor element whose paired text sits in a separate literal —
+and confirm the guard goes red for each. #14's contrast guard went red for a
+mutated `className` attribute and **stayed green** for the same violation in a
+status-pill class map: the walk covered every file but only one carrier, and the
+map held one of the four failures the issue existed to fix. If a carrier stays
+green, widen the guard before opening the PR; if widening is genuinely out of
+scope, record the uncovered carrier as a coverage gap in the PR body so verify
+and the retro can carry it to `docs/runbooks/test-debt.md`.
 
 When a test guards a **set** of modules/files against a contract (an
 enumeration/boundary guard — e.g. "no core module imports the network seam"),
@@ -264,7 +307,14 @@ logging after the smoke test.
 ## 9. Commit, push, and open the PR
 
 Use a commit message that states what changed and why. Record the builder
-model/tool in the PR body so the verify stage can establish independence.
+model/tool in the PR body so the verify stage can establish independence — as
+the `Stage-Provenance` block defined in `docs/runbooks/stage-independence.md`,
+not as prose. **Write `model: unverifiable` rather than a model name whenever
+the session model was switched at any point, or whenever you are reporting it
+from memory of how the session started.** #14's PR body named a builder model
+that had been switched out immediately before the build ran; a confident wrong
+id is worse than an honest `unverifiable`, because it makes the next stage
+believe an independence check passed.
 
 ```sh
 git push -u origin issue-<n>-<short-slug>
@@ -280,7 +330,10 @@ The PR body must include:
 - implementation and persistence notes;
 - tests, gates, simulators/devices, and platforms actually run;
 - any approved deviation from the plan;
-- builder model/tool.
+- any contract found to be **double-defended** during the mutation self-check,
+  and any guard carrier the self-check could not turn red;
+- the `Stage-Provenance` block (`stage: build`, `context`,
+  `prior-stages-in-this-context`, `model`, `model-switched-mid-session`).
 
 Confirm the PR URL and head branch with `gh pr view --repo "$REPO"`.
 

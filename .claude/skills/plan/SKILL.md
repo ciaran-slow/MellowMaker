@@ -27,6 +27,25 @@ Never plan against a similarly named repository or assumptions copied from
 another project. If working from a local checkout, confirm its `origin` is the
 canonical URL before using local source or history.
 
+## 0. Confirm this is a fresh context
+
+Before reading the issue, check whether **this same conversation already ran a
+prior stage of this same issue** — an earlier `/plan`, `/build`, or `/verify`
+for this issue number, a plan comment this context already posted, an issue
+branch it already committed to, or a review it already published. A fresh git
+worktree is not a fresh context: the worktree isolates files, only a new
+conversation isolates judgment.
+
+If any of those hold, stop and tell the user to start this stage in a fresh
+context. If the user directs you to continue anyway, follow
+`docs/runbooks/stage-independence.md`: lead the posted plan with an
+`Independence: COMPROMISED` line naming the stages that shared the context.
+
+Either way, end the posted plan comment with the `Stage-Provenance` block that
+runbook defines (`stage: plan`, the context, and the model — recording
+`unverifiable` rather than a guess if the session model was switched at any
+point).
+
 ## 1. Load the issue and project reality
 
 Read:
@@ -165,6 +184,27 @@ guard living in a hook is not covered by a domain-module test that never
 exercises the guard. If a stated contract cannot be pinned this way, it is not
 yet buildable — resolve it before posting.
 
+A pinned **negative clause is a product decision, not a free assertion**. The
+falsifier rules above make a clause *testable*; they do not make it *right*. A
+plan that pins a wrong suppression gets it implemented faithfully, tested
+faithfully, and shipped: #14 pinned "`undefined` between two identical messages
+does not unlock a re-announce", the build implemented and tested exactly that,
+every gate went green — and the app silently stopped speaking a validation error
+the maker repeats after cancelling. For every "only when", "never", "does not
+re-announce / re-fire / advance" clause, name **both** scenarios it stands
+between:
+
+- the **scenario it serves** — the concrete maker sequence that goes wrong
+  without the clause (who does what, and what they would otherwise see or hear);
+- the **scenario it must not break** — the nearest neighbouring sequence that
+  reaches the same code and must still produce the suppressed behaviour.
+
+Name a falsifying test for each. If the second scenario cannot be named, the
+clause is a guess: drop it and make the behaviour unconditional, or escalate it
+to the user as a product call. When the clause makes iOS and Android diverge,
+name the scenario on **both** platforms — a suppression that is correct on one
+platform and silences the other is a parity defect, not a design.
+
 When the contract is instead that a write is **absolute / a pure function of its
 argument** (an idempotent "set", not a toggle or an accumulate), the falsifier
 is a **repeated same-value application** — name a test that applies the identical
@@ -182,6 +222,19 @@ whether or not the release ran. Name the test at the layer where release is
 actually driven: in this app, blur/focus cleanup only fires under a real
 navigator, so a release tied to navigation must be pinned by a router-level
 test, not a component-in-isolation unmount.
+
+When the plan specifies a **walk-based guard** (the #12 idiom: walk the
+source-of-truth directory so a newly added file cannot escape the check), also
+specify the **carriers** it must scan, not only the files. The value a guard
+hunts for rarely lives in one syntactic form — a Tailwind class appears in a
+`className` attribute, in a status/variant map's object literal, in a ternary,
+in a shared constant, and on an ancestor element with the text in a separate
+literal. #14's contrast guard was framed around `className` attributes and
+therefore missed a status-pill class map, which held one of the four failures
+the issue existed to fix. State the rule at the widest carrier the value can
+occupy ("every string literal in the file"), or enumerate the carriers
+explicitly, and name a falsifier fixture **per carrier** rather than one for the
+attribute form.
 
 ## 7. Post and confirm
 
