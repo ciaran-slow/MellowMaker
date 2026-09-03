@@ -142,6 +142,62 @@ the criteria conflict with **each other**, with `docs/vision.md`, or with a
 repository constraint — not when they merely outrank the issue's own guess at
 how to satisfy them.
 
+### 4.1 Diagnosing a defect this environment cannot reproduce
+
+Most bug issues here are reported from the product owner's physical iPhone, and
+the plan stage has no device, no simulator runtime, and no Maestro (see
+`docs/runbooks/smoke-verification.md`). "Reproduce it first" is not available,
+and a plan that shrugs and lists both hypotheses hands the builder the
+diagnosis — the one job the plan exists to do.
+
+For **layout, sizing, and viewport** defects, derive the mechanism by
+**arithmetic over the committed constants** instead. This is not a guess: every
+input is a value in the tree, so the reasoning is reviewable and the builder can
+re-check it. The method, as #43 ran it:
+
+1. **Fix the frame from the repository's own fixture, not from a remembered
+   device.** #43 used 390 × 844 with a 47pt top inset and 34pt bottom — the
+   `SafeAreaProvider` frame `tests/GuideWorkingViewScreen.test.tsx` already
+   renders at — so the number is one a test can reproduce.
+2. **Enumerate every contributor as a table of `region | height | source`**,
+   and make each source a file the reviewer can open: a `tokens.json` value, a
+   component's `minHeight`, a class's spacing scale, a component's own
+   aspect-ratio maths. No row may be an estimate; if a height genuinely cannot
+   be derived, say so and treat the total as a bound, not a value.
+3. **Sum it and compare against the frame.** #43's chrome came to 897pt above
+   the list on an 844pt screen, which does not merely crowd the list — it places
+   it entirely off-screen, and that is why *nothing at all* responded to a swipe
+   rather than the list simply being short.
+4. **Name a control case already in the codebase** — a screen that shares the
+   structure but not the symptom — and run the same arithmetic on it.
+   `PatternViewerScreen` has the identical shape minus the video card (639pt,
+   leaving ~205pt of list), and it does not freeze. A diagnosis that cannot
+   explain why the near-identical screen is fine is not yet a diagnosis.
+5. **Say plainly that the number is the evidence and the device is not**, so
+   the builder, the reviewer, and the retro all know what was and was not
+   observed.
+
+Two rules keep this honest:
+
+- **If the arithmetic does not clear the threshold, the diagnosis failed.** Do
+  not round it up, and do not present a near-miss as confirmation. Say the
+  hypothesis is unconfirmed and either escalate for an owner-run device probe
+  (scripted as issue steps) or plan the structural fix below on its own merits.
+- **Prefer a fix that is correct whichever hypothesis holds.** An un-reproduced
+  diagnosis can still be wrong, so the plan's value is highest when the fix does
+  not depend on it. #43's `flex-1` on the list is the example: it makes the list
+  height independent of the header's content, so the freeze is structurally
+  impossible rather than merely arithmetically unlikely, at any text size on any
+  device — and it would have been the right change even if the 897 had been 850.
+  State that property explicitly when a fix has it.
+
+The secondary hypothesis is still owed an answer. #43's §1 said why the WebView
+gesture capture is **real but no longer a bug** after the restructure, and why
+no `pointerEvents`/responder hack would be added (untestable in Jest, breaks
+play/pause) — and then put the residual behaviour in the owner's device script
+as "expected, not a defect", step 10. Do not silently drop a hypothesis the
+issue raised; convert it into a recorded decision or an observation to confirm.
+
 ## 5. Write a buildable one-PR plan
 
 Use this structure:

@@ -392,9 +392,10 @@ function GuideWorkingViewHeader({
       </View>
 
       {/*
-        The compliant YouTube IFrame player (issue #11). It is a sibling ABOVE
-        the step list and never gates or disables it: loading, offline, and
-        playback-error all degrade to text while the saved steps stay usable.
+        The compliant YouTube IFrame player (issue #11). Since #43 it rides in
+        the list's `ListHeaderComponent` with the rest of the chrome, and it
+        never gates or disables the steps: loading, offline, and playback-error
+        all degrade to text while the saved steps stay usable.
       */}
       <GuideVideoPlayer
         player={player}

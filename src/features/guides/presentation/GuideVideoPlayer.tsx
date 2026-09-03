@@ -32,9 +32,10 @@ const MAX_CONTENT_WIDTH = 640;
  * matching the screen's other failure states — with a reason message, a "Try
  * again", and an "Open in YouTube" link-out. When the view is blurred (`!active`)
  * the WebView is unmounted so no player runs off-screen (NFR-10). In every state
- * it is a self-contained card and a **sibling above** the step list — it never
- * wraps, gates, or disables the saved instructions, completion, counter, or
- * progress (the #10 guarantee, preserved).
+ * it is a self-contained card riding in the working view's
+ * `ListHeaderComponent` **above** the steps (issue #43) — it never wraps,
+ * gates, or disables the saved instructions, completion, counter, or progress
+ * (the #10 guarantee, preserved).
  */
 export function GuideVideoPlayer({
   player,

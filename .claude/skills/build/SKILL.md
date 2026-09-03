@@ -296,8 +296,10 @@ Run:
    installed build is available in this environment, follow
    `docs/runbooks/smoke-verification.md`: use the Jest/router suites as the
    accepted logic proxy, disclose the deferral with the runbook's exact
-   wording, and append a row to that runbook's "Deferred on-device smokes"
-   table. A deferred smoke that is not logged is a defect.
+   wording, and add **one new file** `docs/runbooks/deferred-smokes/NNN-issue-<n>.md`
+   in that runbook's §3 format. A deferred smoke that is not logged is a defect.
+   Never add the entry by editing a shared table or index — the per-issue file
+   exists precisely so two PRs in flight cannot conflict on the ledger.
 
 For platform-specific code/configuration, exercise both iOS and Android or run
 the repository's equivalent platform-specific automated checks. Do not claim
