@@ -6,9 +6,29 @@ description: Independently review a built MellowMaker issue against its plan, ac
 # Verify
 
 You are the **verify** stage: an independent review, not a continuation of the
-build. Assess before changing anything. If the PR records its builder
-model/tool, confirm this pass is independent; if it does not, report that the
-independence check is unverifiable rather than pretending otherwise.
+build. Assess before changing anything.
+
+**Establish independence first — before reading the diff.** Check whether *this
+same conversation* already ran a prior stage of this issue: an earlier `/plan`
+or `/build` for this issue number, a plan comment this context posted, or a
+branch it committed and pushed. A fresh git worktree is not a fresh context. If
+the context is shared, stop and tell the user to verify in a fresh context,
+preferably on a different model. If the user directs you to continue anyway,
+follow `docs/runbooks/stage-independence.md`: lead the review with an
+`Independence: COMPROMISED` line naming the stages that shared the context, and
+state plainly that a shared-context pass never upgrades an acceptance criterion
+from unproven to proven on its own. #14's plan, build, verify and blocker fix
+all ran in one conversation and nothing detected it.
+
+Then check the record rather than trusting prose:
+
+```sh
+node scripts/check-stage-provenance.js <issue> <pr>
+```
+
+Report its outcome in the review. If the PR carries no `Stage-Provenance` block,
+or records `model: unverifiable`, say the independence check is unverifiable
+rather than repeating a model name the build may have got wrong.
 
 ## Canonical project
 
@@ -216,6 +236,17 @@ List findings in severity order. Each finding needs a file/line, the broken
 contract, and a concrete failing input or runtime scenario. Separate blockers
 from optional follow-up. Do not manufacture findings when the work is sound.
 
+**The finding is yours; the remedy is the build's.** Prescribing a fix costs the
+build stage real work, and a remedy invented from the review's mental model of
+the code sends it to build a mechanism the code already has. #14's first review
+told the build to add a carry-across-reload mechanism so a tab return would stay
+quiet; every list hook's `reload` already keeps the list `ready`, so nothing was
+needed. Before naming a remedy, **read the code path the remedy depends on and
+cite the file/line proving it is actually missing**. If you have not read it,
+state the finding and its failing scenario and stop there — "fix direction is
+the build's call" is a complete finding. Never let an unread remedy become a
+requirement for merge.
+
 When you accept a coverage gap as a **non-blocking follow-up** — a real but
 non-blocking missing test — record it as a dedicated "Non-blocking coverage gap"
 section in the **posted PR review** (issue/PR, the uncovered contract, where the
@@ -231,7 +262,10 @@ Include:
 - acceptance-criterion evidence;
 - commands and CI checks run with outcomes;
 - simulator/device/platform and offline scenarios exercised;
-- any unverified area or independence limitation.
+- any unverified area or independence limitation;
+- the `Stage-Provenance` block (`stage: verify`) and the
+  `check-stage-provenance.js` outcome, per
+  `docs/runbooks/stage-independence.md`.
 
 Post the report as a PR review and confirm it appears:
 

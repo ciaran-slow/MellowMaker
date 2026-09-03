@@ -25,6 +25,31 @@ npm run test:smoke:patterns         # or the relevant .maestro/<flow>.yaml scrip
 
 Do not claim a platform or flow was exercised when it was not run.
 
+### Environment facts for this machine (as of #14, 2026-09-03)
+
+Re-established from scratch each cycle so far; recorded here so a stage stops
+re-discovering them. Re-check rather than assume — an SDK or runtime can be
+installed at any time — but expect these:
+
+- **No Android SDK and no `adb` on `PATH`.** No Android emulator or device can
+  be reached, so every Android smoke and TalkBack pass is deferred (currently to
+  #16).
+- **Maestro cannot launch at all: no Java runtime is installed.** This is the
+  binding constraint — *no* `test:smoke:*` script can run on this machine,
+  regardless of platform, because they all shell out to `maestro`. Do not report
+  a Maestro flow as "not run because no simulator"; it is not runnable at all.
+- **No iOS simulator runtimes are installed**, so `xcrun simctl list devices
+  booted` is empty and cannot be made non-empty by booting one.
+- **The only device surface is a physical iPhone (iOS 26.6.1) running Expo Go
+  57.0.9**, reachable with `npx expo start --clear` because the project has no
+  custom native code. A build stage cannot drive it, and cannot operate
+  VoiceOver/Dynamic Type on it; those passes are **product-owner-run**, scripted
+  as an issue comment (see #14's "iOS VoiceOver pass — product-owner run"), or
+  deferred to #16 by an explicit owner decision and logged in the table below.
+- A flow needing a **new native module** additionally needs a fresh dev/EAS
+  build, which the physical-device Expo Go surface cannot supply (see the #11
+  row).
+
 ## 2. When the smoke cannot run headlessly
 
 The automated Jest/integration/router suites (which run the real SQLite
