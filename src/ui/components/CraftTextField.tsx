@@ -49,6 +49,15 @@ type CraftTextFieldProps = {
  * fields pass `clear` so a maker can empty the field with one tap; editor fields
  * pass a fitting `icon` and sentence casing. There is deliberately no second
  * input component.
+ *
+ * Layout (issue #42): the field *surface* owns the 48px touch minimum as an
+ * inline token style. A single-line input reaches that same 48px through
+ * symmetric vertical padding — `spacing[3]` (12) + the body line height (24) +
+ * 12 — instead of a `min-h-touch` class on the input itself, which measured
+ * 48px around a 24px line and let iOS top-align the text high in the field.
+ * Symmetric padding centres the line under either iOS layout behaviour and
+ * keeps the whole surface tappable. Multiline keeps its own minimum and stays
+ * deliberately top-aligned.
  */
 export function CraftTextField({
   accessibilityHint,
@@ -71,6 +80,7 @@ export function CraftTextField({
       className={`flex-row gap-2 rounded-large bg-surface px-4 ${
         multiline ? 'items-start py-3' : 'items-center'
       }`}
+      style={{ minHeight: tokens.touch.minimum }}
     >
       <MaterialCommunityIcons
         accessibilityElementsHidden
@@ -84,7 +94,7 @@ export function CraftTextField({
         accessibilityLabel={accessibilityLabel}
         autoCapitalize={autoCapitalize}
         autoCorrect={autoCorrect}
-        className="min-h-touch flex-1 text-body text-ink"
+        className={`flex-1 text-body text-ink${multiline ? ' min-h-touch' : ''}`}
         keyboardType={keyboardType}
         multiline={multiline}
         onChangeText={onChangeText}
@@ -92,7 +102,9 @@ export function CraftTextField({
         placeholder={placeholder}
         placeholderTextColor={tokens.colors.ink}
         returnKeyType={returnKeyType}
+        style={multiline ? undefined : { paddingVertical: tokens.spacing[3] }}
         testID={testID}
+        textAlignVertical={multiline ? 'top' : 'center'}
         value={value}
       />
       {clear !== undefined && value !== '' ? (
