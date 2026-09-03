@@ -43,7 +43,33 @@ appId: ${APP_ID}
 - inputText: "0:42"
 - tapOn: "Add step"
 - assertVisible: "Chain 6"
+
+# Two more steps, so the working view has content below the fold to scroll to.
+- tapOn:
+    id: "guide-step-field"
+- inputText: "Chain 12"
+- tapOn: "Add step"
+- assertVisible: "Chain 12"
+- tapOn:
+    id: "guide-step-field"
+- inputText: "Fasten off"
+- tapOn: "Add step"
+- assertVisible: "Fasten off"
 - tapOn: "Back to guide"
+
+# Issue #43 — the working view is ONE scroll surface. The title, video card, and
+# counter ride in the list header, so the whole screen scrolls: a step below the
+# fold is reachable, and one flick back up brings the counter and the video into
+# view again. Before the fix the chrome was taller than the phone, the list was
+# laid out off-screen, and nothing on the display responded to a swipe.
+- scrollUntilVisible:
+    element:
+      text: "Chain 12"
+    direction: DOWN
+- scrollUntilVisible:
+    element:
+      text: "Open in YouTube"
+    direction: UP
 
 # Offline, the player degrades to the text fallback with the "Open in YouTube"
 # link-out; the saved steps below stay usable (never gated by playback).
