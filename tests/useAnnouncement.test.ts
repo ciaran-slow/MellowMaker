@@ -91,17 +91,59 @@ describe('useAnnouncement', () => {
     ]);
   });
 
-  it('undefined between two identical messages does not unlock a re-announce', async () => {
+  it('a message cleared to undefined and then repeated is announced again', async () => {
+    // Verify finding B1 (PR #41): an inline error the maker repeats after
+    // fixing it goes error → undefined → same error. Android's alert remounts
+    // and speaks it again; iOS must too, so clearing resets the memory.
     jest.replaceProperty(Platform, 'OS', 'ios');
     const { rerender } = await renderHook(useAnnouncement, {
-      initialProps: 'Rows: 1' as string | undefined,
+      initialProps: undefined as string | undefined,
     });
 
-    await rerender('Rows: 2');
+    await rerender('Instruction is required');
     await rerender(undefined);
-    await rerender('Rows: 2');
+    await rerender('Instruction is required');
 
-    expect(announce).toHaveBeenCalledTimes(1);
+    expect(announce.mock.calls.map(([text]) => text)).toStrictEqual([
+      'Instruction is required',
+      'Instruction is required',
+    ]);
+  });
+
+  it('a message cleared to an empty string and then repeated is announced again', async () => {
+    // The guide editor's refresh status goes outcome → '' → same outcome.
+    jest.replaceProperty(Platform, 'OS', 'ios');
+    const { rerender } = await renderHook(useAnnouncement, {
+      initialProps: '' as string | undefined,
+    });
+
+    await rerender('Guide details updated from YouTube.');
+    await rerender('');
+    await rerender('Guide details updated from YouTube.');
+
+    expect(announce).toHaveBeenCalledTimes(2);
+  });
+
+  it('negative branch: a message that never clears is not re-announced by a clear elsewhere', async () => {
+    // Clearing resets only this hook's memory: two hooks on one screen keep
+    // independent state, so a failure title clearing cannot unlock the count.
+    jest.replaceProperty(Platform, 'OS', 'ios');
+    const count = await renderHook(useAnnouncement, {
+      initialProps: undefined as string | undefined,
+    });
+    const failure = await renderHook(useAnnouncement, {
+      initialProps: undefined as string | undefined,
+    });
+
+    await count.rerender('3 patterns');
+    await failure.rerender("We couldn't read your patterns");
+    await failure.rerender(undefined);
+    await count.rerender('3 patterns');
+
+    expect(announce.mock.calls.map(([text]) => text)).toStrictEqual([
+      '3 patterns',
+      "We couldn't read your patterns",
+    ]);
   });
 
   it('treats an empty string as nothing to say', async () => {

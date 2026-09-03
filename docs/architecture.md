@@ -595,9 +595,14 @@ Four conventions introduced by the accessibility pass (issue #14):
   `useAnnouncement(message)` (`src/ui/accessibility/`) calls
   `AccessibilityInfo.announceForAccessibility` on **iOS only** — Android keeps
   its live region, and announcing on both would double-speak — never on first
-  render (so a screen does not talk over its own initial focus), only when the
-  message changes from the immediately previous one, and never for an
-  `undefined`/empty message. `CraftAnnouncement` renders the live-region `Text`
+  render (so a screen does not talk over its own initial focus), and only when
+  the message changes from the immediately previous one. An `undefined`/empty
+  message announces nothing and **clears** that memory, so the same text
+  reappearing later — an inline error the maker repeats, a refresh that ends the
+  same way twice — is spoken again, matching Android's remounting alert (verify
+  finding B1 on PR #41). A tab return stays quiet because every list hook's
+  `reload` keeps the list `ready` rather than blinking through `loading`, so
+  an unchanged count never changes the message. `CraftAnnouncement` renders the live-region `Text`
   and runs the hook, and is the primitive for a status line that stays mounted
   (the counter's announcement, a viewer's progress summary and completion
   announcement, the guide editor's refresh status). A **transition into a

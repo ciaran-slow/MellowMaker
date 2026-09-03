@@ -17,8 +17,12 @@ import { AccessibilityInfo, Platform } from 'react-native';
  * - announces only when the message changes from the immediately previous
  *   one, so a re-render with the same text is silent but returning to an
  *   earlier value is spoken again;
- * - an `undefined`/empty message announces nothing and leaves the remembered
- *   previous message untouched.
+ * - an `undefined`/empty message announces nothing and **clears** the memory,
+ *   so the same text reappearing later is a new event and is spoken again —
+ *   an inline error a maker repeats after fixing it, or a refresh that ends the
+ *   same way twice. Android's remounting alert speaks those again too; the
+ *   list screens never clear mid-reload (their `reload` keeps `ready`), so a
+ *   tab return with an unchanged count stays quiet.
  *
  * It is presentation-only: no persistence waits on it and it holds no durable
  * state. It announces only text the maker can already see on screen.
@@ -36,6 +40,8 @@ export function useAnnouncement(message: string | undefined): void {
     }
 
     if (message === undefined || message === '') {
+      previous.current = undefined;
+
       return;
     }
 
