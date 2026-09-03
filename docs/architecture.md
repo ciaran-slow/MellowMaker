@@ -758,7 +758,7 @@ list previews). `.maestro/accessibility.yaml` (`npm run test:smoke:accessibility
 asserts the inputs a screen reader relies on — unique accessible names, status in
 words, and the spoken counter text — because Maestro cannot drive VoiceOver or
 TalkBack; the screen-reader pass itself is manual (iOS VoiceOver on a physical
-iPhone, recorded on issue #14; Android TalkBack is tracked in
+iPhone and Android TalkBack, both deferred from issue #14 and tracked in
 [`runbooks/smoke-verification.md`](./runbooks/smoke-verification.md) for #16).
 
 Every release candidate should exercise, on both platforms where applicable:
