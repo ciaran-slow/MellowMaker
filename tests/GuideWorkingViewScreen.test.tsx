@@ -447,6 +447,48 @@ describe('GuideWorkingViewScreen', () => {
       expect(screen.getByLabelText('Back to guides')).toBeOnTheScreen();
     });
 
+    it('keeps the chrome in order: title, video, counter, then the steps', async () => {
+      const { guideId } = seedGuide(repositories, ['A', 'B', 'C']);
+      await render(tree(repositories, guideId));
+      await screen.findByRole('header', { name: 'Amigurumi Basics' });
+
+      const list = screen.getByTestId('guide-steps');
+
+      // Containment alone (the case above) cannot see order: a header whose
+      // counter sits above the video, or one passed as `ListFooterComponent`,
+      // satisfies every `within(list)` query. The order IS the recorded UX-06
+      // trade-off — "+" is reachable with one flick from the steps and without
+      // scrolling past the video only because the counter is between them — so
+      // it needs its own pin. Walking the subtree depth-first reproduces render
+      // order, so a position in that walk is a position on screen.
+      const walked: unknown[] = [];
+      const walk = (node: unknown): void => {
+        if (typeof node !== 'object' || node === null) return;
+        walked.push(node);
+        for (const child of (node as { children?: unknown[] }).children ?? []) {
+          walk(child);
+        }
+      };
+      walk(list);
+
+      const positionOf = (element: unknown): number => {
+        const index = walked.indexOf(element);
+        expect(index).toBeGreaterThanOrEqual(0);
+        return index;
+      };
+
+      const title = within(list).getByRole('header', {
+        name: 'Amigurumi Basics',
+      });
+      const video = within(list).getByText('Loading video…');
+      const counter = within(list).getByLabelText('Increase Rows');
+      const firstStep = within(list).getByLabelText('Mark step 1 complete');
+
+      expect(positionOf(title)).toBeLessThan(positionOf(video));
+      expect(positionOf(video)).toBeLessThan(positionOf(counter));
+      expect(positionOf(counter)).toBeLessThan(positionOf(firstStep));
+    });
+
     it('gives the list a height that cannot depend on its header', async () => {
       const { guideId } = seedGuide(repositories, ['A']);
       await render(tree(repositories, guideId));

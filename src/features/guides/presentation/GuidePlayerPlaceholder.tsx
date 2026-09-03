@@ -24,10 +24,10 @@ const DEFAULT_MESSAGE =
  * makes it the loading/offline/error fallback body of `GuideVideoPlayer`. It is a
  * 16:9 card carrying a header, a message, and an "Open in YouTube" link-out
  * (React Native `Linking`, no new dependency, offline-tolerant), and — when
- * `onRetry` is supplied — a "Try again" control. It is a **sibling above** the
- * step list and never wraps, gates, or disables it: the saved instructions below
- * stay fully readable and interactive in every state, offline included
- * (FR-GU-06).
+ * `onRetry` is supplied — a "Try again" control. It sits **above** the steps,
+ * inside the working view's `ListHeaderComponent` since #43, and never wraps,
+ * gates, or disables them: the saved instructions below stay fully readable and
+ * interactive in every state, offline included (FR-GU-06).
  */
 export function GuidePlayerPlaceholder({
   sourceUrl,

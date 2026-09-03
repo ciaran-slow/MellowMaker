@@ -113,8 +113,18 @@ When no simulator/`APP_ID`/installed build is available, follow
 `docs/runbooks/smoke-verification.md`: accept the Jest/router suites as the
 logic proxy, but treat acceptance criteria whose wording requires on-device
 behavior (app restart/relaunch, hardware back, real gestures) as only
-**provisionally met**, and confirm the build logged a "Deferred on-device
-smokes" row for the flow. A deferral the build did not log is a finding.
+**provisionally met**, and confirm the build logged a
+`docs/runbooks/deferred-smokes/NNN-issue-<n>.md` entry for the flow. A deferral
+the build did not log is a finding.
+
+When a review derives a **platform-specific failure scenario it cannot run**
+(the #43 Android `removeClippedSubviews`/WebView case is the template: read off
+a framework default, plausible, never observed), do not prescribe a prop change
+you have not seen fail — but do not leave it in the review either, because a
+review stops being read the moment the PR merges. Write it into that issue's
+deferred-smokes entry as a named scenario with its expected result and the fix
+direction if it fails, so the #16 device pass inherits it. Say in the review
+that you did so.
 
 ## 3. Check every acceptance criterion
 

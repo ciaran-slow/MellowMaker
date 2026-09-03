@@ -76,26 +76,68 @@ verify):
 
 ## 3. Log the deferred smoke (mandatory)
 
-Append a row to the tracking table below whenever a smoke is deferred. This is
-what makes the accumulating on-device debt visible at release time. The
-**release-acceptance issue (#16)** must clear every open row — running each
+Whenever a smoke is deferred, add **one new file** to
+`docs/runbooks/deferred-smokes/` named `NNN-issue-<n>.md` (the issue number,
+zero-padded to three digits so the directory sorts numerically). This is what
+makes the accumulating on-device debt visible at release time. The
+**release-acceptance issue (#16)** must clear every open entry — running each
 listed flow on a real iOS and Android target — before PRD0 is called releasable.
 
-Clear a row by running its flow on-device, then mark it Done with the date and
-target exercised (or delete it once #16 records it).
+### Why a file per issue, not a row in a shared table
+
+This ledger used to be a single Markdown table that every build stage appended
+to. That made it a **serial merge-conflict magnet**: every parallel PR adds its
+row at the same place, at the end of the same table, so any two PRs in flight at
+once conflict on it even though they touch nothing else in common. #48 and #49
+hit exactly this — both appended a row, and #49's branch had to be rebased by
+the orchestrator purely to resolve a ledger append that had no semantic
+disagreement in it (the resolution kept both rows). The cost is paid by whoever
+merges second, every time, and it scales with how much parallelism the workflow
+runs.
+
+A new file per issue cannot conflict: two PRs adding
+`043-issue-43.md` and `044-issue-44.md` touch disjoint paths, so git merges them
+without a decision. **The directory listing is the ledger.** Do not reintroduce
+an index, summary table, or count anywhere in this runbook — an index is the
+shared append point again, and it would have to be edited by every PR that adds
+a file.
+
+### Entry format
+
+Copy this shape (see any existing file for a worked example):
+
+```md
+# Deferred on-device smoke — issue #<n>
+
+- **Issue:** #<n>
+- **PR:** #<pr>
+- **Flow file:** `.maestro/<flow>.yaml`
+- **Status:** Open
+
+## Proxy coverage that ran
+
+<the Jest/router suites accepted as the logic proxy, named specifically>
+
+## Still on-device-unverified
+
+<the exact acceptance-criterion wording that stays provisional, and why this
+environment cannot exercise it>
+```
+
+An entry may carry additional `###` sub-sections when the deferral has a
+specific scenario attached — for example a named platform scenario a reviewer
+derived but could not run (see `043-issue-43.md`'s Android
+`removeClippedSubviews` scenario). Put such a scenario in the deferred entry
+rather than in a PR review, which disappears from view once the PR merges.
+
+### Clearing an entry
+
+Run the flow on-device, then set `**Status:**` to `Done — <date>, <targets
+exercised>` in that file (or delete the file once #16 records it). Editing or
+deleting a single-issue file is likewise conflict-free.
 
 ### Deferred on-device smokes
 
-| Issue | PR | Flow file | Proxy coverage that ran | Still on-device-unverified | Status |
-|---|---|---|---|---|---|
-| #5 | #23 | `.maestro/patterns.yaml` | Jest repository + library/editor screen + real-router navigation suites (195 tests) | AC "rows/steps retain exact saved order after navigation and **app restart**" — true relaunch never exercised on a device | Open |
-| #6 | #25 | `.maestro/pattern-viewer.yaml` | Jest domain + repository (serialization/durability) + `PatternViewerScreen` component + real-router navigation suites (220 tests) | AC "completed/reopened state survives immediate termination and **app restart**" and on-device scroll-to-current-step restoration — true relaunch and real scroll never exercised on a device | Open |
-| #7 | (this PR) | `.maestro/counter.yaml` | Jest domain (`counterLabel`) + repository (idempotent accessor, clamp, rename, per-owner isolation, reopen durability) + `CraftCounter` control + `PatternCounter` wired hook/screen (rapid double-tap→2, clamp-at-zero, reset cancel/confirm, two-pattern isolation, remount durability, rename, a11y announcement) suites (245 tests) | AC "every acknowledged change survives navigation and immediate **app restart**" — true relaunch never exercised on a device (Jest reopen/remount is the proxy); real one-handed tap gestures and the reduced-motion pop on-device | Open |
-| #9 | (this PR) | `.maestro/guides.yaml` | Jest domain (`youtubeUrl` supported-forms/rejections/id-boundary, `guideImportLabels`) + `youtubeOembedGateway` (injected-`fetch` mapping + every failure reason + html/transcript boundary) + `guideRepository` (dedup UNIQUE, refresh title/step preservation + COALESCE, `listGuides` recency) + `GuideImportScreen`/`GuideDetailScreen`/`GuidesScreen` component + real-router `guidesNavigation` suites | AC "created guide survives **app restart**, offline" (relaunch step 6), the **Android airplane-mode** metadata-unavailable manual path (step 3), and Android **hardware-back** — true relaunch and the native airplane toggle never exercised on a device (Jest reopen + fake gateway are the proxy) | Open |
-| #10 | (this PR) | `.maestro/guide-authoring.yaml` | Jest domain (`guideStepDraft` timestamp parse/format/optional-fields) + `guideRepository` (append-at-count, reorder [C,A,B]/membership-throw, delete compaction A=0/C=1, absolute completion + durability, order/timestamp/note/transcript/completion persistence across reopen, guide↔guide↔pattern counter isolation + idempotent + durable) + `GuideWorkingViewScreen` (placeholder-doesn't-disable-list, out-of-order completion keeps current=first-incomplete, counter isolation across mounts, counter-failure keeps steps, missing/failed) + `GuideEditorScreen` (manual timestamped authoring 0:42→42000/1:05→65000, invalid-timestamp rejects, reorder/delete offline, first-row Move-up disabled+no-op, title validation, refresh title-preserve + no-write-on-failure, delete-confirm) + real-router `guidesNavigation` (working view → editor → delete → /guides) suites | AC "guide steps preserve order/timestamps/notes/completion after **app restart**" (relaunch step), **Android airplane-mode** authoring of a saved guide, and Android **hardware-back** — true relaunch and the native airplane toggle never exercised on a device (Jest reopen + fake gateway are the proxy) | Open |
-| #12 | (this PR) | `.maestro/offline-cold-start.yaml` | `tests/offlineColdStart.test.tsx` (behavioural no-`fetch` cold start over the real migrations + populated baseline across dictionary/pattern/progress/counter/saved-guide + static import guard) + existing durability/reopen suites (`repositories` progress/counter reopen, `guideRepository` absolute-completion durability, `PatternCounter` remount) + the `DatabaseGate`/`databaseRouteGating`/`databaseInitialization` migration-failure suites | Real airplane-mode cold start across dictionary+patterns+guide-text+progress+counters, real immediate-termination process-kill relaunch of acknowledged counter/checklist writes (NFR-02), and a real on-device migration-failure surface (FR-DA-03) — the Jest reopen + `node:sqlite` proxy cannot exercise native relaunch or the airplane toggle | Open |
-| #11 | (this PR) | `.maestro/guide-playback.yaml` | Jest `guidePlayback` pure (`videoOffsetMsToSeconds` 42000→42 / 65000→65 / 0→0 / negative-clamp / absolute-not-accumulated + error-reason→text mapping) + `GuideVideoPlayer` (seek-when-ready→`seekTo(42,true)`, seek-before-ready/after-error no-op, repeated-same-value idempotency, error-text + Try again + Open in YouTube, unmount seek-release no-op) + `GuideWorkingViewScreen` (badge seek when ready, playback-failure keeps instructions/completion/counter usable, retry calls zero guides-repo methods, list never gated in loading/error) + real-router `guidesNavigation` (player released on navigate-away, stale callback no-op) suites, all with `react-native-youtube-iframe` mocked | AC#1 real **seek landing on the playing video** across **iOS + Android**; AC#2 real **offline/airplane** WebView load-failure→text fallback (Android-airplane asserted in-flow, iOS airplane manual); AC#4 native **WebView/subscription teardown** on navigation — and the flow needs a **fresh dev/EAS build** because the two new deps (`react-native-webview` `13.16.1`, `react-native-youtube-iframe` `2.4.1`) add a native module absent from any prior installed binary. No booted-sim `APP_ID`/matching build in this environment | Open |
-| #14 | (this PR) | `.maestro/accessibility.yaml` | Jest `useAnnouncement` (iOS announce-once, Android never, first-render silent, repeated-same-value once, return-to-value, cleared-then-repeated spoken again, independent hooks) + `usePressScale` (both reduced-motion branches, disabled, synchronous `onPress`) + walk-based `accessibilityContrast` and `textScaling` guards + `nonColorStatus` (both step rows × 3 statuses by role/state/word) + `CraftCounter`/`PatternViewerScreen`/`GuideWorkingViewScreen` iOS announcement cases + `tabBarContrast` 3:1 indicator | **iOS VoiceOver** pass on the physical iPhone (iOS 26.6.1, Expo Go 57.0.9 via `npx expo start`; script posted on #14) — **deferred to #16 by product-owner decision, 2026-09-03**, so AC2 is provisionally met only; judge verify finding F3 (two back-to-back completion announcements may clip) in the same run; **Android TalkBack** pass over dictionary → stitch detail, viewer completion + counter, import failure/success, editor save, playback seek — no Android SDK/`adb` on the build machine, and Maestro cannot launch at all (no Java runtime), so `test:smoke:accessibility` itself is also unexecuted on both platforms; real Dynamic Type / font-scale clipping and one-handed reachability on Android | Open |
-| #42 | (this PR) | `.maestro/dictionary.yaml` | Jest `CraftTextField` layout/interaction suite (single-line surface `minHeight: 48` + input `paddingVertical: 12` + no input minimum, by style *and* `className`, `textAlignVertical: center`; multiline negative branch keeps `min-h-touch`/`items-start`/`top` and takes no padding; 12+24+12=48 token arithmetic; controlled change/submit; clear control present-and-48px / absent-when-empty; walk-based "only `CraftTextField` renders a `TextInput`" ownership guard) plus the unchanged `DictionaryScreen`/`PatternEditorScreen`/`GuideImportScreen`/`GuideEditorScreen`/`CraftCounter`/`textScaling`/`accessibilityContrast` suites | AC1 **visible** vertical centring of value *and* placeholder in every single-line field, and that a tap near the top and bottom edge of a field still focuses it — Jest pins who owns the 48px and which alignment each branch sets, but cannot render pixels or dispatch a real touch. Product-owner iPhone pass (iOS 26.6.1, Expo Go 57.0.9 via `npx expo start`) covers iOS: stitch search, pattern title, YouTube link, counter rename centred; notes and step instructions still top-aligned. **Android is unexercised on both counts** (no SDK/`adb`; `textAlignVertical` is the Android-only half of the fix and has never run), deferred to #16 | Open |
-| #43 | (this PR) | `.maestro/guide-playback.yaml` (extended: three steps, `scrollUntilVisible` down to a below-the-fold step, back up to the video, then the counter tap) | Jest `GuideWorkingViewScreen` (chrome inside `guide-steps` with the back control outside; the same containment in the player's loading / ready / error states, error placeholder included; `flex-1` on the list; cumulative `youtubePlayerMountCount()` staying at 1 across a completion and two counter taps; header rendered above `ListEmptyComponent` with zero steps; `keyboardShouldPersistTaps="handled"` and no `getItemLayout`/`initialScrollIndex`) + real-router `guidesNavigation` (`/guides/<id>` renders the counter and title inside the list) suites | AC1 the **real scroll gesture** through all steps on the physical iPhone with the player loading, ready, and errored; AC2 **one-handed counter reach** after scrolling; the one-tap rename with the keyboard up; and the residual "a swipe starting on the WebView is consumed by YouTube" behaviour — Jest has no layout engine, so it can prove containment but never that a gesture moves the content. AC4 **Android**: no Android SDK/`adb` on this machine and Maestro cannot launch at all (no JDK), so `test:smoke:guides:playback` is unexecuted on both platforms | Open |
-| #44 | (this PR) | `.maestro/patterns.yaml` (empty-state opening replaced by `assertVisible: "Practice Swatch"` + `tapOn: "New pattern"`, plus a new AC3 delete-then-relaunch leg) and `.maestro/database.yaml` (extended to assert a bundled pattern on both the fresh install and the no-clear relaunch) | Jest `patternSeedContent` (literal `[slug, title, stepCount]` table, `mm` hook token, used-abbreviation set measured against `stitchSeed.json`, zero imagery, provenance row-for-row cross-check, SHA-256 fingerprint) + `patternSeedDocument` (29 parser rejections by exact issue path) + `patternSeedLoader` (fresh-install apply, documented library order with strictly descending distinct instants, no-write fast path, non-resurrection with the version guard **bypassed** and again across a version bump, no rewrite of a maker-retitled/reordered starter, starters sorting below `insertPopulatedBaseline`, a later maker pattern floating above) + `databaseInitialization` (populated **version-1 -> version-2** upgrade fixture with literal maker rows, `origin = 'user'` backfill, empty ledger; then the seeded-upgrade order) + `databaseSchema` (`origin` CHECK, `'user'` default, ledger tombstone survives a pattern delete, orphan ledger row refused) + `repositories` (bundled pattern add/edit/delete/reorder/update/progress/counter/reopen/cascade-delete round trip) + `offlineColdStart` (both seeds, bundled pattern worked with `fetch` stubbed to throw) + `patternsNavigation`/`foundationNavigation` real-router suites over the seeding composition root | **Fresh-install seeding on a real binary** (that the six starters appear in the documented order in an installed app, not just under `node:sqlite`); the **delete-then-relaunch non-resurrection leg** — a true process relaunch is the whole point of AC3 and Jest can only reopen a connection; and **migration of a real installed version-1 database** (the `node:sqlite` populated upgrade fixture is the proxy; no installed v1 build exists to upgrade). Maestro cannot launch at all on this machine (no Java runtime: `maestro --version` fails with "Unable to locate a Java Runtime"), no iOS simulator runtime is installed (`xcrun simctl list devices booted` is empty), and there is no Android SDK/`adb`, so `test:smoke:patterns` and `test:smoke:database` are unexecuted on both platforms | Open |
+See [`deferred-smokes/`](./deferred-smokes/) — one file per issue, sorted by
+issue number. Everything open is a file in that directory; there is deliberately
+no summary here to keep it out of every PR's diff.
