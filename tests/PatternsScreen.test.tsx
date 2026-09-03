@@ -45,6 +45,7 @@ function fakePattern(index: number): PatternSummary {
     notes: index % 2 === 0 ? `Notes ${index}` : undefined,
     createdAt: 1_000 + index,
     updatedAt: 2_000 + index,
+    origin: 'user',
   };
 }
 

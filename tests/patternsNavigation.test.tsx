@@ -5,17 +5,33 @@ import {
   waitFor,
 } from 'expo-router/testing-library';
 
+import type { PatternSummary } from '@/data/contracts/patternRepository';
 import { createAppDatabase } from '@/platform/database/createAppDatabase';
 
 const routes = 'src/app';
 
+function libraryTitles(): readonly string[] {
+  return (
+    screen.getByTestId('pattern-results').props.data as readonly PatternSummary[]
+  ).map((pattern) => pattern.title);
+}
+
 describe('patterns navigation', () => {
-  it('creates a pattern, lands on the viewer, and shows it after returning to the library', async () => {
+  it('creates a pattern, lands on the viewer, and shows it above the bundled starters', async () => {
     const result = renderRouter(routes, { initialUrl: '/patterns' });
     await result;
 
+    // The composition root seeds the bundled starters, so a fresh install is
+    // never empty and "Create your first pattern" (which lives only in the
+    // list's empty component) is not on screen. The always-present "New
+    // pattern" action is the way in.
+    expect(await screen.findByLabelText(/^Practice Swatch/)).toBeOnTheScreen();
+    expect(
+      screen.queryByRole('button', { name: 'Create your first pattern' }),
+    ).not.toBeOnTheScreen();
+
     await fireEvent.press(
-      await screen.findByRole('button', { name: 'Create your first pattern' }),
+      await screen.findByRole('button', { name: 'New pattern' }),
     );
 
     await screen.findByRole('header', { name: 'New pattern' });
@@ -42,6 +58,16 @@ describe('patterns navigation', () => {
       expect(result.getPathname()).toBe('/patterns');
     });
     expect(await screen.findByLabelText('Meadow Wrap')).toBeOnTheScreen();
+    // Recency puts the maker's brand-new pattern above every bundled starter.
+    expect(libraryTitles()).toStrictEqual([
+      'Meadow Wrap',
+      'Practice Swatch',
+      'Cotton Dishcloth',
+      'Ridged Coaster',
+      'Granny Square',
+      'Ribbed Headband',
+      'Simple Scarf',
+    ]);
   });
 
   it('opens the viewer for a chosen library row', async () => {

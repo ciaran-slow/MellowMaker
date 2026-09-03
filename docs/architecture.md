@@ -138,15 +138,18 @@ narrow interfaces where practical.
 
 ## 6. Data model
 
-Schema version 1 is the whole PRD0 schema, defined in `src/data/sqlite/migrations.ts`.
-That module is the single source of schema truth for the Expo adapter and for the
-`node:sqlite` integration tests, and it imports nothing.
+Schema version 1 is the whole PRD0 schema and version 2 adds bundled-pattern
+provenance and the pattern seed ledger (issue #44), both defined in
+`src/data/sqlite/migrations.ts`. That module is the single source of schema truth
+for the Expo adapter and for the `node:sqlite` integration tests, and it imports
+nothing.
 
 | Table | Responsibility | Key relationships |
 |---|---|---|
 | `stitch` | Identity, name, abbreviation, difficulty, summary, ownership provenance, and a normalized `search_text` | parent of `stitch_instruction` |
 | `stitch_instruction` | Ordered instruction text and local image asset key | `stitch_id` → `stitch`, cascade |
-| `pattern` | Maker-owned project metadata and notes | parent of steps, progress, counters |
+| `pattern` | Project metadata, notes, and `origin` provenance (`bundled`/`user`) | parent of steps, progress, counters |
+| `pattern_seed_state` | Durable slug-to-pattern seed ledger: what the pattern seed has already inserted, and at which release | `pattern_id` -> `pattern` **set null** |
 | `pattern_step` | Ordered row/instruction text for one pattern | `pattern_id` → `pattern`, cascade |
 | `pattern_progress` | One row per pattern holding the active position | `pattern_id` → `pattern` cascade; `active_step_id` → `pattern_step` **set null** |
 | `pattern_step_progress` | One row per step holding its `completed_at` instant | `step_id`/`pattern_id` cascade |
@@ -171,7 +174,8 @@ multi-counter decision or the guide counters (#10/#11, `owner_kind = 'guide'`)
 need no migration. The trade-off is that there is no DB-level "one row per
 pattern" guarantee; the idempotent accessor plus the fact that the UI never
 calls `createCounter` keeps exactly one in practice, and a repository test pins
-the invariant. `LATEST_SCHEMA_VERSION` stays 1: this issue ships no migration.
+the invariant. Issue #7 shipped no migration; the schema was still at
+version 1 then, and `counter` is unchanged by version 2.
 
 `pattern_progress` is deliberately split in two: one row per pattern for the
 active position and one row per step for completion. Each has a single job, both
@@ -183,8 +187,8 @@ guide authoring, the offline working view, and the guide counter reuse the
 version-1 schema unchanged: `guide_step` already carries instruction, optional
 `video_offset_ms`, `transcript_excerpt`, `note`, `completed_at`, `origin`, and a
 contiguous `position`, and `counter` already carries the `owner_kind = 'guide'`
-owner and its `guide_id` FK, so `LATEST_SCHEMA_VERSION` stays 1 and this issue
-adds no migration and no dependency. Guide steps follow the same conventions as
+owner and its `guide_id` FK, so issue #10 added no migration and no dependency
+(the schema was still at version 1 then). Guide steps follow the same conventions as
 pattern steps: an append lands at `position = current step count`, a delete
 re-compacts the remainder to `0..n-1`, and a reorder validates exact membership
 then runs the two-pass `reorderPositions` under `UNIQUE (guide_id, position)`.
@@ -227,14 +231,23 @@ Conventions every table follows:
 | Ordering | Explicit `position INTEGER NOT NULL CHECK (position >= 0)`, contiguous from 0 within its parent, `UNIQUE (<parent>_id, position)`. Reads always `ORDER BY position ASC, id ASC`. |
 | Recency | `pattern` has no manual position; the library orders by `updated_at DESC, id ASC` through `pattern_recent_idx`. Manual positions exist only where the maker reorders: stitch instructions, pattern steps, guide steps, counters. |
 | Booleans | Not stored. Completion is a nullable `completed_at` instant, so "when" is never lost. |
-| Deletion | Every child of an aggregate root is `ON DELETE CASCADE`. The single exception is `pattern_progress.active_step_id`, which is `ON DELETE SET NULL` so deleting one step clears the pointer instead of destroying the pattern's progress. `ON UPDATE` is omitted because identifiers are immutable. |
-| Ownership | `stitch.ownership` (`seed`/`user`), `stitch.seed_version`, and `stitch.user_modified_at` make bundled and maker content distinguishable. A seed import may insert or update only rows where `ownership = 'seed'` and `user_modified_at IS NULL`. `pattern`, `imported_guide`, and their children are always maker-owned and carry no ownership column. |
+| Deletion | Every child of an aggregate root is `ON DELETE CASCADE`. Exactly two columns are `ON DELETE SET NULL`, both deliberately. `pattern_progress.active_step_id`, so deleting one step clears the pointer instead of destroying the pattern's progress. `pattern_seed_state.pattern_id` (version 2), so the ledger row **outlives the pattern it created**: if a cascade removed it, the next launch would see an unledgered slug and resurrect a bundled pattern the maker deliberately deleted. `ON UPDATE` is omitted because identifiers are immutable. |
+| Ownership | Two different marks for two different jobs. `stitch.ownership` (`seed`/`user`) with `stitch.seed_version` and `stitch.user_modified_at` governs **seed write authority**: a stitch release may insert or update only rows where `ownership = 'seed'` and `user_modified_at IS NULL`. `pattern.origin` (`bundled`/`user`) records **provenance only** and grants the seed nothing, because a bundled pattern is fully maker-owned from the instant it lands - it is freely editable, reorderable, and deletable, so there is no `user_modified_at` on `pattern` and nothing ever asks whether the maker has edited one. A maker-created pattern is always written `'user'` explicitly, which makes "a maker can never create a bundled pattern" structural. `imported_guide` and its children stay unmarked and are always maker-owned. |
 | Search | `stitch.search_text` is a stored generated column, `lower(trim(name)) \|\| ' ' \|\| lower(trim(abbreviation))`, indexed, so case- and whitespace-insensitive lookup cannot drift from its source columns. `StitchRepository.searchStitches` matches it with two token-prefix `LIKE ? ESCAPE '\'` clauses — `q%` and `% q%` — so an abbreviation matches as a whole token (`dc` never returns *Half double crochet* through `hdc`), a multi-word name still matches across its space, and the first clause stays index-eligible. `%`, `_`, and `\` a maker typed are escaped at that boundary rather than stripped during normalization, and results are ordered `search_text ASC, id ASC` like browse. No FTS table, no dependency, no migration. |
 | Exclusive owners | `counter.owner_kind` plus paired `CHECK`s guarantee exactly one pattern or one guide owner. `UNIQUE (pattern_id, position)` and `UNIQUE (guide_id, position)` order each owner independently because SQLite treats `NULL`s in a unique index as distinct. |
 | Cross-parent references | A reference that must stay inside one aggregate derives its parent in SQL rather than trusting the caller. `pattern_progress.active_step_id` and `pattern_step_progress.pattern_id` are both written by `INSERT ... SELECT ... FROM pattern_step WHERE id = ?`, so a step from another pattern — or no step at all — writes nothing instead of pointing a pattern at a position it does not own. |
 | Text | Trimmed by the caller before insert; the schema never trims silently except in the generated search column. |
 
 ### 6.1 Seed content
+
+Two bundled content sets follow the same convention - a committed JSON document,
+one module that *is* its documented format, and a loader with a version guard -
+and diverge on exactly one point: the stitch seed revises in place, the pattern
+seed only ever inserts. `createAppDatabase` applies the stitch seed and then the
+pattern seed, so `DatabaseGate`'s ready state means migrated *and* both content
+sets seeded.
+
+#### Bundled stitch content
 
 Bundled stitch content is one committed JSON document,
 `src/data/seed/stitchSeed.json`, holding a document-level `seedVersion`, an
@@ -259,8 +272,36 @@ committed document is validated in the test suite on every run.
 | Invocation | `createAppDatabase` applies the bundled content after migrations, inside its existing `try`. `DatabaseGate`'s ready state therefore means migrated *and* seeded, so dictionary screens own no seeding state, and a seed failure reuses the existing rollback-and-retry path. |
 | Error taxonomy | `StitchSeedError` is deliberately outside `DatabaseError`'s four codes: invalid bundled content is not a database condition. The gate maps it to its unexpected-error state and offers a retry, and the committed content gate makes that state unreachable in a shipped build. |
 
-The approval, authorship, imagery, attribution, and update-policy record is
-[`content-provenance.md`](./content-provenance.md).
+#### Bundled pattern content
+
+Bundled pattern content is `src/data/seed/patternSeed.json` - six original
+beginner patterns (issue #44) with a document-level `seedVersion`, an in-band
+`"terminology": "US"` declaration, and plain-string steps whose array index
+becomes `pattern_step.position`. `src/data/seed/patternSeedDocument.ts` is its one
+documented format, mirroring the stitch parser's collecting discriminated result.
+
+| Concern | Decision |
+|---|---|
+| Seed identity | The kebab-case `slug` is frozen at authoring time and is the key of `pattern_seed_state`. `pattern.id` is a v4 UUID assigned on insert. The `pattern` table itself carries no slug: identity for the seed lives in the ledger, not on the maker's row. |
+| Version | One monotonically increasing integer per document, never per record. |
+| Launch guard | `PatternRepository.appliedPatternSeedVersion()` reads `MAX(seed_version)` over **`pattern_seed_state`**, never over the pattern rows. Reading it from the rows - the way the stitch guard reads `stitch` - is the resurrection bug: a maker who deleted every bundled pattern would drive the aggregate to `NULL` and get all six back on the next launch. The guard is only the fast path; the per-slug ledger check inside `insertSeededPatterns` is the actual mechanism, and it deliberately never consults the `pattern` table. |
+| Revision policy | **Insert-only. The pattern seed never updates and never deletes.** A slug the ledger records is skipped whether the maker still has the pattern, has retitled and reordered it, or has deleted it. A bundled pattern becomes the maker's property on insert - they may be mid-project on it with completion rows, an active-step pointer, and a counter - so a release that rewrote its text would destroy live work and could orphan `pattern_progress.active_step_id`. A bumped version may therefore add **new slugs only**. This is the deliberate divergence from the stitch seed. |
+| Recency anchoring | `insertSeededPatterns` reads `MIN(updated_at) FROM pattern` **once, before the loop** (or `now()` on an empty library) and writes record *i* at `anchor - 1 - i`. The six instants are strictly distinct and strictly descending, so document order is the fresh-install library order; and because they sit below the oldest existing row, the starters never push a maker's in-progress project down the library. A per-insert `now()` would tie the rows within one millisecond - random order on every install - and float them above the maker's own work. |
+| Maker data | No write path touches a pattern the seed did not create in that same call. There is no seed update statement and no seed delete statement anywhere in the repository module. |
+| Invocation | `createAppDatabase` calls `applyBundledPatternSeed` immediately after the stitch seed, inside the same `try`, so a failure rolls its transaction back and reuses the gate's retry. |
+| Error taxonomy | `PatternSeedError` sits outside `DatabaseError`'s four codes for the same reason `StitchSeedError` does; the gate maps it to its unexpected-error state. |
+
+Presentation is unchanged by bundled patterns: the library renders whatever
+`listPatterns()` returns, and there is deliberately **no badge, filter, or visual
+distinction** for a bundled row (a mark on a pattern the maker can freely
+retitle, reorder, and delete would be noise). `origin` is carried on
+`PatternSummary` so a later deliberate decision needs no migration. The "No
+patterns yet" empty state remains implemented and correct - it is now reached
+only after a maker clears their library rather than on first launch.
+
+The approval, authorship, imagery, attribution, and update-policy record for both
+sets is [`content-provenance.md`](./content-provenance.md) (sections 2-7
+stitches, sections 8-11 patterns).
 
 ## 7. SQLite lifecycle
 
@@ -297,6 +338,17 @@ The approval, authorship, imagery, attribution, and update-policy record is
    only, never maker content.
 7. **Upgrade coverage.** Every future schema change appends a migration and ships
    its own populated fixture case that asserts literal maker rows survive.
+   `LATEST_SCHEMA_VERSION` is **2**. Migration 2 (issue #44) adds
+   `pattern.origin TEXT NOT NULL DEFAULT 'user' CHECK (origin IN ('bundled','user'))`
+   - the default is what backfills every pattern an installed version-1 database
+   already holds - and creates `pattern_seed_state`. Its populated upgrade
+   fixture is the "upgrades a populated version-1 database to version 2 without
+   losing maker data" case in `tests/databaseInitialization.test.ts`, which
+   starts from `MIGRATIONS.filter(m => m.version === 1)` plus
+   `insertPopulatedBaseline`, then asserts literal titles, notes, step order, the
+   active pointer, the completion instant, the guide step's offset and note, the
+   counter at 7, `origin = 'user'` on every pre-existing row, and an empty
+   ledger.
 
 Repositories are built by `createRepositories` over one `RepositoryContext`
 (connection, transaction runner, injected clock, injected identifier generator),
@@ -785,6 +837,25 @@ Configured CI runs a clean npm install, lint, strict type checking, and the full
 Jest suite. Maestro runs against locally installed targets using a caller-supplied
 application identifier until the EAS issue provides dedicated artifacts.
 
+Bundled content carries three suites per set. For patterns (issue #44):
+`tests/patternSeedContent.test.ts` pins the shipped bytes (the literal
+`[slug, title, stepCount]` identity table, the `mm` hook token in every note, the
+used-abbreviation set measured against `stitchSeed.json`, zero imagery, the
+row-for-row cross-check against `content-provenance.md` section 8, and the
+SHA-256 fingerprint); `tests/patternSeedDocument.test.ts` pins the parser's
+rejections by exact issue path; and `tests/patternSeedLoader.test.ts` pins the
+seed's behaviour against `node:sqlite` - fresh-install apply, the documented
+library order with strictly descending instants, the no-write fast path,
+**non-resurrection with the version guard bypassed and again across a version
+bump**, no rewrite of a pattern the maker retitled and reordered, starters sorting
+below a populated baseline, and a newly created pattern floating above them. The
+migration suite covers the version-1 upgrade fixture and the seeded-upgrade order,
+`databaseSchema` covers the `origin` `CHECK`, the `'user'` default backfill, and
+the ledger tombstone surviving a pattern delete, `repositories` extends its
+`patterns` describe with an end-to-end bundled-pattern edit/progress/counter/
+reopen/delete round trip, and `offlineColdStart` seeds both content sets and works
+a bundled pattern with `fetch` stubbed to throw.
+
 Four walk-based guards under `tests/` pin repository-wide contracts rather than
 one file's behaviour, all defaulting every `src/` file to "included" so a new
 file cannot escape them: `offlineColdStart` (no network seam in the core),
@@ -827,6 +898,16 @@ owns the instruction text, no third-party imagery is bundled, and twelve records
 ship at `seedVersion` 1. Only the imagery half could reopen, if a later decision
 adopts licensed or self-produced assets; that would need a schema attribution
 field and an in-app attribution surface.
+
+Bundled **pattern**-content source and set are likewise resolved, here in section
+6.1 and in [`content-provenance.md`](./content-provenance.md) sections 8-11
+(issue #44): the project authors and owns all six starter patterns, no
+third-party pattern text or imagery is bundled, they ship at `seedVersion` 1,
+they are editable and deletable like any other pattern with no UI distinction,
+and the seed is insert-only so a deleted starter never returns. As with the
+dictionary, only the imagery half could reopen, under the same attribution
+requirements. Sourcing third-party patterns stays closed unless a separate
+`type: decision` issue reopens the provenance stance.
 
 Pattern organization is resolved: issue #5 confirmed **recency as the single
 PRD0 pattern-organization method** (PRD0 decision 4). The library orders by

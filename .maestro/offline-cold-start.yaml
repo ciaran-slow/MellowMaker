@@ -14,8 +14,11 @@ appId: ${APP_ID}
 # Build acknowledged local state while online: a pattern with two steps, one
 # completed step, and a counter bumped to a known value.
 - tapOn: "Patterns"
-- assertVisible: "No patterns yet"
-- tapOn: "Create your first pattern"
+# A fresh install ships the bundled starter patterns, so the library is never
+# empty and "Create your first pattern" does not exist. The always-present
+# "New pattern" action is the way in.
+- assertVisible: "Practice Swatch"
+- tapOn: "New pattern"
 - assertVisible: "New pattern"
 - tapOn:
     id: "pattern-title-field"

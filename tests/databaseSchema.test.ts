@@ -5,7 +5,12 @@ import type { SqliteConnection } from '@/data/sqlite/sqliteConnection';
 import { createTestDatabase, type TestDatabase } from './support/sqliteHarness';
 
 const INSERT_PATTERN =
+  'INSERT INTO pattern (id, title, notes, created_at, updated_at, origin) VALUES (?, ?, ?, 1, 1, ?)';
+/** Names no `origin`, so the column default is what decides the provenance. */
+const INSERT_PATTERN_WITHOUT_ORIGIN =
   'INSERT INTO pattern (id, title, notes, created_at, updated_at) VALUES (?, ?, ?, 1, 1)';
+const INSERT_SEED_LEDGER_ROW =
+  'INSERT INTO pattern_seed_state (slug, pattern_id, seed_version, seeded_at) VALUES (?, ?, 1, 1)';
 const INSERT_STEP =
   'INSERT INTO pattern_step (id, pattern_id, position, instruction, created_at, updated_at) VALUES (?, ?, ?, ?, 1, 1)';
 const INSERT_STEP_PROGRESS =
@@ -35,7 +40,12 @@ describe('PRD0 schema behaviour', () => {
     database = createTestDatabase();
     connection = database.connection;
 
-    connection.run(INSERT_PATTERN, ['pattern-a', 'Sunrise Blanket', 'Cotton']);
+    connection.run(INSERT_PATTERN, [
+      'pattern-a',
+      'Sunrise Blanket',
+      'Cotton',
+      'user',
+    ]);
     connection.run(INSERT_STEP, ['step-a0', 'pattern-a', 0, 'Chain 41']);
     connection.run(INSERT_STEP, ['step-a1', 'pattern-a', 1, 'Single crochet']);
     connection.run(INSERT_STEP_PROGRESS, ['step-a0', 'pattern-a', 1_000]);
@@ -352,6 +362,75 @@ describe('PRD0 schema behaviour', () => {
           ['stitch-search'],
         )?.search_text,
       ).toBe('single crochet sc');
+    });
+
+    it('rejects an unknown pattern origin and defaults an unnamed one to user', () => {
+      expect(() =>
+        connection.run(INSERT_PATTERN, [
+          'pattern-robot',
+          'Robot Blanket',
+          null,
+          'robot',
+        ]),
+      ).toThrow();
+
+      connection.run(INSERT_PATTERN_WITHOUT_ORIGIN, [
+        'pattern-legacy',
+        'Legacy Blanket',
+        null,
+      ]);
+
+      // This is the backfill migration 2 relies on: an existing maker pattern
+      // that predates the column becomes `'user'` without being rewritten.
+      expect(
+        connection.first<{ readonly origin: string }>(
+          'SELECT origin FROM pattern WHERE id = ?',
+          ['pattern-legacy'],
+        )?.origin,
+      ).toBe('user');
+    });
+
+    it('keeps the seed ledger row as a tombstone when its pattern is deleted', () => {
+      connection.run(INSERT_SEED_LEDGER_ROW, ['sunrise-slug', 'pattern-a']);
+
+      connection.run('DELETE FROM pattern WHERE id = ?', ['pattern-a']);
+
+      // The whole point of ON DELETE SET NULL here: the ledger outlives the
+      // pattern, so the next launch cannot re-insert the slug. Everything else
+      // owned by the pattern still cascades away.
+      const tombstone = connection.first<{
+        readonly slug: string;
+        readonly pattern_id: string | null;
+      }>('SELECT slug, pattern_id FROM pattern_seed_state WHERE slug = ?', [
+        'sunrise-slug',
+      ]);
+
+      expect(tombstone?.slug).toBe('sunrise-slug');
+      expect(tombstone?.pattern_id).toBeNull();
+      for (const sql of [
+        'SELECT COUNT(*) AS total FROM pattern_step WHERE pattern_id = ?',
+        'SELECT COUNT(*) AS total FROM pattern_step_progress WHERE pattern_id = ?',
+        'SELECT COUNT(*) AS total FROM pattern_progress WHERE pattern_id = ?',
+        'SELECT COUNT(*) AS total FROM counter WHERE pattern_id = ?',
+      ]) {
+        expect(countOf(connection, sql, 'pattern-a')).toBe(0);
+      }
+    });
+
+    it('refuses a seed ledger row pointing at no pattern at all', () => {
+      expect(() =>
+        connection.run(INSERT_SEED_LEDGER_ROW, [
+          'orphan-slug',
+          'missing-pattern',
+        ]),
+      ).toThrow();
+      expect(
+        countOf(
+          connection,
+          'SELECT COUNT(*) AS total FROM pattern_seed_state WHERE slug = ?',
+          'orphan-slug',
+        ),
+      ).toBe(0);
     });
 
     it('rejects an unknown difficulty, ownership, counter kind, or step origin', () => {

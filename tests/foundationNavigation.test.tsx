@@ -24,10 +24,10 @@ describe('foundation navigation', () => {
     await waitFor(() => {
       expect(result.getPathname()).toBe('/patterns');
     });
-    // A fresh install has no patterns, so the creation-oriented empty state is
-    // the proof the Patterns tab is live rather than a placeholder card.
+    // A fresh install ships the bundled starter patterns, so a seeded library
+    // row is the proof the Patterns tab is live rather than a placeholder card.
     expect(
-      await screen.findByRole('header', { name: 'No patterns yet' }),
+      await screen.findByLabelText(/^Practice Swatch/),
     ).toBeOnTheScreen();
 
     await fireEvent.press(screen.getByRole('tab', { name: 'Guides' }));

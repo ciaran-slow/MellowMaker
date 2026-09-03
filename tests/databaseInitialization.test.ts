@@ -1,6 +1,8 @@
 /** @jest-environment node */
 
 import { DatabaseError } from '@/data/contracts/databaseError';
+import { applyBundledPatternSeed } from '@/data/seed/patternSeed';
+import { createRepositories } from '@/data/sqlite/createRepositories';
 import { initializeDatabase } from '@/data/sqlite/initializeDatabase';
 import {
   LATEST_SCHEMA_VERSION,
@@ -18,6 +20,7 @@ const EXPECTED_TABLES = [
   'imported_guide',
   'pattern',
   'pattern_progress',
+  'pattern_seed_state',
   'pattern_step',
   'pattern_step_progress',
   'stitch',
@@ -118,7 +121,9 @@ describe('database initialization', () => {
     );
 
     expect(LATEST_SCHEMA_VERSION).toBe(highest);
-    expect(MIGRATIONS.map((migration) => migration.version)).toStrictEqual([1]);
+    expect(MIGRATIONS.map((migration) => migration.version)).toStrictEqual([
+      1, 2,
+    ]);
   });
 
   it('creates the whole schema and turns on foreign-key enforcement', () => {
@@ -126,8 +131,11 @@ describe('database initialization', () => {
 
     const result = initializeDatabase(connection);
 
-    expect(result).toStrictEqual({ schemaVersion: 1, appliedMigrations: [1] });
-    expect(schemaVersionOf(connection)).toBe(1);
+    expect(result).toStrictEqual({
+      schemaVersion: 2,
+      appliedMigrations: [1, 2],
+    });
+    expect(schemaVersionOf(connection)).toBe(2);
     expect(objectNames(connection, 'table')).toStrictEqual(EXPECTED_TABLES);
     expect(objectNames(connection, 'index')).toEqual(
       expect.arrayContaining(EXPECTED_INDEXES),
@@ -141,7 +149,7 @@ describe('database initialization', () => {
 
     const reopened = initializeDatabase(connection);
 
-    expect(reopened).toStrictEqual({ schemaVersion: 1, appliedMigrations: [] });
+    expect(reopened).toStrictEqual({ schemaVersion: 2, appliedMigrations: [] });
     expect(
       connection.first<{ readonly title: string }>(
         'SELECT title FROM pattern WHERE id = ?',
@@ -156,8 +164,8 @@ describe('database initialization', () => {
     });
 
     expect(applied).toStrictEqual({
-      schemaVersion: 2,
-      appliedMigrations: [1, 2],
+      schemaVersion: 3,
+      appliedMigrations: [1, 2, 3],
     });
     expect(
       connection
@@ -174,8 +182,8 @@ describe('database initialization', () => {
       migrations: [...MIGRATIONS, ADD_COLUMN_MIGRATION],
     });
 
-    expect(upgraded).toStrictEqual({ schemaVersion: 2, appliedMigrations: [2] });
-    expect(schemaVersionOf(connection)).toBe(2);
+    expect(upgraded).toStrictEqual({ schemaVersion: 3, appliedMigrations: [3] });
+    expect(schemaVersionOf(connection)).toBe(3);
     expect(
       connection
         .all<{ readonly name: string }>('PRAGMA table_info(pattern)')
@@ -247,6 +255,148 @@ describe('database initialization', () => {
     ).toBe(7);
   });
 
+  it('upgrades a populated version-1 database to version 2 without losing maker data', () => {
+    // Migration 2 is the first real schema change in the repository, so the
+    // fixture starts on the *previous* production schema rather than a synthetic
+    // one. `insertPopulatedBaseline` names its columns explicitly, so it is
+    // valid against version 1 and version 2 alike.
+    initializeDatabase(connection, {
+      migrations: MIGRATIONS.filter((migration) => migration.version === 1),
+    });
+    insertPopulatedBaseline(connection);
+
+    const upgraded = initializeDatabase(connection);
+
+    expect(upgraded).toStrictEqual({ schemaVersion: 2, appliedMigrations: [2] });
+    expect(schemaVersionOf(connection)).toBe(2);
+    expect(objectNames(connection, 'table')).toStrictEqual(EXPECTED_TABLES);
+
+    expect(
+      connection.all<{ readonly title: string; readonly notes: string | null }>(
+        'SELECT title, notes FROM pattern ORDER BY created_at ASC',
+      ),
+    ).toEqual([
+      { title: 'Sunrise Blanket', notes: 'Hook 5.0 mm, cotton yarn' },
+      { title: 'Tiny Hedgehog', notes: null },
+    ]);
+    expect(
+      connection
+        .all<{ readonly instruction: string }>(
+          'SELECT instruction FROM pattern_step WHERE pattern_id = ? ORDER BY position ASC',
+          [BASELINE.patterns[0].id],
+        )
+        .map((step) => step.instruction),
+    ).toStrictEqual([
+      'Chain 41',
+      'Single crochet in each chain across',
+      'Chain 1, turn, and repeat until 40 rows',
+    ]);
+    expect(
+      connection.first<{ readonly active_step_id: string | null }>(
+        'SELECT active_step_id FROM pattern_progress WHERE pattern_id = ?',
+        [BASELINE.activeStep.patternId],
+      )?.active_step_id,
+    ).toBe('step-sunrise-1');
+    expect(
+      connection.first<{ readonly completed_at: number | null }>(
+        'SELECT completed_at FROM pattern_step_progress WHERE step_id = ?',
+        [BASELINE.completedStep.stepId],
+      )?.completed_at,
+    ).toBe(1_699_000_200_000);
+    expect(
+      connection.first<{
+        readonly title: string;
+        readonly notes: string | null;
+      }>('SELECT title, notes FROM imported_guide WHERE video_id = ?', [
+        BASELINE.guide.videoId,
+      ]),
+    ).toEqual({
+      title: 'Granny square basics',
+      notes: 'Follow along slowly the first time',
+    });
+    expect(
+      connection.first<{
+        readonly video_offset_ms: number | null;
+        readonly note: string | null;
+      }>('SELECT video_offset_ms, note FROM guide_step WHERE id = ?', [
+        BASELINE.guide.step.id,
+      ]),
+    ).toEqual({
+      video_offset_ms: 42_000,
+      note: 'Keep the ring loose so it can be pulled tight later',
+    });
+    expect(
+      connection.first<{ readonly value: number }>(
+        'SELECT value FROM counter WHERE id = ?',
+        [BASELINE.counter.id],
+      )?.value,
+    ).toBe(7);
+
+    // The column default is what backfills provenance: every pattern the maker
+    // already had is theirs, and the migration seeds nothing by itself.
+    expect(
+      connection
+        .all<{ readonly id: string; readonly origin: string }>(
+          'SELECT id, origin FROM pattern ORDER BY id',
+        )
+        .map((row) => [row.id, row.origin]),
+    ).toStrictEqual([
+      ['pattern-hedgehog', 'user'],
+      ['pattern-sunrise', 'user'],
+    ]);
+    expect(
+      connection.first<{ readonly total: number }>(
+        'SELECT COUNT(*) AS total FROM pattern_seed_state',
+      )?.total,
+    ).toBe(0);
+  });
+
+  it('seeds the upgraded database below the maker\u2019s existing work', () => {
+    initializeDatabase(connection, {
+      migrations: MIGRATIONS.filter((migration) => migration.version === 1),
+    });
+    insertPopulatedBaseline(connection);
+    initializeDatabase(connection);
+
+    let instant = 1_800_000_000_000;
+    let identifiers = 0;
+    const repositories = createRepositories({
+      connection,
+      now: () => {
+        instant += 1_000;
+
+        return instant;
+      },
+      newId: () => {
+        identifiers += 1;
+
+        return `upgraded-id-${identifiers}`;
+      },
+    });
+
+    expect(applyBundledPatternSeed(repositories.patterns)).toStrictEqual({
+      status: 'applied',
+      seedVersion: 1,
+      inserted: 6,
+      skipped: 0,
+    });
+
+    expect(
+      repositories.patterns
+        .listPatterns({ limit: 200, offset: 0 })
+        .map((pattern) => [pattern.title, pattern.origin]),
+    ).toStrictEqual([
+      ['Tiny Hedgehog', 'user'],
+      ['Sunrise Blanket', 'user'],
+      ['Practice Swatch', 'bundled'],
+      ['Cotton Dishcloth', 'bundled'],
+      ['Ridged Coaster', 'bundled'],
+      ['Granny Square', 'bundled'],
+      ['Ribbed Headband', 'bundled'],
+      ['Simple Scarf', 'bundled'],
+    ]);
+  });
+
   it('reports a failed migration, keeps the old version, and keeps every row', () => {
     initializeDatabase(connection);
     insertPopulatedBaseline(connection);
@@ -260,13 +410,13 @@ describe('database initialization', () => {
     expect(failure).toBeInstanceOf(DatabaseError);
     const databaseError = failure as DatabaseError;
     expect(databaseError.code).toBe('migration-failed');
-    expect(databaseError.failedVersion).toBe(2);
-    expect(databaseError.schemaVersion).toBe(1);
+    expect(databaseError.failedVersion).toBe(3);
+    expect(databaseError.schemaVersion).toBe(2);
     expect(databaseError.cause).toBeDefined();
     expect(databaseError.message).not.toContain('Sunrise Blanket');
 
     // Neither the recorded version nor the migration's first statement survived.
-    expect(schemaVersionOf(connection)).toBe(1);
+    expect(schemaVersionOf(connection)).toBe(2);
     expect(objectNames(connection, 'table')).toStrictEqual(EXPECTED_TABLES);
 
     expect(
@@ -308,7 +458,7 @@ describe('database initialization', () => {
 
     // Retrying after the failure resumes from the last good version.
     expect(initializeDatabase(connection)).toStrictEqual({
-      schemaVersion: 1,
+      schemaVersion: 2,
       appliedMigrations: [],
     });
   });
@@ -324,10 +474,10 @@ describe('database initialization', () => {
 
     expect((failure as DatabaseError).code).toBe('migration-failed');
 
-    // A schema that outlived its unrecorded version would replay migration 2 on
-    // the next launch and fail forever on the table it already created.
+    // A schema that outlived its unrecorded version would replay the migration
+    // on the next launch and fail forever on the table it already created.
     expect(objectNames(connection, 'table')).toStrictEqual(EXPECTED_TABLES);
-    expect(schemaVersionOf(connection)).toBe(1);
+    expect(schemaVersionOf(connection)).toBe(2);
   });
 
   it('refuses a database newer than the app and changes nothing', () => {
