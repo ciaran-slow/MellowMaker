@@ -5,6 +5,7 @@ import { render, screen } from '@testing-library/react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import type { Repositories } from '@/data/contracts/appDatabase';
+import { applyBundledPatternSeed } from '@/data/seed/patternSeed';
 import { applyBundledStitchSeed } from '@/data/seed/stitchSeed';
 import { DictionaryScreen } from '@/features/dictionary/presentation/DictionaryScreen';
 import { RepositoriesContext } from '@/ui/database/repositoriesContext';
@@ -49,8 +50,11 @@ describe('offline cold start — core reads and writes never touch the network',
     globalThis.fetch = fetchSpy as unknown as typeof globalThis.fetch;
 
     database = createTestDatabase();
-    applyBundledStitchSeed(database.repositories.stitches);
+    // The maker's existing data is in place before the seeds run, which is the
+    // real cold-start order: migrate, then seed over whatever is already stored.
     insertPopulatedBaseline(database.connection);
+    applyBundledStitchSeed(database.repositories.stitches);
+    applyBundledPatternSeed(database.repositories.patterns);
   });
 
   afterEach(() => {
@@ -74,6 +78,50 @@ describe('offline cold start — core reads and writes never touch the network',
     expect(detail?.instructions[0]?.instruction).toBe(
       'Insert the hook front to back under both top loops of the next stitch.',
     );
+
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it('serves the bundled starter patterns and lets a maker work one', () => {
+    const { patterns, progress, counters } = database.repositories;
+
+    // The maker's own work heads the library and the starters sit underneath
+    // it, all served from local storage.
+    expect(
+      patterns.listPatterns({ limit: 200, offset: 0 }).map((row) => row.title),
+    ).toStrictEqual([
+      'Tiny Hedgehog',
+      'Sunrise Blanket',
+      'Practice Swatch',
+      'Cotton Dishcloth',
+      'Ridged Coaster',
+      'Granny Square',
+      'Ribbed Headband',
+      'Simple Scarf',
+    ]);
+
+    const swatchId =
+      database.connection.first<{ readonly pattern_id: string }>(
+        'SELECT pattern_id FROM pattern_seed_state WHERE slug = ?',
+        ['practice-swatch'],
+      )?.pattern_id ?? '';
+    const swatch = patterns.getPatternWithSteps(swatchId);
+
+    expect(swatch?.pattern.origin).toBe('bundled');
+    expect(swatch?.pattern.notes).toContain('Hook 5.0 mm');
+    expect(swatch?.steps).toHaveLength(6);
+    expect(swatch?.steps[0]?.instruction).toContain('Chain 21');
+
+    progress.setStepCompleted(swatch?.steps[0]?.id ?? '', true);
+    expect(progress.getProgress(swatchId).completedStepIds).toStrictEqual([
+      swatch?.steps[0]?.id,
+    ]);
+
+    const counter = counters.getOrCreatePrimaryCounter({
+      kind: 'pattern',
+      id: swatchId,
+    });
+    expect(counters.adjustCounter(counter.id, 4).value).toBe(4);
 
     expect(fetchSpy).not.toHaveBeenCalled();
   });

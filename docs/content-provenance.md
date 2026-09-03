@@ -1,16 +1,30 @@
 # Bundled Content Provenance
 
 **Status:** Approved for PRD0
-**Applies to:** every stitch instruction, summary, and visual reference shipped inside the iOS and Android builds
-**Traceability:** FR-ST-01, FR-ST-05; PRD0 decision 1; [`architecture.md`](./architecture.md) §6
-**Content artifact:** [`src/data/seed/stitchSeed.json`](../src/data/seed/stitchSeed.json)
-**Format and validator:** [`src/data/seed/stitchSeedDocument.ts`](../src/data/seed/stitchSeedDocument.ts)
+**Applies to:** every stitch instruction, summary, pattern title, pattern note,
+pattern step, and visual reference shipped inside the iOS and Android builds
+**Traceability:** FR-ST-01, FR-ST-05; PRD0 decision 1; issue #44;
+[`architecture.md`](./architecture.md) §6, §6.1
+**Content artifacts:**
+[`src/data/seed/stitchSeed.json`](../src/data/seed/stitchSeed.json) (stitch
+dictionary) and
+[`src/data/seed/patternSeed.json`](../src/data/seed/patternSeed.json) (starter
+patterns)
+**Formats and validators:**
+[`src/data/seed/stitchSeedDocument.ts`](../src/data/seed/stitchSeedDocument.ts)
+and
+[`src/data/seed/patternSeedDocument.ts`](../src/data/seed/patternSeedDocument.ts)
 
 ## 1. Decision
 
-PRD0 ships original crochet instruction text authored for this repository and
-owned by the project. No third-party instruction text is included, and no
-third-party imagery is bundled.
+MellowMaker ships **two** bundled content sets — the stitch dictionary and the
+starter pattern library — and both are original text authored for this repository
+and owned by the project. No third-party instruction text, pattern text, or
+imagery is included in either.
+
+Sections 2 to 7 record the stitch dictionary. Sections 8 to 11 record the starter
+patterns, which follow the same authorship and review discipline but a
+deliberately different update policy (§10).
 
 Visual references stay optional and schema-supported.
 `stitch_instruction.image_asset_key` exists, the content format permits
@@ -185,3 +199,128 @@ records the new digest here, and — once a version has shipped — bumps
 5. Record any asset licence or statement of self-production in §4.
 6. Confirm the maker-edit rule and the absence of a delete path are untouched.
 7. Run `npm run lint`, `npm run typecheck`, and `npm test`.
+
+## 8. Approved bundled pattern set
+
+Six records. The selection principle is the smallest set that lets a beginner
+practise every beginner entry in the bundled dictionary on something they would
+actually want to finish: one flat swatch to learn tension, one useful flat
+object, one worked in the round, one motif, one shaped and ribbed band, and one
+long repeated row. Every pattern ends in a fasten-off step, so a beginner always
+has a documented way to stop.
+
+Document order is the fresh-install library order, and it is part of the pinned
+contract: the seed anchors the six instants strictly descending from the oldest
+pattern already in the database, so the set reads top to bottom exactly as listed
+here and always sits *below* whatever the maker is already working on.
+
+| # | slug | Title | Steps | Why it earns its place |
+|---|---|---|---|---|
+| 1 | `practice-swatch` | Practice Swatch | 6 | The first thing to make: flat rows that teach even tension, counting, and checking gauge before a real project. |
+| 2 | `cotton-dishcloth` | Cotton Dishcloth | 7 | The same single-crochet row at a useful size, so the first finished object is something a maker keeps. |
+| 3 | `ridged-coaster` | Ridged Coaster | 6 | The first project worked in the round, started from a chain ring, and the first use of back loop only. |
+| 4 | `granny-square` | Granny Square | 7 | The classic motif; introduces double-crochet clusters, chain corners, and building a square outward. |
+| 5 | `ribbed-headband` | Ribbed Headband | 6 | Back-loop-only ribbing worked lengthwise, then seamed — the first pattern that becomes a wearable shape. |
+| 6 | `simple-scarf` | Simple Scarf | 6 | One repeated half-double-crochet row taken long; the endurance project that proves a row can be trusted. |
+
+Thirty-eight instruction steps in total.
+
+Every abbreviation the six patterns use — `sl st`, `sc`, `hdc`, `dc`, `BLO`, and
+`FO` — is defined in the bundled dictionary, so a beginner can look up every
+short form a starter pattern writes. That set is asserted to match exactly, in
+both directions, by `tests/patternSeedContent.test.ts`: a starter that stopped
+using `BLO`, or one that started writing `inc`, fails the gate.
+
+## 9. Pattern origin and authorship
+
+Every bundled pattern title, note, and step was written for MellowMaker. No text
+was copied from, paraphrased from, or adapted from any book, website, pattern
+PDF, video transcript, or other application. The projects themselves are
+generic beginner exercises — a swatch, a dishcloth, a coaster, a granny square, a
+headband, a scarf — that no one owns; the wording of the instructions is this
+project's own.
+
+Stitch names, abbreviations, hook sizes in millimetres, and yarn-weight names
+(worsted/medium 4, bulky/chunky 5) are standard US craft terminology — facts of
+the craft rather than authored expression — and are used as such.
+
+Terminology is US, declared in band as `"terminology": "US"` so the choice cannot
+be violated silently. UK terms name different stitches with the same words, so a
+mixed set would make the starter patterns contradict the bundled dictionary.
+
+PRD0 bundles zero pattern imagery. The pattern content format has no asset key at
+all, and `assets/` holds no `patterns` directory and no `pattern-*` entry.
+
+## 10. Pattern seed identity, version, and update policy
+
+**Identity.**
+
+- `slug` is the stable seed identity and is frozen at authoring time. It is the
+  key of the durable ledger, so a changed slug would insert a duplicate pattern.
+- `pattern.id` stays a repository-generated v4 UUID, assigned on insert and never
+  rewritten.
+- `pattern.origin` (`bundled`/`user`) records provenance only. It grants the seed
+  no write authority: a bundled pattern is fully maker-owned from the instant it
+  lands, so there is no `user_modified_at` companion and nothing ever asks
+  whether the maker has edited it.
+- `pattern_seed_state` is the durable ledger of what the seed has done. Its
+  `pattern_id` is `ON DELETE SET NULL`, so deleting a bundled pattern nulls the
+  reference and **leaves the row standing** as a tombstone.
+
+**Version and update policy.**
+
+1. PRD0 ships `seedVersion: 1`.
+2. `seedVersion` is one monotonically increasing integer for the whole document,
+   not a per-record value.
+3. **The pattern seed inserts only. It never updates, never deletes, and never
+   resurrects.** A slug the ledger already records is skipped, whether the maker
+   still has the pattern, has retitled and reordered it, or has deleted it
+   outright. This is a deliberate divergence from the stitch seed, which revises
+   in place under a frozen slug: a bundled pattern becomes the maker's property
+   on insert, and they may be mid-project on it with completion rows, an
+   active-step pointer, and a counter. A later release that rewrote its text
+   would destroy live work and could orphan `pattern_progress.active_step_id`.
+4. Consequently a bumped `seedVersion` may add **new slugs only**. Existing slugs
+   are always skipped, edited or not.
+5. The launch guard reads `MAX(seed_version)` over the **ledger**, never over the
+   pattern rows. Reading it from the pattern rows the way the stitch guard reads
+   `stitch` would be the resurrection bug: a maker who deleted every bundled
+   pattern would drive the aggregate to `NULL` and get all six back on the next
+   launch.
+6. A lower `seedVersion` than the ledger already holds is refused, so an older
+   build can never rewrite newer content.
+7. Any change to bundled pattern content requires, in the same commit: bump
+   `seedVersion` (or amend in place while no version has shipped), update the §8
+   table and its total, record the digest below, and re-confirm §9. The committed
+   gates fail otherwise.
+
+   As in §6 rule 3, the bump is owed from the first shipped release onward. While
+   a version has never shipped — MellowMaker has published no build, and EAS
+   artifacts are still owed by issue #15 — content may be amended in place under
+   that same version. **This one rule has no automated gate** until issue #15
+   produces a release; whether a version has shipped is checked by a reviewer,
+   not a test, and the precondition is externally checkable: the repository has
+   no release and no tag.
+
+**Fingerprints.** SHA-256 of the normalized document — the value
+`parsePatternSeedDocument` rebuilds, so the digest is independent of key order
+and whitespace in the committed file.
+
+| Seed version | Released in | SHA-256 of the normalized document |
+|---|---|---|
+| 1 | Issue #44 initial starter pattern set | `89331f618cc250d0dc7f593319ce35c993eb35574aa0f1ed1cc10a94144907f8` |
+
+## 11. Review checklist for a pattern content change
+
+1. Bump `seedVersion` in `src/data/seed/patternSeed.json`, unless the version
+   being amended has never shipped (§10, rule 7).
+2. Update the set table in §8, including step counts and the total.
+3. Record the new digest in §10 — a new row for a bumped version, or the replaced
+   row for an in-place amendment.
+4. Re-confirm §9: no copied or paraphrased text entered the set, and no imagery.
+5. Confirm every abbreviation the new text uses is defined in the bundled
+   dictionary.
+6. Confirm the insert-only rule and the absent update and delete paths are
+   untouched, and that the launch guard still reads the ledger rather than the
+   pattern rows.
+7. Run `npm run lint`, `npm run typecheck`, and `npm run test:ci`.

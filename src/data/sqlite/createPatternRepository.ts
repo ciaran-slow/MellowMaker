@@ -1,10 +1,12 @@
 import { resolvePage } from '../contracts/page';
 import type {
   CreatePatternInput,
+  PatternOrigin,
   PatternRepository,
   PatternStep,
   PatternSummary,
   PatternWithSteps,
+  SeedPatternResult,
   UpdatePatternInput,
 } from '../contracts/patternRepository';
 import { reorderPositions, type ReorderStatements } from './reorderPositions';
@@ -16,6 +18,7 @@ interface PatternRow {
   readonly notes: string | null;
   readonly created_at: number;
   readonly updated_at: number;
+  readonly origin: PatternOrigin;
 }
 
 interface PatternStepRow {
@@ -28,9 +31,9 @@ interface PatternStepRow {
 }
 
 const SELECT_PATTERN =
-  'SELECT id, title, notes, created_at, updated_at FROM pattern WHERE id = ?';
+  'SELECT id, title, notes, created_at, updated_at, origin FROM pattern WHERE id = ?';
 const LIST_PATTERNS =
-  'SELECT id, title, notes, created_at, updated_at FROM pattern ORDER BY updated_at DESC, id ASC LIMIT ? OFFSET ?';
+  'SELECT id, title, notes, created_at, updated_at, origin FROM pattern ORDER BY updated_at DESC, id ASC LIMIT ? OFFSET ?';
 const SELECT_STEPS =
   'SELECT id, pattern_id, position, instruction, created_at, updated_at FROM pattern_step WHERE pattern_id = ? ORDER BY position ASC, id ASC';
 const SELECT_STEP_IDS =
@@ -38,8 +41,22 @@ const SELECT_STEP_IDS =
 const SELECT_STEP_COUNT =
   'SELECT COUNT(*) AS total FROM pattern_step WHERE pattern_id = ?';
 const SELECT_STEP_PARENT = 'SELECT pattern_id FROM pattern_step WHERE id = ?';
+// `origin` is named rather than left to the column default: which provenance a
+// write intends belongs in the SQL, not in a schema fallback.
 const INSERT_PATTERN =
-  'INSERT INTO pattern (id, title, notes, created_at, updated_at) VALUES (?, ?, ?, ?, ?)';
+  "INSERT INTO pattern (id, title, notes, created_at, updated_at, origin) VALUES (?, ?, ?, ?, ?, 'user')";
+const INSERT_SEEDED_PATTERN =
+  "INSERT INTO pattern (id, title, notes, created_at, updated_at, origin) VALUES (?, ?, ?, ?, ?, 'bundled')";
+// The launch guard reads the ledger, never the pattern rows: a maker who deleted
+// every bundled pattern must not look like a maker who has never been seeded.
+const SELECT_APPLIED_PATTERN_SEED_VERSION =
+  'SELECT MAX(seed_version) AS version FROM pattern_seed_state';
+const SELECT_SEEDED_SLUG = 'SELECT slug FROM pattern_seed_state WHERE slug = ?';
+const SELECT_RECENCY_ANCHOR = 'SELECT MIN(updated_at) AS anchor FROM pattern';
+const INSERT_SEED_LEDGER_ROW =
+  'INSERT INTO pattern_seed_state (slug, pattern_id, seed_version, seeded_at) VALUES (?, ?, ?, ?)';
+const STAMP_SEED_LEDGER_VERSION =
+  'UPDATE pattern_seed_state SET seed_version = ?';
 const INSERT_STEP =
   'INSERT INTO pattern_step (id, pattern_id, position, instruction, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)';
 const UPDATE_PATTERN_DETAILS =
@@ -68,6 +85,7 @@ function toSummary(row: PatternRow): PatternSummary {
     notes: row.notes ?? undefined,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
+    origin: row.origin,
   };
 }
 
@@ -269,8 +287,87 @@ export function createPatternRepository({
 
     deletePattern(id) {
       // Foreign keys cascade to steps, per-step progress, the active position
-      // row, and counters, so one statement removes the whole aggregate.
+      // row, and counters, so one statement removes the whole aggregate. A
+      // bundled pattern's ledger row is `ON DELETE SET NULL`, so it survives as
+      // the tombstone that stops the seed re-inserting the slug.
       connection.run(DELETE_PATTERN, [id]);
+    },
+
+    appliedPatternSeedVersion(): number | undefined {
+      // The aggregate reports `null` for an empty ledger, which is the only
+      // state meaning no release has ever been applied.
+      return (
+        connection.first<{ readonly version: number | null }>(
+          SELECT_APPLIED_PATTERN_SEED_VERSION,
+        )?.version ?? undefined
+      );
+    },
+
+    insertSeededPatterns(seedVersion, records): SeedPatternResult {
+      return transaction(() => {
+        // Read once, before the loop. The library orders by `updated_at DESC`,
+        // so anchoring below the oldest pattern already present puts the
+        // starters underneath a maker's in-progress work, and deriving each
+        // instant from the document index keeps them strictly distinct and
+        // strictly descending — a per-insert `now()` would tie them within one
+        // millisecond and float them above the maker's own projects.
+        const anchor =
+          connection.first<{ readonly anchor: number | null }>(
+            SELECT_RECENCY_ANCHOR,
+          )?.anchor ?? now();
+        let inserted = 0;
+        let skipped = 0;
+
+        records.forEach((record, index) => {
+          const ledgered = connection.first<{ readonly slug: string }>(
+            SELECT_SEEDED_SLUG,
+            [record.slug],
+          );
+          if (ledgered !== undefined) {
+            // Deliberately does not consult the `pattern` table: an already
+            // ledgered slug is skipped whether the maker still has the pattern,
+            // has edited it, or has deleted it outright.
+            skipped += 1;
+
+            return;
+          }
+
+          const at = anchor - 1 - index;
+          const patternId = newId();
+
+          connection.run(INSERT_SEEDED_PATTERN, [
+            patternId,
+            record.title,
+            record.notes,
+            at,
+            at,
+          ]);
+          record.steps.forEach((instruction, position) => {
+            connection.run(INSERT_STEP, [
+              newId(),
+              patternId,
+              position,
+              instruction,
+              at,
+              at,
+            ]);
+          });
+          connection.run(INSERT_SEED_LEDGER_ROW, [
+            record.slug,
+            patternId,
+            seedVersion,
+            now(),
+          ]);
+          inserted += 1;
+        });
+
+        // Stamp the release version even when it added no new slug, so the
+        // launch guard's `MAX` equals the applied version and a bump is not
+        // re-attempted on every relaunch.
+        connection.run(STAMP_SEED_LEDGER_VERSION, [seedVersion]);
+
+        return { inserted, skipped };
+      });
     },
   };
 }

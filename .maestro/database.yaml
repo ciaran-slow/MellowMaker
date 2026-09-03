@@ -7,9 +7,16 @@ appId: ${APP_ID}
 - assertVisible: "Stitches"
 - assertVisible: "Single crochet"
 - assertNotVisible: "We couldn't open your saved making data"
-# Reopen: the already-migrated database opens again with no error state.
+# Both content sets seed before the gate opens, so a bundled pattern is the
+# second half of the proof that the fresh install migrated *and* seeded.
+- tapOn: "Patterns"
+- assertVisible: "Practice Swatch"
+# Reopen: the already-migrated database opens again with no error state, and the
+# seed takes its no-write fast path rather than inserting a second set.
 - launchApp:
     clearState: false
 - assertVisible: "Stitches"
 - assertVisible: "Single crochet"
 - assertNotVisible: "We couldn't open your saved making data"
+- tapOn: "Patterns"
+- assertVisible: "Practice Swatch"

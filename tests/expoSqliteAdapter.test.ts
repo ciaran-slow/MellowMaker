@@ -13,7 +13,7 @@ describe('Expo SQLite adapter', () => {
   it('opens the application database, migrates it, and serves repositories', async () => {
     const database = await createAppDatabase();
 
-    expect(database.schemaVersion).toBe(1);
+    expect(database.schemaVersion).toBe(2);
 
     const created = database.repositories.patterns.createPattern({
       title: 'Sunrise Blanket',
@@ -32,7 +32,7 @@ describe('Expo SQLite adapter', () => {
     // Reopening the same database applies no migration and reads the row back.
     const reopened = await createAppDatabase();
 
-    expect(reopened.schemaVersion).toBe(1);
+    expect(reopened.schemaVersion).toBe(2);
     expect(
       reopened.repositories.patterns
         .getPatternWithSteps(created.pattern.id)

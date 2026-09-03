@@ -14,7 +14,13 @@
  * - completion is a nullable `completed_at` instant rather than a boolean, so
  *   "when" is never lost;
  * - text arrives already trimmed from the caller; only `stitch.search_text`
- *   normalizes, and it does so as a generated column so it cannot drift.
+ *   normalizes, and it does so as a generated column so it cannot drift;
+ * - every child of an aggregate root is `ON DELETE CASCADE`. Exactly two columns
+ *   are `ON DELETE SET NULL`, both deliberately: `pattern_progress.active_step_id`,
+ *   so deleting one step clears the pointer instead of destroying the pattern's
+ *   progress, and `pattern_seed_state.pattern_id` (version 2), so the seed
+ *   ledger row outlives the pattern it created and the next launch cannot
+ *   resurrect a bundled pattern the maker deleted.
  *
  * Every future schema change appends a migration with the next integer version
  * and ships its own populated upgrade fixture; existing statements are frozen.
@@ -125,8 +131,35 @@ const VERSION_1_STATEMENTS: readonly string[] = [
   )`,
 ];
 
-export const MIGRATIONS: readonly Migration[] = [
-  { version: 1, statements: VERSION_1_STATEMENTS },
+/**
+ * Bundled beginner patterns (issue #44).
+ *
+ * `pattern.origin` records where a row came from and nothing else. It grants the
+ * seed no write authority — unlike `stitch.ownership`, a bundled pattern is
+ * fully maker-owned from the instant it lands — so there is no companion
+ * `user_modified_at`. `DEFAULT 'user'` is what backfills every pattern an
+ * existing version-1 database already holds.
+ *
+ * `pattern_seed_state` is the durable seed ledger. Deleting a bundled pattern
+ * nulls `pattern_id` and leaves the row standing, so a slug the seed has already
+ * inserted is never inserted again. Deriving that fact from the pattern rows
+ * instead — the way the stitch seed reads `MAX(seed_version)` over `stitch` —
+ * would resurrect every bundled pattern a maker deleted on the next launch.
+ */
+const VERSION_2_STATEMENTS: readonly string[] = [
+  `ALTER TABLE pattern ADD COLUMN origin TEXT NOT NULL DEFAULT 'user'
+     CHECK (origin IN ('bundled','user'))`,
+  `CREATE TABLE pattern_seed_state (
+    slug TEXT PRIMARY KEY,
+    pattern_id TEXT REFERENCES pattern(id) ON DELETE SET NULL,
+    seed_version INTEGER NOT NULL,
+    seeded_at INTEGER NOT NULL
+  )`,
 ];
 
-export const LATEST_SCHEMA_VERSION = 1;
+export const MIGRATIONS: readonly Migration[] = [
+  { version: 1, statements: VERSION_1_STATEMENTS },
+  { version: 2, statements: VERSION_2_STATEMENTS },
+];
+
+export const LATEST_SCHEMA_VERSION = 2;

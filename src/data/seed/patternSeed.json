@@ -1,0 +1,86 @@
+{
+  "seedVersion": 1,
+  "terminology": "US",
+  "patterns": [
+    {
+      "slug": "practice-swatch",
+      "title": "Practice Swatch",
+      "notes": "Hook 5.0 mm · Worsted (medium 4) cotton or acrylic · Finishes about 12 cm square",
+      "steps": [
+        "Chain 21. That is 20 stitches wide plus one turning chain, so the swatch stays square.",
+        "Single crochet (sc) in the second chain from the hook, then in each chain across — 20 sc.",
+        "Chain 1 and turn, so the next row starts at the same height as the one below it.",
+        "Single crochet in each stitch across — 20 sc again. Repeat this row until you have 20 rows.",
+        "Lay the swatch flat and measure it. Smaller than 12 cm means try a larger hook; larger means try a smaller one.",
+        "Fasten off (FO), cut the yarn, draw the tail through the last loop, and weave both ends in."
+      ]
+    },
+    {
+      "slug": "cotton-dishcloth",
+      "title": "Cotton Dishcloth",
+      "notes": "Hook 5.0 mm · Worsted (medium 4) cotton · Finishes about 22 cm square · One evening",
+      "steps": [
+        "Chain 31 loosely. Thirty stitches plus one turning chain sets the width of the cloth.",
+        "Single crochet (sc) in the second chain from the hook and in each chain across — 30 sc.",
+        "Chain 1 and turn.",
+        "Single crochet in each stitch across to the end of the row — 30 sc.",
+        "Count the stitches every few rows. Thirty every time is what keeps both side edges straight.",
+        "Repeat the turning chain and the row until the cloth is 30 rows deep, or square when you fold it corner to corner.",
+        "Fasten off (FO) and weave the ends into the back of the fabric so they cannot work loose in the wash."
+      ]
+    },
+    {
+      "slug": "ridged-coaster",
+      "title": "Ridged Coaster",
+      "notes": "Hook 4.0 mm · Worsted (medium 4) cotton · Finishes about 10 cm across · Worked in the round",
+      "steps": [
+        "Chain 4, then slip stitch (sl st) into the first chain to close a small ring.",
+        "Chain 1, work 12 single crochet (sc) into the centre of the ring, and join with a slip stitch.",
+        "Chain 1, then work 2 sc into every stitch of the round — 24 sc — and join with a slip stitch.",
+        "Chain 1, then work one sc in the back loop only (BLO) of each stitch around. This is what raises the ridge.",
+        "Join with a slip stitch and press the coaster flat. If it cups upward, work the next round a little looser.",
+        "Fasten off (FO) and weave the tail through the back loops so the ridged edge stays even."
+      ]
+    },
+    {
+      "slug": "granny-square",
+      "title": "Granny Square",
+      "notes": "Hook 5.0 mm · Worsted (medium 4) acrylic · Finishes about 12 cm square · Four rounds",
+      "steps": [
+        "Chain 4, then slip stitch (sl st) into the first chain to make a ring.",
+        "Chain 3 — it stands in for your first double crochet (dc) — then work 2 more dc into the ring.",
+        "Work three more clusters of 3 dc into the ring with a chain-2 corner between clusters, then chain 2 and join with a slip stitch.",
+        "Round 2: slip stitch across into the nearest corner space, chain 3, work 2 dc there, then chain 2 and work 3 dc into that same space.",
+        "Work 3 dc, chain 2, 3 dc into each of the other three corner spaces and 3 dc into each side space, then join with a slip stitch.",
+        "Work rounds 3 and 4 the same way, adding one more group of 3 dc along each side as the square grows.",
+        "Fasten off (FO), weave the ends in, and pat the square into shape with damp hands."
+      ]
+    },
+    {
+      "slug": "ribbed-headband",
+      "title": "Ribbed Headband",
+      "notes": "Hook 5.0 mm · Worsted (medium 4) wool or acrylic · Finishes about 5 cm wide and stretchy",
+      "steps": [
+        "Chain 11. Ten stitches plus one turning chain makes a band about 5 cm wide.",
+        "Single crochet (sc) in the second chain from the hook and in each chain across — 10 sc.",
+        "Chain 1, turn, and single crochet in the back loop only (BLO) of each stitch across. This is the ribbing row.",
+        "Repeat the ribbing row until the band reaches around the head with a little stretch left, usually 50 to 55 cm.",
+        "Hold the two short ends together with the ridges lined up and slip stitch (sl st) them closed through both layers.",
+        "Fasten off (FO) and weave the ends along the seam so it lies flat against the head."
+      ]
+    },
+    {
+      "slug": "simple-scarf",
+      "title": "Simple Scarf",
+      "notes": "Hook 6.0 mm · Bulky (chunky 5) yarn · Finishes about 20 cm by 150 cm · One repeated row",
+      "steps": [
+        "Chain 25. Twenty-four stitches plus one turning chain gives a scarf about 20 cm wide.",
+        "Half double crochet (hdc) in the third chain from the hook and in each chain across — 24 hdc.",
+        "Chain 2 and turn.",
+        "Half double crochet in each stitch across, working the last one into the top of the turning chain — 24 hdc.",
+        "Repeat the turning chain and the row until the scarf measures about 150 cm, or as long as you would like it.",
+        "Fasten off (FO) and weave the ends back into the tips of the scarf, where they will not show."
+      ]
+    }
+  ]
+}

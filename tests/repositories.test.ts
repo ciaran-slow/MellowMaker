@@ -5,6 +5,7 @@ import {
   MAX_PAGE_LIMIT,
   resolvePage,
 } from '@/data/contracts/page';
+import { applyBundledPatternSeed } from '@/data/seed/patternSeed';
 import { applyBundledStitchSeed } from '@/data/seed/stitchSeed';
 import { createRepositories } from '@/data/sqlite/createRepositories';
 import { initializeDatabase } from '@/data/sqlite/initializeDatabase';
@@ -526,6 +527,132 @@ describe('SQLite repositories', () => {
       expect(guides.getGuideWithSteps(BASELINE.guide.id)?.guide.title).toBe(
         'Granny square basics',
       );
+    });
+
+    it('marks a created pattern as the maker\u2019s own and reports origin on every read', () => {
+      const { patterns } = database.repositories;
+      const created = patterns.createPattern({
+        title: 'Meadow Wrap',
+        steps: ['Chain 41'],
+      });
+
+      expect(created.pattern.origin).toBe('user');
+      expect(
+        patterns.getPatternWithSteps(created.pattern.id)?.pattern.origin,
+      ).toBe('user');
+      expect(patterns.listPatterns().map((pattern) => pattern.origin)).toStrictEqual(
+        ['user'],
+      );
+    });
+
+    it('works a bundled pattern exactly like a maker\u2019s own, end to end', () => {
+      const { patterns, progress, counters } = database.repositories;
+      applyBundledPatternSeed(patterns);
+
+      const grannySquareId =
+        database.connection.first<{ readonly pattern_id: string }>(
+          'SELECT pattern_id FROM pattern_seed_state WHERE slug = ?',
+          ['granny-square'],
+        )?.pattern_id ?? '';
+      expect(grannySquareId).not.toBe('');
+
+      const seeded = patterns.getPatternWithSteps(grannySquareId);
+      expect(seeded?.pattern.origin).toBe('bundled');
+      expect(seeded?.steps).toHaveLength(7);
+
+      // Edit: append, rewrite, delete (positions re-compact), reorder.
+      const appended = patterns.addStep(grannySquareId, 'Block it damp');
+      expect(appended.position).toBe(7);
+      patterns.editStep(seeded?.steps[0]?.id ?? '', 'Chain 4 and join');
+      patterns.deleteStep(seeded?.steps[1]?.id ?? '');
+
+      const afterDelete =
+        patterns.getPatternWithSteps(grannySquareId)?.steps ?? [];
+      expect(afterDelete.map((step) => step.position)).toStrictEqual([
+        0, 1, 2, 3, 4, 5, 6,
+      ]);
+
+      patterns.reorderSteps(grannySquareId, [
+        afterDelete[6]?.id ?? '',
+        ...afterDelete.slice(0, 6).map((step) => step.id),
+      ]);
+      patterns.updatePattern({
+        id: grannySquareId,
+        title: 'My Granny Square',
+        notes: 'Using the leftover pink',
+      });
+
+      // A bundled pattern the maker touched floats to the front of recency like
+      // any other, so `origin` grants the seed nothing at the read layer either.
+      expect(patterns.listPatterns()[0]?.title).toBe('My Granny Square');
+      expect(patterns.listPatterns()[0]?.origin).toBe('bundled');
+
+      // Progress and the counter behave identically.
+      const reordered =
+        patterns.getPatternWithSteps(grannySquareId)?.steps ?? [];
+      progress.setStepCompleted(reordered[0]?.id ?? '', true);
+      const counter = counters.getOrCreatePrimaryCounter({
+        kind: 'pattern',
+        id: grannySquareId,
+      });
+      counters.adjustCounter(counter.id, 3);
+
+      // Reopen over the same connection with no migration applied.
+      expect(initializeDatabase(database.connection).appliedMigrations).toEqual(
+        [],
+      );
+      const reopened = createRepositories({
+        connection: database.connection,
+        now: database.now,
+        newId: database.newId,
+      });
+      const readBack = reopened.patterns.getPatternWithSteps(grannySquareId);
+
+      expect(readBack?.pattern.title).toBe('My Granny Square');
+      expect(readBack?.pattern.notes).toBe('Using the leftover pink');
+      expect(readBack?.pattern.origin).toBe('bundled');
+      expect(readBack?.steps.map((step) => step.id)).toStrictEqual(
+        reordered.map((step) => step.id),
+      );
+      expect(readBack?.steps.map((step) => step.position)).toStrictEqual([
+        0, 1, 2, 3, 4, 5, 6,
+      ]);
+      expect(readBack?.steps[0]?.instruction).toBe('Block it damp');
+      expect(
+        reopened.progress.getProgress(grannySquareId).completedStepIds,
+      ).toStrictEqual([reordered[0]?.id]);
+      expect(
+        reopened.counters.getOrCreatePrimaryCounter({
+          kind: 'pattern',
+          id: grannySquareId,
+        }).value,
+      ).toBe(3);
+
+      // Deleting it cascades the whole aggregate away but leaves the ledger
+      // tombstone standing, so the seed can never bring it back.
+      reopened.patterns.deletePattern(grannySquareId);
+
+      expect(
+        reopened.patterns.getPatternWithSteps(grannySquareId),
+      ).toBeUndefined();
+      for (const sql of [
+        'SELECT COUNT(*) AS total FROM pattern_step WHERE pattern_id = ?',
+        'SELECT COUNT(*) AS total FROM pattern_step_progress WHERE pattern_id = ?',
+        'SELECT COUNT(*) AS total FROM pattern_progress WHERE pattern_id = ?',
+        'SELECT COUNT(*) AS total FROM counter WHERE pattern_id = ?',
+      ]) {
+        expect(
+          database.connection.first<{ readonly total: number }>(sql, [
+            grannySquareId,
+          ])?.total,
+        ).toBe(0);
+      }
+      expect(
+        database.connection.first<{ readonly pattern_id: string | null }>(
+          'SELECT pattern_id FROM pattern_seed_state WHERE slug = ?',
+          ['granny-square'],
+        )?.pattern_id,
+      ).toBeNull();
     });
   });
 

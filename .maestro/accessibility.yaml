@@ -14,10 +14,13 @@ appId: ${APP_ID}
 
 # Tabs are reachable by their accessible names and expose selection.
 - tapOn: "Patterns"
-- assertVisible: "No patterns yet"
+# A fresh install ships the bundled starter patterns, so the library is never
+# empty and "Create your first pattern" does not exist. The always-present
+# "New pattern" action is the way in.
+- assertVisible: "Practice Swatch"
 
 # Create a two-step pattern through named controls only.
-- tapOn: "Create your first pattern"
+- tapOn: "New pattern"
 - tapOn:
     id: "pattern-title-field"
 - inputText: "Test Scarf"

@@ -11,8 +11,11 @@ appId: ${APP_ID}
 # Open the library from a fresh install: it starts on the creation-oriented
 # empty state.
 - tapOn: "Patterns"
-- assertVisible: "No patterns yet"
-- tapOn: "Create your first pattern"
+# A fresh install ships the bundled starter patterns, so the library is never
+# empty and "Create your first pattern" does not exist. The always-present
+# "New pattern" action is the way in.
+- assertVisible: "Practice Swatch"
+- tapOn: "New pattern"
 - assertVisible: "New pattern"
 
 # Compose a pattern with a title and two ordered steps.
@@ -64,8 +67,25 @@ appId: ${APP_ID}
 - assertVisible: "Step 2 of 2: Fasten off"
 
 # Delete the whole pattern through the progress-warning confirmation and confirm
-# the library returns to its empty state.
+# the maker's pattern is gone while the bundled starters remain.
 - tapOn: "Delete pattern"
 - assertVisible: "Delete this pattern?"
 - tapOn: "Yes, delete pattern"
-- assertVisible: "No patterns yet"
+- assertNotVisible: "Meadow Wrap"
+- assertVisible: "Practice Swatch"
+
+# Issue #44 AC3 on a real binary: deleting a bundled pattern is permanent. The
+# seed records what it has inserted in a ledger no cascade can reach, so a true
+# process relaunch must not bring the deleted starter back. Only an on-device run
+# proves this; the Jest loader suite is the logic proxy.
+- tapOn: "Practice Swatch"
+- tapOn: "Edit pattern"
+- tapOn: "Delete pattern"
+- assertVisible: "Delete this pattern?"
+- tapOn: "Yes, delete pattern"
+- assertNotVisible: "Practice Swatch"
+- launchApp:
+    clearState: false
+- tapOn: "Patterns"
+- assertNotVisible: "Practice Swatch"
+- assertVisible: "Cotton Dishcloth"
