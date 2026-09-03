@@ -89,6 +89,23 @@ its independence statement. The `retro` stage runs it over the closed cycle and
 treats any failure as a finding to route into a skill or doc — never into
 memory.
 
+**An artifact that predates this rule is context, not a defect.** The provenance
+block was introduced by PR #47; a plan comment, PR body, or review posted before
+that merged carries no block and never could have. The script cannot tell that
+apart from a stage that simply skipped the block, so it reports the missing
+block either way and exits non-zero. When an artifact predates the rule, compare
+its posting timestamp against #47's merge, record the outcome in one line —
+"plan: no block; the plan comment (posted `<date>`) predates the rule introduced
+by PR #47" — and do **not** route it as a finding. #42's verify did exactly
+this and it is the expected handling.
+
+Do **not** retro-fit an addendum comment onto the issue to make the script pass.
+It would post a provenance claim the stage never made, about a context nobody
+can now inspect — precisely the confidently-wrong record §2 exists to prevent —
+and it would erase the one honest signal, that this artifact is older than the
+rule. Every artifact posted **after** #47 merged is in scope, and a missing
+block there is a real defect.
+
 ## 4. Why not enforce it in CI
 
 Provenance describes *how the work was produced*, not what the code does, and it

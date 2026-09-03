@@ -223,6 +223,24 @@ is red), so the next reader does not re-diagnose it as a coverage hole. Only
 when mutating every defence together still leaves the suite green is the
 contract genuinely unfalsified; add the missing negative-branch test then.
 
+**Record redundancy whenever it exists, and say whether the surviving assertion
+pins the outcome or a structural proxy.** Redundant defences come in two shapes
+and only one is the green-mutation case above. In the other, each mechanism
+carries its own assertion, so every single-point mutation *is* red — but red on
+a **structural** pin ("this element owns this value") rather than on the outcome
+the acceptance criterion states, because the harness cannot compute that outcome
+at all. #42's "tappable height remains >= 48px" is upheld both by the field
+surface's `minHeight` and by the single-line input's own 12+24+12 padded box;
+deleting the surface minimum leaves the rendered height at 48px, so that
+mutation went red on the structural pin only, and Jest cannot compute layout in
+this repo so no height-outcome assertion exists to write. That is a correct and
+acceptable outcome — but disclose it as one: name the redundant defences, say
+the assertion catching them is a structural proxy, name the criterion it stands
+in for, and say what actually proves the outcome (there, the on-device pass).
+Do this **whenever redundancy exists**, not only when a mutation stayed green —
+a reader who finds two mechanisms and one proxy assertion will otherwise
+re-diagnose it as a coverage hole, which is the cost the rule exists to avoid.
+
 **Plant the mutation in every carrier the guard claims to cover.** For an
 enumeration/walk guard, a single mutation in the obvious syntactic form proves
 only that form. Plant the same violation in each distinct place the value can be

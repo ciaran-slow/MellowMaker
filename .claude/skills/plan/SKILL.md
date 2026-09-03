@@ -125,6 +125,23 @@ If acceptance criteria conflict with `docs/vision.md` or current repository
 constraints, call out the conflict on the issue instead of handing ambiguity
 to the builder.
 
+**An issue's Cause/Scope prose is a hypothesis about mechanism; its acceptance
+criteria are the contract.** When the mechanism the issue prescribes would break
+one of the issue's *own* criteria, do not implement the prose, and do not stop
+for a product call — the criteria already settle it. Pick the mechanism that
+satisfies every criterion and record the divergence as an explicit numbered
+decision in §7 that quotes the superseded wording, names the criterion a literal
+reading would break, and states the rejected alternative and why. #42's issue
+said "the input sizes to its line and the container centres it"; taken literally
+that left the top and bottom 12px of every field focusing nothing, breaking the
+same issue's "tappable height remains >= 48px" criterion, so the plan kept a
+48px padded box and said exactly that — the build, the review, and the commit
+message all inherited the reasoning instead of re-litigating it, and verify
+checked the divergence rather than flagging it. Escalate to the user only when
+the criteria conflict with **each other**, with `docs/vision.md`, or with a
+repository constraint — not when they merely outrank the issue's own guess at
+how to satisfy them.
+
 ## 5. Write a buildable one-PR plan
 
 Use this structure:
@@ -173,6 +190,21 @@ For each changed contract, name cases that would fail under a plausible bug:
 Fixtures for ordering, deduplication, boundaries, and migrations must differ
 under the wrong implementation. Do not derive boundary fixtures from the
 constant they are intended to pin.
+
+**Confirm a contract is assertable in this harness before pinning it, and name
+the carrier the value lives in.** NativeWind classes are not resolved into
+styles under `jest-expo` (`docs/architecture.md` §14): a `className` arrives as
+a raw prop with no `style` produced from it, so `toHaveStyle` can neither see a
+class-expressed value nor fail on one — "the input carries no minimum height"
+passes vacuously while `min-h-touch` sits on it. Before naming a style
+assertion, decide which carrier holds the value — an inline `tokens.*` style,
+which `toHaveStyle` pins, or a class, which only an explicit `className` match
+pins — and state that choice in the plan. When a load-bearing value is
+currently class-expressed, move it to an inline token style as part of the
+change rather than specifying an assertion that can never fail. #42's plan
+proved this by rendering the component during planning; that check is cheap and
+belongs in planning, because a plan that hands the builder an unfalsifiable
+assertion produces a green suite over the exact bug it was written to prevent.
 
 Whenever the plan states a conditional behavioral contract — "X only when Y",
 "never W", "does not move/advance/change Z" — name a falsifying test of its
