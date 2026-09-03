@@ -66,6 +66,12 @@ describe('CraftTextField layout contract (issue #42)', () => {
     const surface = input.parent;
 
     expect(surface).toHaveStyle({ minHeight: 48 });
+    // The single-line surface must stay cross-axis centred: the input's own
+    // padded box already fills the 48px, but `items-center` is what centres the
+    // leading icon and the clear control against it. Without this the surface
+    // could be switched to `items-start` with every other assertion still green
+    // (verify's non-blocking coverage gap on PR #48).
+    expect(surface?.props.className).toMatch(/\bitems-center\b/);
     expect(input).toHaveStyle({ paddingVertical: 12 });
     expect(
       StyleSheet.flatten(input.props.style as StyleProp<TextStyle>)?.minHeight,

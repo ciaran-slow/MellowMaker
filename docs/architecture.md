@@ -915,6 +915,20 @@ caught rather than silently mocked away. Component and router tests therefore ru
 the real migrations and repositories. `expo-crypto` is mocked with Node's
 `randomUUID`, which has the same RFC 4122 v4 contract.
 
+**NativeWind classes are not resolved into styles under this Jest stack.**
+`global.css` maps to `tests/styleMock.js`, so a `className` reaches the rendered
+element as a raw string prop and produces no `style` at all. Two consequences
+bind every component test: `toHaveStyle` can never *see* a class-expressed
+value, and — the dangerous half — it can never *fail* on one, so "this element
+carries no minimum height" passes vacuously while a `min-h-touch` class sits
+right there. A value a test must pin therefore has to be either an inline
+`tokens.*` style (the convention `CraftPressable`, `CraftTabBarButton`, and
+`CraftTextField`'s surface already follow for touch minimums) or asserted as an
+explicit `className` string match, and the test should say which of the two it
+is doing. A plan that specifies `toHaveStyle` against a NativeWind class is not
+buildable as written; issue #42 moved the load-bearing values to inline token
+styles for exactly this reason.
+
 Node SQLite and that mock prove SQLite schema, query, transaction, foreign-key,
 and migration behavior plus adapter JS wiring. Neither proves the `expo-sqlite`
 native bridge. Maestro covers installed-app behavior on iOS and Android:
