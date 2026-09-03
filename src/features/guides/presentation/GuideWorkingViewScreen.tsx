@@ -12,9 +12,15 @@ import type { PatternProgressView } from '@/domain/patterns/patternProgress';
 import { GuideVideoPlayer } from '@/features/guides/presentation/GuideVideoPlayer';
 import { GuideViewerStepRow } from '@/features/guides/presentation/GuideViewerStepRow';
 import { progressSummaryLabel } from '@/features/guides/presentation/guideStepLabels';
-import { useGuidePlayer } from '@/features/guides/presentation/useGuidePlayer';
+import {
+  useGuidePlayer,
+  type GuidePlayer,
+} from '@/features/guides/presentation/useGuidePlayer';
 import { useGuideViewer } from '@/features/guides/presentation/useGuideViewer';
-import { useCounter } from '@/features/patterns/presentation/useCounter';
+import {
+  useCounter,
+  type CounterController,
+} from '@/features/patterns/presentation/useCounter';
 import { CraftAnnouncement } from '@/ui/accessibility/CraftAnnouncement';
 import { useAnnouncement } from '@/ui/accessibility/useAnnouncement';
 import { CraftCard } from '@/ui/components/CraftCard';
@@ -33,20 +39,17 @@ type GuideWorkingViewScreenProps = {
   guideId: string;
 };
 
-// An average row height used only to let the list jump the current step into
-// view on open. Rows still lay out at their real size; this estimate only feeds
-// `initialScrollIndex`, so approximate is fine.
-const ESTIMATED_STEP_HEIGHT = 148;
-
 /**
  * The interactive guide working view — the guide's home. It shows the compliant
  * YouTube IFrame player (the #11 seam, filled) above an always-rendered,
  * always-interactive step list, marks the current/next step, and lets the maker
  * complete or reopen any step with immediate durable writes. The guide's own
- * maker-labelled counter (reused unchanged from #7) is pinned above the list.
- * Structural editing lives on the child `/guides/[guideId]/edit` route, reached
- * from "Edit guide". Like the pattern viewer it owns its `FlatList` directly
- * rather than nesting one in a `ScrollView` (NFR-09).
+ * maker-labelled counter (reused unchanged from #7) sits directly above the
+ * steps. Structural editing lives on the child `/guides/[guideId]/edit` route,
+ * reached from "Edit guide". Like the pattern viewer it owns its `FlatList`
+ * directly rather than nesting one in a `ScrollView` (NFR-09); the guide's
+ * chrome scrolls *with* the list as its `ListHeaderComponent` (issue #43), so
+ * only the bounded back control sits outside the scroll surface.
  */
 export function GuideWorkingViewScreen({
   guideId,
@@ -206,10 +209,10 @@ type GuideWorkingViewReadyProps = {
 /**
  * The ready-state body of the working view. It exists so the player and counter
  * hooks are called unconditionally (they run only once a guide has loaded), and
- * so the single `useGuidePlayer` instance is shared between the video card above
- * and every step row's seek badge below. The player is a **sibling above** the
- * always-rendered `FlatList`; whatever its status, it never gates or disables the
- * saved instructions, completion, counter, or progress.
+ * so the single `useGuidePlayer` instance is shared between the video card in
+ * the list header and every step row's seek badge below. The player rides in the
+ * list's `ListHeaderComponent`; whatever its status, it never gates or disables
+ * the saved instructions, completion, counter, or progress.
  */
 function GuideWorkingViewReady({
   announcement,
@@ -253,153 +256,199 @@ function GuideWorkingViewReady({
     counter.state.status === 'failed' ? COUNTER_FAILED_TITLE : undefined,
   );
 
-  const currentIndex = view.steps.findIndex(
-    (step) => step.id === view.currentStepId,
-  );
-
   return (
-    <>
-      <View className="w-full max-w-screen-sm self-center gap-4 pb-4">
-        <Text accessibilityRole="header" className="text-display text-ink">
-          {guide.title}
-        </Text>
-        <View className="flex-row items-center justify-between gap-3">
-          <CraftAnnouncement
-            className="flex-1 text-label text-ink"
-            message={progressSummaryLabel(view.completedCount, view.totalCount)}
-          />
+    <FlatList
+      accessibilityLabel="Guide steps"
+      className="w-full max-w-screen-sm flex-1 self-center"
+      contentContainerStyle={{
+        gap: tokens.spacing[3],
+        paddingBottom: contentInsets.paddingBottom,
+      }}
+      data={view.steps}
+      keyExtractor={(step) => step.id}
+      /*
+        The guide's chrome scrolls WITH the steps (issue #43). It must be an
+        element of a module-level component type, never an inline
+        `() => (<View>…</View>)`: an inline function is a new component type on
+        every render, so React would unmount and remount this subtree — tearing
+        down and reloading the YouTube WebView — on every completion or counter
+        tap.
+      */
+      ListHeaderComponent={
+        <GuideWorkingViewHeader
+          announcement={announcement}
+          counter={counter}
+          guide={guide}
+          onOpenEditor={onOpenEditor}
+          player={player}
+          view={view}
+        />
+      }
+      ListEmptyComponent={
+        <View className="gap-4">
+          <CraftCard accent="teal">
+            <Text accessibilityRole="header" className="text-heading text-ink">
+              No steps yet
+            </Text>
+            <Text className="text-body text-ink">
+              Add this guide&apos;s steps to start tracking your progress.
+            </Text>
+          </CraftCard>
           <CraftPressable
-            accessibilityHint="Change this guide's steps, title, or notes"
             accessibilityLabel="Edit guide"
-            className="flex-row items-center gap-2 bg-surface px-4 py-2"
+            className="items-center bg-pinkStrong px-6 py-3"
             onPress={onOpenEditor}
           >
-            <MaterialCommunityIcons
-              accessibilityElementsHidden
-              color={tokens.colors.ink}
-              name="pencil"
-              size={tokens.typography.body.fontSize}
-            />
-            <Text className="text-label text-ink">Edit guide</Text>
+            <Text className="text-label text-surface">Edit guide</Text>
           </CraftPressable>
         </View>
+      }
+      /*
+        The counter's rename opens a text field and a "Save name" button inside
+        this scroll surface; the default `"never"` would spend the first tap
+        dismissing the keyboard, so saving a new name would need two taps.
+      */
+      keyboardShouldPersistTaps="handled"
+      renderItem={({ index, item }) => {
+        const detail = steps[index];
 
-        {/*
-          The compliant YouTube IFrame player (issue #11). It is a sibling ABOVE
-          the step list and never gates or disables it: loading, offline, and
-          playback-error all degrade to text while the saved steps stay usable.
-        */}
-        <GuideVideoPlayer
-          player={player}
-          sourceUrl={guide.sourceUrl}
-          videoId={guide.videoId}
-        />
-
-        {/*
-          The maker-labelled guide counter (issue #7, reused unchanged). Its
-          read failure is screen-local and retryable, so it never blacks out
-          the steps.
-        */}
-        {counter.state.status === 'ready' ? (
-          <CraftCounter
-            announcement={counter.state.announcement}
-            label={counter.state.label}
-            onDecrement={counter.decrement}
-            onIncrement={counter.increment}
-            onRename={counter.rename}
-            onReset={counter.reset}
-            value={counter.state.value}
+        return (
+          <GuideViewerStepRow
+            note={detail?.note}
+            onComplete={() => {
+              onCompleteStep(item.id);
+            }}
+            onReopen={() => {
+              onReopenStep(item.id);
+            }}
+            onSeek={player.seekToMs}
+            step={item}
+            total={view.totalCount}
+            transcriptExcerpt={detail?.transcriptExcerpt}
+            videoOffsetMs={detail?.videoOffsetMs}
           />
-        ) : counter.state.status === 'failed' ? (
-          <View
-            accessible
-            accessibilityRole="alert"
-            accessibilityLiveRegion="assertive"
-          >
-            <CraftCard accent="pink">
-              <Text accessibilityRole="header" className="text-heading text-ink">
-                {COUNTER_FAILED_TITLE}
-              </Text>
-              <Text className="text-body text-ink">
-                Your count is saved on this device. Nothing was changed.
-              </Text>
-              <CraftPressable
-                accessibilityLabel="Try again to load the counter"
-                className="items-center self-start bg-yellow px-6 py-3"
-                onPress={counter.retry}
-              >
-                <Text className="text-label text-ink">Try again</Text>
-              </CraftPressable>
-            </CraftCard>
-          </View>
-        ) : null}
+        );
+      }}
+      testID="guide-steps"
+    />
+  );
+}
 
-        {/*
-          The polite live region below speaks completion and position changes
-          to a screen reader (A11Y-07).
-        */}
+type GuideWorkingViewHeaderProps = {
+  guide: ImportedGuide;
+  view: PatternProgressView;
+  announcement: string;
+  player: GuidePlayer;
+  counter: CounterController;
+  onOpenEditor(): void;
+};
+
+/**
+ * The guide's chrome — title, progress summary with "Edit guide", the video
+ * card, the counter, and the completion announcement — rendered as the step
+ * list's `ListHeaderComponent` so the whole working view is one scroll surface
+ * (issue #43). Before this, the chrome was a sibling *above* the list and, with
+ * the 16:9 video card in it, stood ~897pt tall on an 844pt phone: the list was
+ * laid out entirely off-screen and nothing on the display responded to a swipe.
+ *
+ * It is declared at module scope, and calls no hook of its own, so its component
+ * type is stable across renders and the WebView below is never remounted by a
+ * completion or counter tap. It carries no `max-w-screen-sm self-center`: the
+ * `FlatList` already constrains and centres this column, and constraining twice
+ * would centre a narrower column inside the centred one.
+ */
+function GuideWorkingViewHeader({
+  announcement,
+  counter,
+  guide,
+  onOpenEditor,
+  player,
+  view,
+}: GuideWorkingViewHeaderProps) {
+  return (
+    <View className="w-full gap-4 pb-4">
+      <Text accessibilityRole="header" className="text-display text-ink">
+        {guide.title}
+      </Text>
+      <View className="flex-row items-center justify-between gap-3">
         <CraftAnnouncement
-          className="text-label text-ink opacity-70"
-          message={announcement}
+          className="flex-1 text-label text-ink"
+          message={progressSummaryLabel(view.completedCount, view.totalCount)}
         />
+        <CraftPressable
+          accessibilityHint="Change this guide's steps, title, or notes"
+          accessibilityLabel="Edit guide"
+          className="flex-row items-center gap-2 bg-surface px-4 py-2"
+          onPress={onOpenEditor}
+        >
+          <MaterialCommunityIcons
+            accessibilityElementsHidden
+            color={tokens.colors.ink}
+            name="pencil"
+            size={tokens.typography.body.fontSize}
+          />
+          <Text className="text-label text-ink">Edit guide</Text>
+        </CraftPressable>
       </View>
 
-      <FlatList
-        accessibilityLabel="Guide steps"
-        className="w-full max-w-screen-sm self-center"
-        contentContainerStyle={{
-          gap: tokens.spacing[3],
-          paddingBottom: contentInsets.paddingBottom,
-        }}
-        data={view.steps}
-        initialScrollIndex={currentIndex >= 0 ? currentIndex : undefined}
-        keyExtractor={(step) => step.id}
-        ListEmptyComponent={
-          <View className="gap-4">
-            <CraftCard accent="teal">
-              <Text accessibilityRole="header" className="text-heading text-ink">
-                No steps yet
-              </Text>
-              <Text className="text-body text-ink">
-                Add this guide&apos;s steps to start tracking your progress.
-              </Text>
-            </CraftCard>
-            <CraftPressable
-              accessibilityLabel="Edit guide"
-              className="items-center bg-pinkStrong px-6 py-3"
-              onPress={onOpenEditor}
-            >
-              <Text className="text-label text-surface">Edit guide</Text>
-            </CraftPressable>
-          </View>
-        }
-        getItemLayout={(_data, index) => ({
-          length: ESTIMATED_STEP_HEIGHT,
-          offset: ESTIMATED_STEP_HEIGHT * index,
-          index,
-        })}
-        renderItem={({ index, item }) => {
-          const detail = steps[index];
-
-          return (
-            <GuideViewerStepRow
-              note={detail?.note}
-              onComplete={() => {
-                onCompleteStep(item.id);
-              }}
-              onReopen={() => {
-                onReopenStep(item.id);
-              }}
-              onSeek={player.seekToMs}
-              step={item}
-              total={view.totalCount}
-              transcriptExcerpt={detail?.transcriptExcerpt}
-              videoOffsetMs={detail?.videoOffsetMs}
-            />
-          );
-        }}
-        testID="guide-steps"
+      {/*
+        The compliant YouTube IFrame player (issue #11). It is a sibling ABOVE
+        the step list and never gates or disables it: loading, offline, and
+        playback-error all degrade to text while the saved steps stay usable.
+      */}
+      <GuideVideoPlayer
+        player={player}
+        sourceUrl={guide.sourceUrl}
+        videoId={guide.videoId}
       />
-    </>
+
+      {/*
+        The maker-labelled guide counter (issue #7, reused unchanged). Its
+        read failure is screen-local and retryable, so it never blacks out
+        the steps.
+      */}
+      {counter.state.status === 'ready' ? (
+        <CraftCounter
+          announcement={counter.state.announcement}
+          label={counter.state.label}
+          onDecrement={counter.decrement}
+          onIncrement={counter.increment}
+          onRename={counter.rename}
+          onReset={counter.reset}
+          value={counter.state.value}
+        />
+      ) : counter.state.status === 'failed' ? (
+        <View
+          accessible
+          accessibilityRole="alert"
+          accessibilityLiveRegion="assertive"
+        >
+          <CraftCard accent="pink">
+            <Text accessibilityRole="header" className="text-heading text-ink">
+              {COUNTER_FAILED_TITLE}
+            </Text>
+            <Text className="text-body text-ink">
+              Your count is saved on this device. Nothing was changed.
+            </Text>
+            <CraftPressable
+              accessibilityLabel="Try again to load the counter"
+              className="items-center self-start bg-yellow px-6 py-3"
+              onPress={counter.retry}
+            >
+              <Text className="text-label text-ink">Try again</Text>
+            </CraftPressable>
+          </CraftCard>
+        </View>
+      ) : null}
+
+      {/*
+        The polite live region below speaks completion and position changes
+        to a screen reader (A11Y-07).
+      */}
+      <CraftAnnouncement
+        className="text-label text-ink opacity-70"
+        message={announcement}
+      />
+    </View>
   );
 }

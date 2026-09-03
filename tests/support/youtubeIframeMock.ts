@@ -21,6 +21,7 @@ export const mockSeekTo = jest.fn();
 
 let lastProps: CapturedProps | undefined;
 let liveCount = 0;
+let mountCount = 0;
 
 /** The most recent props the mocked `<YoutubePlayer>` was rendered with. */
 export function getLastYoutubeProps(): CapturedProps | undefined {
@@ -36,11 +37,28 @@ export function youtubePlayerLiveCount(): number {
   return liveCount;
 }
 
-/** Clears the seek spy, captured props, and live-instance count between tests. */
+/**
+ * How many mocked `<YoutubePlayer>` (WebView) instances have mounted in total
+ * since the last reset — cumulative, so it never goes down. `youtubePlayerLiveCount()`
+ * cannot see a remount: an unmount plus a remount nets back to 1. A rising mount
+ * count with a live count of 1 is the signature of the working view's chrome
+ * being remounted (e.g. an inline `ListHeaderComponent` creating a fresh
+ * component type on every render), which tears the WebView down and reloads the
+ * video mid-session.
+ */
+export function youtubePlayerMountCount(): number {
+  return mountCount;
+}
+
+/**
+ * Clears the seek spy, captured props, and the live-instance and cumulative
+ * mount counts between tests.
+ */
 export function resetYoutubeIframeMock(): void {
   mockSeekTo.mockClear();
   lastProps = undefined;
   liveCount = 0;
+  mountCount = 0;
 }
 
 const MockYoutubePlayer = React.forwardRef(function MockYoutubePlayer(
@@ -53,6 +71,7 @@ const MockYoutubePlayer = React.forwardRef(function MockYoutubePlayer(
   // while mounted, decrement on unmount.
   React.useEffect(() => {
     liveCount += 1;
+    mountCount += 1;
 
     return () => {
       liveCount -= 1;

@@ -1,4 +1,4 @@
-import { act } from '@testing-library/react-native';
+import { act, within } from '@testing-library/react-native';
 import {
   fireEvent,
   renderRouter,
@@ -55,6 +55,46 @@ describe('guides navigation', () => {
     });
     expect(
       await screen.findByRole('header', { name: 'Amigurumi Basics' }),
+    ).toBeOnTheScreen();
+  });
+
+  it('renders the guide route as one scroll surface, chrome included (issue #43)', async () => {
+    const database = await createAppDatabase();
+    const created = database.repositories.guides.saveImportedGuide({
+      guide: {
+        videoId: 'dQw4w9WgXcQ',
+        sourceUrl: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
+        title: 'Amigurumi Basics',
+      },
+      steps: [
+        { instruction: 'Make a magic ring', origin: 'user' },
+        { instruction: 'Chain 12', origin: 'user' },
+      ],
+    });
+
+    const result = renderRouter(routes, {
+      initialUrl: `/guides/${created.guide.id}`,
+    });
+    await result;
+
+    // On the REAL navigation path — which the isolated screen suite cannot see —
+    // the counter and the video card scroll with the steps. A route-level
+    // wrapper (a `ScrollView`, or a second pinned region above the list) would
+    // put them back outside it.
+    await screen.findByTestId('guide-steps');
+    // The counter resolves a tick after the guide, so wait for it and re-read
+    // the list each attempt rather than holding a node from an earlier render.
+    await waitFor(() => {
+      expect(
+        within(screen.getByTestId('guide-steps')).getByLabelText(
+          'Increase Rows',
+        ),
+      ).toBeOnTheScreen();
+    });
+    expect(
+      within(screen.getByTestId('guide-steps')).getByRole('header', {
+        name: 'Amigurumi Basics',
+      }),
     ).toBeOnTheScreen();
   });
 

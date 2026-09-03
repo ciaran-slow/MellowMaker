@@ -1,4 +1,10 @@
-import { act, fireEvent, render, screen } from '@testing-library/react-native';
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  within,
+} from '@testing-library/react-native';
 import { AccessibilityInfo, Platform } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
@@ -11,6 +17,8 @@ import { createTestDatabase, type TestDatabase } from './support/sqliteHarness';
 import {
   getLastYoutubeProps,
   mockSeekTo,
+  youtubePlayerLiveCount,
+  youtubePlayerMountCount,
 } from './support/youtubeIframeMock';
 
 // The shared `react-native-youtube-iframe` stub (tests/setup.ts) renders nothing;
@@ -409,5 +417,144 @@ describe('GuideWorkingViewScreen', () => {
     await screen.findByRole('header', { name: "We couldn't open this guide" });
 
     expect(announce).toHaveBeenCalledWith("We couldn't open this guide");
+  });
+
+  // Issue #43 — the guide's chrome scrolls WITH the steps. Before the fix the
+  // title, progress row, video card, counter, and announcement were siblings
+  // ABOVE the list; on an 844pt phone that chrome stood ~897pt tall, so the
+  // list was laid out entirely off-screen and nothing on the display scrolled.
+  describe('one scroll surface (issue #43)', () => {
+    it('renders the chrome inside the step list, leaving only the back control outside', async () => {
+      const { guideId } = seedGuide(repositories, ['A', 'B', 'C']);
+      await render(tree(repositories, guideId));
+      await screen.findByRole('header', { name: 'Amigurumi Basics' });
+
+      const list = screen.getByTestId('guide-steps');
+
+      // Every piece of chrome is INSIDE the scroll surface…
+      expect(
+        within(list).getByRole('header', { name: 'Amigurumi Basics' }),
+      ).toBeOnTheScreen();
+      expect(within(list).getByLabelText('Edit guide')).toBeOnTheScreen();
+      expect(within(list).getByText('Loading video…')).toBeOnTheScreen();
+      expect(within(list).getByLabelText('Increase Rows')).toBeOnTheScreen();
+      expect(
+        within(list).getByLabelText('Mark step 1 complete'),
+      ).toBeOnTheScreen();
+
+      // …and the one bounded control that legitimately stays outside it is not.
+      expect(within(list).queryByLabelText('Back to guides')).toBeNull();
+      expect(screen.getByLabelText('Back to guides')).toBeOnTheScreen();
+    });
+
+    it('gives the list a height that cannot depend on its header', async () => {
+      const { guideId } = seedGuide(repositories, ['A']);
+      await render(tree(repositories, guideId));
+      await screen.findByRole('header', { name: 'Amigurumi Basics' });
+
+      // NativeWind's stylesheet is mocked under Jest (jest.config maps `.css`
+      // to `styleMock`), so `className` reaches the host element unresolved and
+      // `props.style` is undefined — the class list is the only observable form
+      // of this decision in a test. `flex-1` is `flexBasis: 0` + `flexGrow: 1`:
+      // the list claims whatever the back control leaves, at any text size and
+      // on any device, so a tall header can never starve it again.
+      const classes = String(
+        screen.getByTestId('guide-steps').props.className,
+      ).split(/\s+/);
+      expect(classes).toContain('flex-1');
+    });
+
+    it.each([
+      ['loading', async () => {}],
+      ['ready', firePlayerReady],
+      ['error', async () => firePlayerError('video_not_found')],
+    ])('keeps one scroll surface while the player is %s', async (state, drive) => {
+      const { guideId } = seedGuide(repositories, ['A', 'B', 'C']);
+      await render(tree(repositories, guideId));
+      await screen.findByRole('header', { name: 'Amigurumi Basics' });
+
+      await drive();
+
+      const list = screen.getByTestId('guide-steps');
+      expect(
+        within(list).getByRole('header', { name: 'Amigurumi Basics' }),
+      ).toBeOnTheScreen();
+      expect(within(list).getByLabelText('Increase Rows')).toBeOnTheScreen();
+      expect(
+        within(list).getByLabelText('Mark step 1 complete'),
+      ).toBeOnTheScreen();
+
+      if (state === 'error') {
+        // The placeholder replaces the WebView INSIDE the header — the failure
+        // state must not push the chrome back above the list.
+        expect(
+          within(list).getByLabelText('Try again to load the video'),
+        ).toBeOnTheScreen();
+        expect(
+          within(list).getByLabelText('Open in YouTube'),
+        ).toBeOnTheScreen();
+      }
+    });
+
+    it('never remounts the video player when a step or the counter changes', async () => {
+      const { guideId } = seedGuide(repositories, ['A', 'B']);
+      await render(tree(repositories, guideId));
+      await screen.findByRole('header', { name: 'Amigurumi Basics' });
+
+      await firePlayerReady();
+      expect(youtubePlayerMountCount()).toBe(1);
+
+      // An inline `ListHeaderComponent={() => …}` is a NEW component type on
+      // every render, so React would unmount and remount the header subtree —
+      // tearing down and reloading the WebView — on each of these taps. The
+      // live count would still read 1 afterwards; only the cumulative mount
+      // count can see it.
+      await fireEvent.press(screen.getByLabelText('Mark step 1 complete'));
+      const increase = screen.getByLabelText('Increase Rows');
+      await fireEvent.press(increase);
+      await fireEvent.press(increase);
+
+      expect(youtubePlayerMountCount()).toBe(1);
+      expect(youtubePlayerLiveCount()).toBe(1);
+    });
+
+    it('renders the chrome above the empty state when the guide has no steps', async () => {
+      const { guideId } = seedGuide(repositories, []);
+      await render(tree(repositories, guideId));
+      await screen.findByRole('header', { name: 'Amigurumi Basics' });
+
+      const list = screen.getByTestId('guide-steps');
+      expect(
+        within(list).getByRole('header', { name: 'Amigurumi Basics' }),
+      ).toBeOnTheScreen();
+      expect(within(list).getByLabelText('Increase Rows')).toBeOnTheScreen();
+      expect(within(list).getByText('Loading video…')).toBeOnTheScreen();
+      expect(
+        within(list).getByRole('header', { name: 'No steps yet' }),
+      ).toBeOnTheScreen();
+    });
+
+    it('carries the list props the scroll decisions depend on', async () => {
+      const { guideId } = seedGuide(repositories, ['A']);
+      await render(tree(repositories, guideId));
+      await screen.findByRole('header', { name: 'Amigurumi Basics' });
+
+      const list = screen.getByTestId('guide-steps');
+
+      // Structural guards: Jest has no layout engine and cannot simulate a
+      // keyboard-swallowed tap, so these pin the decisions; the behaviour behind
+      // them is proved on-device (see the #43 script on the issue).
+
+      // Without this the counter's rename would need two taps: the first would
+      // only dismiss the keyboard rather than press "Save name".
+      expect(list.props.keyboardShouldPersistTaps).toBe('handled');
+
+      // `getItemLayout` offsets are taken verbatim and the header's measured
+      // height is tracked separately, never added to them — so an estimated-row
+      // `initialScrollIndex` would scroll to a header-unaware offset, landing on
+      // the wrong step and hiding the video.
+      expect(list.props.getItemLayout).toBeUndefined();
+      expect(list.props.initialScrollIndex).toBeUndefined();
+    });
   });
 });

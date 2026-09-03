@@ -517,7 +517,21 @@ an empty result that names the query and offers a way back to browse, and an
 screen-local — `DatabaseGate` owns open/migrate/seed, so one bad read must not
 black out the whole app. A search field belongs above its list, never in
 `ListHeaderComponent`, so a list re-render cannot remount it and drop keyboard
-focus mid-word. A list-owning screen re-reads its first page on focus
+focus mid-word. Otherwise a working view's chrome — its title, progress summary,
+media card, and counter — scrolls **with** its list as the
+`ListHeaderComponent`, and only bounded, content-independent chrome (a back
+control) may sit outside; the list carries `flex-1` so its height never depends
+on what the header contains. Chrome left as a sibling above the list starves it:
+the guide working view's header stood ~897pt tall on an 844pt phone, so the list
+was laid out entirely off-screen and the whole screen appeared frozen (issue
+#43). The `ListHeaderComponent` must be an element of a module-level component
+type, never an inline `() => (…)`, which is a new component type on every render
+and would remount the header — tearing down a WebView player mid-session. A list
+with a `ListHeaderComponent` also cannot keep `getItemLayout`/`initialScrollIndex`
+unless the offsets are made header-aware: `VirtualizedList` takes cell offsets
+from `getItemLayout` verbatim and tracks the header's height separately, so an
+otherwise-correct `initialScrollIndex` scrolls to the wrong place. A list-owning
+screen re-reads its first page on focus
 (`useFocusEffect`) so a change made on a pushed editor is reflected on return,
 keeping SQLite authoritative without a global store.
 
