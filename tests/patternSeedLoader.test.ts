@@ -210,6 +210,27 @@ describe('bundled pattern seed loader', () => {
     expect(stepCount(database)).toBe(TOTAL_STEPS);
   });
 
+  it('still takes the no-write fast path after the maker deletes every starter', () => {
+    applyBundledPatternSeed(database.repositories.patterns);
+    for (const row of ledger(database)) {
+      database.repositories.patterns.deletePattern(row.pattern_id as string);
+    }
+
+    // The applied version is a property of the ledger, not of the surviving
+    // rows. A guard that derived it from live patterns (or from the pattern
+    // table at all) would read `undefined` here, call the release "not yet
+    // applied", and re-run the whole insert transaction on every single launch.
+    expect(database.repositories.patterns.appliedPatternSeedVersion()).toBe(1);
+    expect(applyBundledPatternSeed(database.repositories.patterns)).toStrictEqual(
+      { status: 'skipped', appliedSeedVersion: 1 },
+    );
+    expect(
+      database.repositories.patterns.listPatterns(WHOLE_LIBRARY),
+    ).toStrictEqual([]);
+    expect(stepCount(database)).toBe(0);
+    expect(ledger(database)).toHaveLength(6);
+  });
+
   it('never resurrects a pattern the maker deleted, with the version guard bypassed', () => {
     applyBundledPatternSeed(database.repositories.patterns);
     const dishclothId = seededPatternId(database, 'cotton-dishcloth');
