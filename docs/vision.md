@@ -36,6 +36,8 @@ Crocheting is a joyful, creative craft, but modern makers often juggle multiple 
 * **URL Parsing:** Accept a YouTube link pasted by the user in any common form (watch, share, Shorts, embed, or live) and settle on one canonical video identity.
 * **Metadata Extraction:** Fetch the video title, thumbnail, and creator info through YouTube's public, key-free oEmbed endpoint, treated as display-only.
 * **Structured Breakdown:** Map video timestamps and optional transcript excerpts into readable, step-by-step instructions beside an embedded player. YouTube plays inside its own official **IFrame player** (rendered in a WebView), so tapping a timestamped step seeks the video—with a link-out to the YouTube app and an offline saved-guide fallback whenever playback is unavailable.
+* **Maker-Supplied Sources:** Those timestamps and excerpts are always the maker's own—typed by hand, or **pasted** from text they copied out of YouTube themselves (the video's description chapter list first, its transcript panel as a fallback) and confirmed before anything is saved. **MellowMaker never fetches transcripts, captions, chapters, or descriptions**, keeps only the text that becomes a step, and sends nothing off the device.
+* **Save as Pattern:** Turn a guide into a real pattern in the library—its steps copied across in order with the source video link kept in the pattern's notes—which is what makes the "imported patterns" of section B above an actual import path. The pattern is an independent snapshot: deleting the guide never touches it.
 
 ---
 
