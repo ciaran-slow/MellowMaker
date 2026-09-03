@@ -631,6 +631,28 @@ Four conventions introduced by the accessibility pass (issue #14):
   because it renders before the database exists — carries an explicit name and
   a full 48×48 target.
 
+One convention introduced by the field-alignment fix (issue #42):
+
+- **The field surface owns the touch minimum; a single-line input reaches it
+  through symmetric padding.** `CraftTextField`'s container carries
+  `minHeight: tokens.touch.minimum` as an inline token style — matching how
+  `CraftPressable` and `CraftTabBarButton` already express touch minimums — and
+  the single-line `TextInput` gets `paddingVertical: tokens.spacing[3]` instead
+  of a `min-h-touch` class of its own: 12 + the 24px body line + 12 is exactly
+  48, so the input's box still fills the whole tappable surface while its line
+  sits centred in it. The previous arrangement put the 48px minimum on the input
+  alone, and iOS top-aligns a short line inside a `TextInput`'s own height, so
+  every field's text read high. `textAlignVertical` is passed explicitly on both
+  branches (`center` single-line, `top` multiline; the prop is Android-only and
+  inert on iOS) so the multiline contract has an exact expected value. Multiline
+  fields keep their own `min-h-touch` and stay deliberately top-aligned.
+  `tests/CraftTextField.test.tsx` pins both branches and, walk-based, asserts
+  `CraftTextField` remains the only file in `src/` that renders a `TextInput`,
+  so a hand-rolled field cannot reintroduce the misalignment. Because NativeWind
+  classes are not resolved to styles under `jest-expo`, that suite asserts the
+  `className` as well as the style — a class-expressed minimum would otherwise
+  be unassertable and unfalsifiable.
+
 ## 11. State, forms, and concurrency
 
 - SQLite owns durable state and is the only authoritative copy of persisted entities.
