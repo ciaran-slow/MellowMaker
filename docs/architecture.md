@@ -584,8 +584,9 @@ Four conventions introduced by the accessibility pass (issue #14):
   yellow accent already carries ink at 5.51:1 and has no companion.
   `tests/accessibilityContrast.test.ts` is the **walk-based** guard: every
   `.tsx` under `src/` is scanned by default, a bright accent may never appear
-  as `bg-*` or `text-*`, every `className` and every `CraftPressable` pairing a
-  token background with a token text or icon colour must clear the threshold,
+  as `bg-*` or `text-*`, every string literal (a `className`, or a class map
+  such as a status pill's) and every `CraftPressable` pairing a token
+  background with a token text or icon colour must clear the threshold,
   and the strong tokens are pinned to literal hexes.
 - **Announcements have two platform paths behind one seam.** React Native's
   `accessibilityLiveRegion` is honoured on Android only; VoiceOver never reads

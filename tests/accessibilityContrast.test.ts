@@ -29,7 +29,12 @@ const NON_TEXT_AA = 3;
 const BRIGHT_BG = /\bbg-(pink|teal|blue)\b/;
 /** Bright accents (and yellow) fail as text on white/off-white surfaces. */
 const BRIGHT_TEXT = /\btext-(pink|teal|blue|yellow)\b/;
-const CLASS_ATTR = /className=(?:"([^"]*)"|\{`([^`]*)`\})/g;
+/**
+ * Every string literal, not only `className="…"` attributes: status-pill and
+ * variant maps hold their classes in object literals (e.g. `'bg-tealStrong
+ * text-surface'`), and one of the four original failures lived exactly there.
+ */
+const STRING_LITERAL = /'([^'\n]*)'|"([^"\n]*)"|`([^`]*)`/g;
 const PRESSABLE_SPAN = /<CraftPressable\b[\s\S]*?<\/CraftPressable>/g;
 
 function walk(dir: string): string[] {
@@ -79,13 +84,13 @@ describe('accessibility contrast guard (A11Y-04)', () => {
     expect(offenders).toStrictEqual([]);
   });
 
-  it('every className pairing a token background with a token text colour clears 4.5:1', () => {
+  it('every string literal pairing a token background with a token text colour clears 4.5:1', () => {
     const offenders: string[] = [];
 
     for (const file of sourceFiles) {
       const source = readFileSync(file, 'utf8');
-      for (const match of source.matchAll(CLASS_ATTR)) {
-        const value = match[1] ?? match[2] ?? '';
+      for (const match of source.matchAll(STRING_LITERAL)) {
+        const value = match[1] ?? match[2] ?? match[3] ?? '';
         // A conditional class list is a set of branches, not one pairing;
         // its branches are asserted explicitly below rather than guessed at.
         if (value.includes('${')) {
