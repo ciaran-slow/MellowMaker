@@ -180,6 +180,43 @@ describe('bundled pattern seed loader', () => {
     }
   });
 
+  it('rolls the whole release back when a record fails part-way through', () => {
+    // `pattern.title` is `NOT NULL`, so record 3 cannot be written and the loop
+    // throws with two complete patterns and two ledger rows already inserted.
+    // The whole release is one transaction (plan section 6), so a mid-loop
+    // failure must leave the database exactly as it was — not two starters, not
+    // a half-ledgered slug, and not an applied version the guard would trust.
+    const doomed: SeedPatternInput[] = document.patterns.map((pattern, index) =>
+      index === 2 ? { ...pattern, title: null as unknown as string } : pattern,
+    );
+
+    expect(() =>
+      database.repositories.patterns.insertSeededPatterns(1, doomed),
+    ).toThrow();
+
+    expect(
+      database.repositories.patterns.listPatterns(WHOLE_LIBRARY),
+    ).toStrictEqual([]);
+    expect(stepCount(database)).toBe(0);
+    expect(ledger(database)).toStrictEqual([]);
+    expect(
+      database.repositories.patterns.appliedPatternSeedVersion(),
+    ).toBeUndefined();
+
+    // And the rollback leaves the database seedable rather than wedged: the
+    // gate's retry, or simply the next launch, applies the full release.
+    expect(applyBundledPatternSeed(database.repositories.patterns)).toStrictEqual(
+      { status: 'applied', seedVersion: 1, inserted: 6, skipped: 0 },
+    );
+    expect(
+      database.repositories.patterns
+        .listPatterns(WHOLE_LIBRARY)
+        .map((pattern) => pattern.title),
+    ).toStrictEqual(EXPECTED_LIBRARY_ORDER);
+    expect(stepCount(database)).toBe(TOTAL_STEPS);
+    expect(ledger(database)).toHaveLength(6);
+  });
+
   it('performs no write when the applied version already covers the release', () => {
     applyBundledPatternSeed(database.repositories.patterns);
 

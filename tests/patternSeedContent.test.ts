@@ -47,7 +47,7 @@ const EXPECTED_ABBREVIATIONS: readonly string[] = [
  * once a version has shipped, bumps `seedVersion` too.
  */
 const FINGERPRINT =
-  '89331f618cc250d0dc7f593319ce35c993eb35574aa0f1ed1cc10a94144907f8';
+  'fdf32948783e1c6dd5cabd0c2b3c3b0f9a7b74842f18fd3901841fce3d35dac1';
 
 /** Hand-written, so a dropped or added step fails both here and in the table. */
 const TOTAL_STEPS = 38;

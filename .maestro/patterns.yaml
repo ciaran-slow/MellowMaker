@@ -8,13 +8,19 @@ appId: ${APP_ID}
 - launchApp:
     clearState: true
 
-# Open the library from a fresh install: it starts on the creation-oriented
-# empty state.
+# Open the library from a fresh install.
 - tapOn: "Patterns"
 # A fresh install ships the bundled starter patterns, so the library is never
 # empty and "Create your first pattern" does not exist. The always-present
 # "New pattern" action is the way in.
-- assertVisible: "Practice Swatch"
+# A library row is one accessible element, so the only text it exposes is the
+# merged label "<title>. <notes>" (patternLabels.ts). A Maestro text selector is
+# a regex matched against that whole string, and the notes carry regex
+# metacharacters, so the row is selected as the title plus `.*` - which matches
+# under either whole-string or substring semantics and, unlike the bare title,
+# cannot make `assertNotVisible` pass vacuously. See
+# docs/runbooks/smoke-verification.md section 4.
+- assertVisible: "Practice Swatch.*"
 - tapOn: "New pattern"
 - assertVisible: "New pattern"
 
@@ -72,20 +78,20 @@ appId: ${APP_ID}
 - assertVisible: "Delete this pattern?"
 - tapOn: "Yes, delete pattern"
 - assertNotVisible: "Meadow Wrap"
-- assertVisible: "Practice Swatch"
+- assertVisible: "Practice Swatch.*"
 
 # Issue #44 AC3 on a real binary: deleting a bundled pattern is permanent. The
 # seed records what it has inserted in a ledger no cascade can reach, so a true
 # process relaunch must not bring the deleted starter back. Only an on-device run
 # proves this; the Jest loader suite is the logic proxy.
-- tapOn: "Practice Swatch"
+- tapOn: "Practice Swatch.*"
 - tapOn: "Edit pattern"
 - tapOn: "Delete pattern"
 - assertVisible: "Delete this pattern?"
 - tapOn: "Yes, delete pattern"
-- assertNotVisible: "Practice Swatch"
+- assertNotVisible: "Practice Swatch.*"
 - launchApp:
     clearState: false
 - tapOn: "Patterns"
-- assertNotVisible: "Practice Swatch"
-- assertVisible: "Cotton Dishcloth"
+- assertNotVisible: "Practice Swatch.*"
+- assertVisible: "Cotton Dishcloth.*"

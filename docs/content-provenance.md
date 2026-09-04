@@ -308,7 +308,20 @@ and whitespace in the committed file.
 
 | Seed version | Released in | SHA-256 of the normalized document |
 |---|---|---|
-| 1 | Issue #44 initial starter pattern set | `89331f618cc250d0dc7f593319ce35c993eb35574aa0f1ed1cc10a94144907f8` |
+| 1 | Issue #44 initial starter pattern set, amended in place by the #44 retro | `fdf32948783e1c6dd5cabd0c2b3c3b0f9a7b74842f18fd3901841fce3d35dac1` |
+
+### Amendment log
+
+Seed version 1 has been amended once, in place, under rule 7 (no MellowMaker
+release and no tag exists yet, so the precondition holds and is externally
+checkable). The #44 retro rewrote `granny-square` step 5: it directed the maker
+to work "3 dc into each side space" in round 2, but round 1 as written leaves
+four chain-2 corner spaces and no side spaces, so there was nothing to work
+there until round 3. The clause was removed; the step count, the set table, the
+abbreviation set, and the total are unchanged, and the digest above was
+re-recorded in the same commit. Recorded here rather than left in a merged PR
+review, because "why does this digest differ from the one in the #44 PR body"
+is the question the next content reviewer will ask.
 
 ## 11. Review checklist for a pattern content change
 
@@ -320,7 +333,15 @@ and whitespace in the committed file.
 4. Re-confirm §9: no copied or paraphrased text entered the set, and no imagery.
 5. Confirm every abbreviation the new text uses is defined in the bundled
    dictionary.
-6. Confirm the insert-only rule and the absent update and delete paths are
+6. **Read the set through as a maker would work it, step by step.** Every step
+   must be workable from the state the previous steps actually leave: the
+   stitches, spaces, loops, and edges it tells the maker to work into must exist
+   by then. No committed gate can check this — the parser pins shape, the
+   identity table pins the set, the fingerprint pins review, and all three pass
+   over an instruction that cannot be crocheted. #44 shipped one such step (see
+   the amendment log in §10), which the verify stage caught by reading the
+   rounds in order rather than by running anything.
+7. Confirm the insert-only rule and the absent update and delete paths are
    untouched, and that the launch guard still reads the ledger rather than the
    pattern rows.
-7. Run `npm run lint`, `npm run typecheck`, and `npm run test:ci`.
+8. Run `npm run lint`, `npm run typecheck`, and `npm run test:ci`.

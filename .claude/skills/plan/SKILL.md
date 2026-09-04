@@ -271,6 +271,14 @@ proved this by rendering the component during planning; that check is cheap and
 belongs in planning, because a plan that hands the builder an unfalsifiable
 assertion produces a green suite over the exact bug it was written to prevent.
 
+The same trap has an end-to-end form. A Maestro `assertNotVisible` whose selector
+can never match **passes**, so a flow can report success over the exact defect the
+leg exists to catch. `.maestro` flows are written blind here (no JDK, no simulator
+runtime), so this is a planning and review problem, not a debugging one: when the
+plan names a flow selector, name the **accessible label the element actually
+exposes** — `docs/runbooks/smoke-verification.md` §4 — not the title text nested
+inside an `accessible` row.
+
 Whenever the plan states a conditional behavioral contract — "X only when Y",
 "never W", "does not move/advance/change Z" — name a falsifying test of its
 **negative branch** (the not-Y or would-W case), **at the layer where the
@@ -309,6 +317,22 @@ input twice (or reaches the same target from two different prior states) and
 pins the result to the argument, not to prior state. Alternating-value sequences
 (true→false→true) do **not** discharge this: a read-modify-write toggle passes
 them while diverging on a repeated tap.
+
+When the contract is that a guard **must not be derived from data the maker can
+destroy**, the falsifier must include the case that drives the derivation to its
+degenerate value — usually "the maker deleted **every** row the derivation
+reads". A single-row case never reaches it. #44's plan diagnosed the trap
+exactly right in prose: a `MAX(seed_version)` taken over the *seeded rows* goes
+`NULL` once a maker deletes them all, and the next launch re-seeds everything. It
+then pinned the contract with cases that deleted **one** starter and that bumped
+the version — both of which pass under a guard still reading live pattern rows,
+because five surviving rows keep the aggregate non-null. The build's own mutation
+pass found the hole and closed it with the missing test. The rule: **if the
+plan's own reasoning says "once the maker deletes them all", the test that
+deletes them all is the falsifier**, and anything milder is a warm-up. The same
+shape covers every `MAX`/`MIN`/`COUNT` guard over rows another feature can
+remove, and every cache, high-water mark, or "have we done this yet" flag stored
+beside the data it describes.
 
 When the contract is a **resource release / teardown / lifecycle** guarantee
 ("releases the player/subscription on navigating away", "no stale callbacks

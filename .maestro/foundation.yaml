@@ -3,7 +3,7 @@ appId: ${APP_ID}
 - launchApp:
     clearState: true
 - assertVisible: "Stitches"
-- assertVisible: "Single crochet"
+- assertVisible: "Single crochet, sc, Beginner"
 - tapOn: "Patterns"
 - assertVisible: "Patterns"
 - assertVisible: "New pattern"
@@ -11,4 +11,4 @@ appId: ${APP_ID}
 - assertVisible: "Guides"
 - assertVisible: "No guides yet"
 - tapOn: "Stitches"
-- assertVisible: "Single crochet"
+- assertVisible: "Single crochet, sc, Beginner"
