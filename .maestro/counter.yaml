@@ -13,7 +13,14 @@ appId: ${APP_ID}
 # A fresh install ships the bundled starter patterns, so the library is never
 # empty and "Create your first pattern" does not exist. The always-present
 # "New pattern" action is the way in.
-- assertVisible: "Practice Swatch"
+# A library row is one accessible element, so the only text it exposes is the
+# merged label "<title>. <notes>" (patternLabels.ts). A Maestro text selector is
+# a regex matched against that whole string, and the notes carry regex
+# metacharacters, so the row is selected as the title plus `.*` - which matches
+# under either whole-string or substring semantics and, unlike the bare title,
+# cannot make `assertNotVisible` pass vacuously. See
+# docs/runbooks/smoke-verification.md section 4.
+- assertVisible: "Practice Swatch.*"
 - tapOn: "New pattern"
 - assertVisible: "New pattern"
 - tapOn:

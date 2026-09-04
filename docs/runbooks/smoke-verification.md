@@ -141,3 +141,46 @@ deleting a single-issue file is likewise conflict-free.
 See [`deferred-smokes/`](./deferred-smokes/) — one file per issue, sorted by
 issue number. Everything open is a file in that directory; there is deliberately
 no summary here to keep it out of every PR's diff.
+
+## 4. Selector discipline for flows that have never been run
+
+Every `.maestro` flow in this repository was written blind and has never been
+executed: no JDK, no simulator runtime, no Android SDK (§1). The first real run
+is issue #16. That makes selector correctness a **review** problem, not a debug
+problem — nobody gets a red flow to fix, so a wrong selector sits in the tree
+looking exactly like a right one.
+
+Three facts decide it:
+
+1. **A row is one accessible element, and its label is the merged string.**
+   `CraftPressable` sets `accessible`, so React Native groups the row's children
+   into a single element. The only text a row exposes is the label the row's
+   label helper builds — `"Single crochet, sc, Beginner"`,
+   `"Practice Swatch. Hook 5.0 mm · Worsted (medium 4) cotton or acrylic · …"` —
+   not the title `<Text>` nested inside it. On iOS especially, the inner text is
+   not a separate element to find.
+2. **A Maestro text selector is a regular expression matched against the whole
+   string.** A bare title is therefore not a prefix search; under whole-string
+   semantics it matches nothing at all.
+3. **Regex metacharacters in the label are live.** `patternSeed.json` notes carry
+   `(medium 4)` and `5.0 mm`, so pasting the full label in as a selector makes
+   the parentheses a capture group and stops it matching the literal text.
+
+The rule that follows from all three: **select a row by its full accessible
+label when the label is metacharacter-free, and otherwise by its
+metacharacter-free prefix closed with `.*`.** `"Single crochet, sc, Beginner"`
+and `"Practice Swatch.*"` are both correct whether Maestro matches whole strings
+or substrings, which is the property that matters on a machine that cannot run
+Maestro to settle the question.
+
+**`assertNotVisible` is where a bad selector does real damage.** A selector that
+can never match *passes* — so `assertNotVisible: "Practice Swatch"` reports
+success whether or not the deleted starter came back, which is exactly the
+acceptance criterion (#44 AC3) that leg exists to prove. Check every
+`assertNotVisible` against this rule first; a vacuous negative assertion is
+worse than no assertion, because it is counted as evidence.
+
+**When a first on-device run fails at a selector, it is a selector defect until
+proved otherwise.** Read the label helper and the seeded content before opening
+a product bug: a `tapOn` that cannot find a row and a resurrected pattern look
+identical from the flow's exit code.

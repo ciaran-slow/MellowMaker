@@ -135,7 +135,12 @@ These constraints come from `docs/vision.md`:
   offline-first and persisted locally with `expo-sqlite`.
 - SQLite schema changes follow the one existing migration/version convention,
   run transactionally where supported, preserve user-created data, and are
-  tested from the previous schema.
+  tested from the previous schema. `docs/architecture.md` §7 rule 8 records what
+  migration 2 (#44, the first real one) established for the next migration — the
+  column-naming populated fixture, deriving the previous schema from the
+  production `MIGRATIONS` array, backfilling in the DDL, and putting version
+  state the maker can delete into its own ledger table. Reuse those, do not
+  reinvent them.
 - Video/media playback follows the current media-rendering decision recorded
   in `docs/vision.md` and `docs/architecture.md` — do not assume a specific
   player; a `type: decision` issue may have revised it. Treat the docs as
@@ -262,6 +267,26 @@ Do this **whenever redundancy exists**, not only when a mutation stayed green �
 a reader who finds two mechanisms and one proxy assertion will otherwise
 re-diagnose it as a coverage hole, which is the cost the rule exists to avoid.
 
+**A green mutation has a third meaning: a different contract riding on the same
+code.** The two outcomes above — unfalsified, or double-defended — both ask about
+the contract you set out to mutate. Ask a third question before moving on: *what
+else does this expression decide?* #44's M3 narrowed the pattern seed's
+applied-version guard to ledger rows whose pattern still existed, and every suite
+stayed green. For the contract under test that was the **correct** answer — "a
+deleted starter is never resurrected" is genuinely double-defended by the
+surviving ledger row and by a per-slug check that never consults the `pattern`
+table, and M1 and M4 each turn it red alone. But the same guard also decides
+whether a relaunch does bounded read-only work, and under M3 a maker who had
+deleted all six starters would silently re-run the entire insert transaction on
+every single launch. No test named that contract, so nothing could go red.
+No-write / bounded-work / "takes the fast path" / idempotence properties are the
+usual second riders: plans state them as consequences ("relaunch performs one
+bounded aggregate") rather than as acceptance criteria, so they arrive with no
+test attached. When a mutation stays green, enumerate every contract the mutated
+expression decides — not only the one it was written for — and add the missing
+test for any the suite does not name. #44 did exactly this and shipped the extra
+test as its second commit; that is the outcome to copy.
+
 **Plant the mutation in every carrier the guard claims to cover.** For an
 enumeration/walk guard, a single mutation in the obvious syntactic form proves
 only that form. Plant the same violation in each distinct place the value can be
@@ -321,6 +346,10 @@ Run:
    in that runbook's §3 format. A deferred smoke that is not logged is a defect.
    Never add the entry by editing a shared table or index — the per-issue file
    exists precisely so two PRs in flight cannot conflict on the ledger.
+   When the change **edits a `.maestro` flow** you cannot run, follow that
+   runbook's §4 selector rules before you commit it: a flow written blind is
+   reviewed, never debugged, and a selector that can never match makes every
+   `assertNotVisible` in it pass vacuously.
 
 For platform-specific code/configuration, exercise both iOS and Android or run
 the repository's equivalent platform-specific automated checks. Do not claim

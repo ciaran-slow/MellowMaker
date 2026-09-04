@@ -149,7 +149,7 @@ nothing.
 | `stitch` | Identity, name, abbreviation, difficulty, summary, ownership provenance, and a normalized `search_text` | parent of `stitch_instruction` |
 | `stitch_instruction` | Ordered instruction text and local image asset key | `stitch_id` → `stitch`, cascade |
 | `pattern` | Project metadata, notes, and `origin` provenance (`bundled`/`user`) | parent of steps, progress, counters |
-| `pattern_seed_state` | Durable slug-to-pattern seed ledger: what the pattern seed has already inserted, and at which release | `pattern_id` -> `pattern` **set null** |
+| `pattern_seed_state` | Durable slug-to-pattern seed ledger: which slugs the pattern seed has already inserted. `seed_version` is re-stamped on every apply, so it records the **highest release applied**, not the release that first inserted the slug | `pattern_id` -> `pattern` **set null** |
 | `pattern_step` | Ordered row/instruction text for one pattern | `pattern_id` → `pattern`, cascade |
 | `pattern_progress` | One row per pattern holding the active position | `pattern_id` → `pattern` cascade; `active_step_id` → `pattern_step` **set null** |
 | `pattern_step_progress` | One row per step holding its `completed_at` instant | `step_id`/`pattern_id` cascade |
@@ -283,7 +283,7 @@ documented format, mirroring the stitch parser's collecting discriminated result
 | Concern | Decision |
 |---|---|
 | Seed identity | The kebab-case `slug` is frozen at authoring time and is the key of `pattern_seed_state`. `pattern.id` is a v4 UUID assigned on insert. The `pattern` table itself carries no slug: identity for the seed lives in the ledger, not on the maker's row. |
-| Version | One monotonically increasing integer per document, never per record. |
+| Version | One monotonically increasing integer per document, never per record. `insertSeededPatterns` stamps **every** ledger row to the applied release at the end of the run, including rows it skipped, so a bump that adds no new slug still moves the guard and is not re-attempted on every relaunch. A row's `seed_version` therefore answers "what is the highest release this database has applied", never "which release introduced this slug" - nothing records the latter, and nothing needs it. |
 | Launch guard | `PatternRepository.appliedPatternSeedVersion()` reads `MAX(seed_version)` over **`pattern_seed_state`**, never over the pattern rows. Reading it from the rows - the way the stitch guard reads `stitch` - is the resurrection bug: a maker who deleted every bundled pattern would drive the aggregate to `NULL` and get all six back on the next launch. The guard is only the fast path; the per-slug ledger check inside `insertSeededPatterns` is the actual mechanism, and it deliberately never consults the `pattern` table. |
 | Revision policy | **Insert-only. The pattern seed never updates and never deletes.** A slug the ledger records is skipped whether the maker still has the pattern, has retitled and reordered it, or has deleted it. A bundled pattern becomes the maker's property on insert - they may be mid-project on it with completion rows, an active-step pointer, and a counter - so a release that rewrote its text would destroy live work and could orphan `pattern_progress.active_step_id`. A bumped version may therefore add **new slugs only**. This is the deliberate divergence from the stitch seed. |
 | Recency anchoring | `insertSeededPatterns` reads `MIN(updated_at) FROM pattern` **once, before the loop** (or `now()` on an empty library) and writes record *i* at `anchor - 1 - i`. The six instants are strictly distinct and strictly descending, so document order is the fresh-install library order; and because they sit below the oldest existing row, the starters never push a maker's in-progress project down the library. A per-insert `now()` would tie the rows within one millisecond - random order on every install - and float them above the maker's own work. |
@@ -349,6 +349,33 @@ stitches, sections 8-11 patterns).
    active pointer, the completion instant, the guide step's offset and note, the
    counter at 7, `origin = 'user'` on every pre-existing row, and an empty
    ledger.
+8. **What migration 2 established for migration 3.** #44 was the repository's
+   first real migration. Five of its choices are conventions to reuse rather than
+   one-offs:
+   - **The populated fixture is a column-naming helper, not a snapshot of the old
+     schema.** `tests/support/populatedBaseline.ts` names every column in every
+     insert, so the same helper is valid against version 1 and version 2
+     unchanged, and stays valid at 3. A fixture written as
+     `INSERT INTO pattern VALUES (...)` would have to be forked per version.
+     Extend the helper; do not copy it.
+   - **The upgrade case starts from the production `MIGRATIONS` array**, filtered
+     to the previous versions (`MIGRATIONS.filter(m => m.version === 1)`), never
+     from a hand-written DDL copy of the old schema. The previous schema under
+     test is then by construction the one the app actually shipped.
+   - **Backfill in the DDL where the column allows it.**
+     `ADD COLUMN ... NOT NULL DEFAULT 'user'` backfills every existing row inside
+     the same migration transaction; a follow-up `UPDATE` would add a second
+     failure point for the same outcome. The plan verified the exact statement
+     against `node:sqlite` *before* prescribing it, which is what made the
+     backfill claim reviewable rather than hopeful — do that too.
+   - **Version state that must outlive its rows belongs in its own table.** The
+     stitch seed derives its applied version from the seeded rows; the pattern
+     seed cannot, because a maker can delete every one of them. Any future seed
+     whose rows the maker can delete needs a ledger read with `MAX` over the
+     ledger and an `ON DELETE SET NULL` tombstone - never an aggregate over its
+     own output.
+   - **Synthetic migration cases derive from `LATEST_SCHEMA_VERSION + 1`**, so
+     bumping the version does not require editing them.
 
 Repositories are built by `createRepositories` over one `RepositoryContext`
 (connection, transaction runner, injected clock, injected identifier generator),
