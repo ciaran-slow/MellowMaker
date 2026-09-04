@@ -113,8 +113,8 @@ correctly rated it non-blocking, but for the length of that cycle the audit trai
 for *which* choices were approved rested on the record stage's own claim about a
 conversation nobody else could inspect. A record stage that misread the chat, or a
 decision the owner later remembered differently, would leave no evidence either
-way. The orchestrator posted a decision comment afterwards; that repair is what
-this gate makes routine and prior.
+way. The orchestrator posted a decision comment afterwards; this gate makes that
+comment routine, and prior to the record rather than a repair after it.
 
 **Gate: an owner-decision comment must be posted on the issue before the record
 stage begins.** It is a precondition of the record, not a formality after it.
