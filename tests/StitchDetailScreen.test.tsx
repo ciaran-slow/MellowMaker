@@ -8,7 +8,11 @@ import { applyBundledStitchSeed } from '@/data/seed/stitchSeed';
 import { StitchDetailScreen } from '@/features/dictionary/presentation/StitchDetailScreen';
 import { RepositoriesContext } from '@/ui/database/repositoriesContext';
 
-import { dashOffsets, type RenderedNode } from './support/renderedArt';
+import {
+  dashOffsets,
+  renderedNodes,
+  type RenderedNode,
+} from './support/renderedArt';
 import { createTestDatabase, type TestDatabase } from './support/sqliteHarness';
 
 const safeAreaMetrics = {
@@ -52,6 +56,33 @@ function artNodes() {
   return screen.queryAllByTestId(/^stitch-step-art-/u, {
     includeHiddenElements: true,
   });
+}
+
+/** Every character rendered beneath one node, in order. */
+function textOf(node: RenderedNode): string {
+  return node.children
+    .map((child) => (typeof child === 'string' ? child : textOf(child)))
+    .join('');
+}
+
+/**
+ * Where the sentence and the drawing sit inside one step card. `renderedNodes`
+ * walks pre-order, so a smaller index is rendered — and so laid out — above.
+ */
+function stepCardOrder(index: number) {
+  const card = screen.getAllByLabelText(/^Step \d+ of \d+: /u, {
+    includeHiddenElements: true,
+  })[index] as unknown as RenderedNode;
+  const nodes = renderedNodes(card);
+
+  return {
+    sentence: nodes.findIndex(
+      (node) => textOf(node) === SINGLE_CROCHET_STEPS[index],
+    ),
+    art: nodes.findIndex(
+      (node) => node.props.testID === `stitch-step-art-${index}`,
+    ),
+  };
 }
 
 function tree(repositories: Repositories, stitchId: string) {
@@ -117,6 +148,20 @@ describe('StitchDetailScreen', () => {
     // Five sentences, five drawings — and the accessibility tree above still
     // exposes exactly the five step labels, so the art added nothing to read.
     expect(artNodes()).toHaveLength(5);
+  });
+
+  it('renders every drawing below its instruction sentence, never above it', async () => {
+    await render(tree(seeded, singleCrochetId));
+
+    // The sentence keeps the top of the card at every text size: art placed
+    // above the row would push the instruction column down and, on a large
+    // system font, squeeze it. Order is the only part of that Jest can see.
+    for (let index = 0; index < SINGLE_CROCHET_STEPS.length; index += 1) {
+      const { sentence, art } = stepCardOrder(index);
+
+      expect(sentence).toBeGreaterThanOrEqual(0);
+      expect(art).toBeGreaterThan(sentence);
+    }
   });
 
   it('negative branch: under reduced motion every drawing paints finished, with no delay to the text', async () => {

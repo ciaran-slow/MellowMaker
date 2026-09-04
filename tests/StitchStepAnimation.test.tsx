@@ -91,6 +91,29 @@ describe('StitchStepAnimation', () => {
     ]);
   });
 
+  it('staggers the cascade: every step waits for its own position, not one shared delay', async () => {
+    const withDelay = jest.spyOn(Reanimated, 'withDelay');
+
+    try {
+      for (const stepIndex of [0, 1, 2, 3, 4]) {
+        await render(
+          <StitchStepAnimation art={artFor(stepIndex)} stepIndex={stepIndex} />,
+        );
+      }
+
+      // 120 ms is `tokens.motion.stepStaggerMs`, written out literally so a
+      // token drift is caught here rather than mirrored. A constant delay — 0
+      // for every step, or one shared value — collapses D6's staggered cascade
+      // into five strokes drawing at once, which is also the fps worst case the
+      // spike exists to measure.
+      expect(withDelay.mock.calls.map((call) => call[0])).toStrictEqual([
+        0, 120, 240, 360, 480,
+      ]);
+    } finally {
+      jest.restoreAllMocks();
+    }
+  });
+
   it('renders with the network stubbed to throw', async () => {
     const originalFetch = globalThis.fetch;
     const fetchSpy = jest.fn(() => {
