@@ -63,15 +63,36 @@ not re-open the settled decision, and use that runbook's gate expectations
 (lint/typecheck/`test:ci` green, package-lock byte-identical to `main`, and
 cross-doc consistency). The `labels` field is already fetched above; read it.
 
+**The record stage has a precondition: an owner-decision comment must already be
+posted on the issue.** Check the comments you fetched for it before editing a
+single doc. If the owner's approval exists only in a chat session or in the prompt
+that handed you this work, stop and ask for it to be posted on the issue — you
+must not be the author of the evidence that authorizes your own record
+(`docs/runbooks/decision-issues.md` §2). Link that comment by URL in the PR body.
+
 ## 2. Branch
 
-Update from the repository's default branch, then create one issue branch:
+Fetch the default branch and cut the issue branch **from the fetched remote ref**,
+not from whatever the local checkout happens to hold:
 
 ```sh
-git checkout -b issue-<n>-<short-slug>
+git fetch origin main
+git checkout -b issue-<n>-<short-slug> origin/main
 ```
 
 Never commit issue work directly to the default branch.
+
+**Branch from `origin/main` by name, and re-fetch before the final gates.** In a
+worktree — especially one created before the stage started, or one that sat idle
+while a plan was written — the local `main` can be many merges behind, and it may
+be checked out elsewhere so it cannot be updated in place. #52 cut its branch from
+`7705827` moments before #49 merged, and its first diff showed #49's changes
+**inverted**; the branch had to be rebased mid-build and every gate re-run. Before
+committing and opening the PR, run `git fetch origin main` again and check whether
+`main` moved: if it did, rebase onto it and re-run the full gate suite. A gate that
+passed over a stale base has not been run against what will actually merge, and
+any check phrased as a comparison with `main` (a lockfile diff, a cross-doc grep)
+silently compares against the wrong tree.
 
 Prefer to do the build in a dedicated git worktree (the repo has `workmux`/
 worktree tooling), symmetric with how the verify stage isolates its review. A
@@ -334,7 +355,9 @@ the session model was switched at any point, or whenever you are reporting it
 from memory of how the session started.** #14's PR body named a builder model
 that had been switched out immediately before the build ran; a confident wrong
 id is worse than an honest `unverifiable`, because it makes the next stage
-believe an independence check passed.
+believe an independence check passed. On a `type: decision` issue this stage is
+the **record**, so write `stage: record` — `scripts/check-stage-provenance.js`
+accepts it as the alias for `build` (`docs/runbooks/stage-independence.md` §4).
 
 ```sh
 git push -u origin issue-<n>-<short-slug>

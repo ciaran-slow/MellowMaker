@@ -80,6 +80,15 @@ Then read:
 Use the diff stat to detect lockfile or generated-file churn, but never let it
 replace reading the substantive diff.
 
+**If the issue carries the `type: decision` label**, verify the *record* rather
+than code: follow `docs/runbooks/decision-issues.md` §4, which drops the mutation
+self-check and the on-device smoke (there is nothing to mutate or run) and
+substitutes its own checklist — including that the **owner-decision comment exists
+on the issue and predates the record's first commit**, and that every recorded
+statement traces to an answer in it. The `labels` field is fetched above; read it.
+The stages are named frame / record / verify in the provenance blocks
+(`docs/runbooks/stage-independence.md` §4).
+
 ## 2. Run repository and PR gates
 
 Check the complete GitHub status rollup first:

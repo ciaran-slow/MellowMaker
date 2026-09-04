@@ -106,7 +106,35 @@ and it would erase the one honest signal, that this artifact is older than the
 rule. Every artifact posted **after** #47 merged is in scope, and a missing
 block there is a real defect.
 
-## 4. Why not enforce it in CI
+## 4. The `type: decision` variant
+
+A `type: decision` issue runs the same four stages under different names
+(`docs/runbooks/decision-issues.md`): **frame** in place of plan, **record** in
+place of build, an adapted **verify**, then retro. Independence matters at least
+as much there — a record stage that also did the framing will record its own
+recommendation as the owner's decision — so the block is mandatory in the framing
+comment, the record PR body, and the verify review, exactly as above.
+
+Use the decision-issue stage names in the block:
+
+```
+  stage: frame | record | verify
+```
+
+`frame` and `record` are accepted aliases for `plan` and `build`, and
+`scripts/check-stage-provenance.js` resolves them, so one script covers both
+issue shapes and still fails when a stage is missing entirely. Write the name the
+stage actually ran under; a decision issue whose record PR says `stage: build` is
+not a defect, but the alias is clearer.
+
+**The owner-decision comment carries no block.** The comment required by
+`decision-issues.md` §2 records what the *product owner* decided; the agent that
+posts it is a courier, not a stage. Attaching a provenance block to it would claim
+a stage ran where none did. Its integrity comes from a different property — it
+must be posted by the session that conducted the escalation, before the record
+stage starts, and never by the record stage itself.
+
+## 5. Why not enforce it in CI
 
 Provenance describes *how the work was produced*, not what the code does, and it
 lives on GitHub artifacts rather than in the tree — CI has no honest way to
