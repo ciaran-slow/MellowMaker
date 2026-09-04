@@ -26,12 +26,8 @@ const { execFileSync } = require('node:child_process');
 const REPO = 'ciaran-slow/MellowMaker';
 const STAGES = ['plan', 'build', 'verify'];
 
-/**
- * A `type: decision` issue runs the same three stages under different names
- * (docs/runbooks/decision-issues.md): frame in place of plan, record in place of
- * build, an adapted verify. They are the same independence obligation, so they
- * resolve onto the canonical stage rather than getting a second script.
- */
+/** The decision-issue names carry the same independence obligation, so they
+ * resolve onto the canonical stage rather than getting a second script. */
 const STAGE_ALIASES = { frame: 'plan', record: 'build' };
 
 /** How a missing stage is named, so a decision issue's report is not confusing. */
