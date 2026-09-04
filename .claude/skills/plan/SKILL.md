@@ -70,6 +70,15 @@ flow below (research and frame the options, escalate the product/compliance
 call to the user, then record the approved decision docs-only). The `labels`
 field is already in the `gh issue view` call above; read it.
 
+Three points that decide whether the framing is any use, all from that runbook:
+**you may add, split, or reject options the issue did not list** — research that
+only ranks the given options is the weakest possible framing — provided each
+added or split row is marked as yours and names the finding behind it; **end with
+the owner's open calls as a numbered list**, one decision per number; and **if the
+owner answers you in this same session, post their answers as an owner-decision
+comment on the issue before handing off**, because the record stage is required to
+refuse to start without one. Write `stage: frame` in the provenance block.
+
 ## 2. Check feasibility before prescribing
 
 Ground every planned API and command in the installed versions and repository

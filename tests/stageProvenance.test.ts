@@ -126,6 +126,49 @@ describe('stage-independence rules', () => {
     ]);
   });
 
+  it("accepts a `type: decision` issue's frame/record/verify names", () => {
+    const result = evaluate(
+      [fresh('frame', 'model-a'), fresh('record', 'model-b'), fresh('verify', 'model-c')].flatMap(
+        (body, i) => parseBlocks(body, `source ${i}`),
+      ),
+    );
+
+    expect(result.problems).toStrictEqual([]);
+    expect(result.warnings).toStrictEqual([]);
+  });
+
+  it('names both spellings when a stage posted no block at all', () => {
+    expect(problemsFor([fresh('record', 'model-b'), fresh('verify', 'model-c')])).toStrictEqual([
+      'plan (or `frame`): no Stage-Provenance block found in any posted artifact',
+    ]);
+  });
+
+  it('reports a decision stage under the name it declared, not the alias', () => {
+    const shared = block({
+      stage: 'record',
+      context: 'shared',
+      'prior-stages-in-this-context': 'frame',
+      model: 'unverifiable',
+      'model-switched-mid-session': 'no',
+    });
+
+    expect(problemsFor([fresh('frame', 'model-a'), shared, fresh('verify', 'model-c')])).toStrictEqual([
+      'record: ran in a SHARED context (prior stages: frame) — not the independent pass the workflow intends',
+    ]);
+  });
+
+  it('still warns when record and verify share a model', () => {
+    expect(
+      evaluate(
+        [fresh('frame', 'model-a'), fresh('record', 'model-b'), fresh('verify', 'model-b')].flatMap(
+          (body, i) => parseBlocks(body, `source ${i}`),
+        ),
+      ).warnings,
+    ).toStrictEqual([
+      'build and verify both ran on "model-b" — allowed, but a different model for verify is preferred',
+    ]);
+  });
+
   it('warns, without failing, when build and verify share a model', () => {
     const result = evaluate(
       [fresh('plan', 'model-a'), fresh('build', 'model-b'), fresh('verify', 'model-b')].flatMap(

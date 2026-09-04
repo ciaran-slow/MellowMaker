@@ -391,7 +391,7 @@ The offline-first core is a **test-enforced boundary** (issue #12). Cold start, 
 The importer has four separate responsibilities:
 
 1. **URL parsing:** Normalize supported YouTube URL forms into a canonical video identifier.
-2. **Enrichment:** Fetch available title, thumbnail, creator, and transcript-related data through a provider adapter.
+2. **Enrichment:** Fetch the available title, thumbnail, and creator name through a provider adapter - the key-free oEmbed lookup of §9.1, which is the app's only sanctioned network call. No transcript, caption, chapter, or description is ever fetched (§9.1, §9.2); the owned metadata type has no transcript field.
 3. **Guide authoring:** Let the maker create or edit timestamped steps and instruction text regardless of transcript availability.
 4. **Step derivation from maker-pasted text:** Turn text the *maker* copied out of YouTube — a description chapter list, or transcript-panel cues — into a reviewable draft of timestamped steps the maker confirms. The app never fetches this text (§9.2).
 

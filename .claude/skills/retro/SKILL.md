@@ -50,9 +50,23 @@ cycle. Pull, at minimum:
 - the PR, its diff, and the verify review;
 - any build- or verify-stage gate failures, corrections, or reruns.
 
+On a `type: decision` issue the equivalents are the **framing comment**, the
+**owner-decision comment** (`docs/runbooks/decision-issues.md` §2), the record PR
+and its adapted verify, and the implementing issues that were filed — judge
+whether the record matches what the owner actually approved and whether the
+findings reached the issues that need them.
+
 Judge whether the plan was buildable as written, whether the build followed it,
 and whether verify caught what mattered. Route every durable fix into the
 `plan`, `build`, or `verify` skill, a repo doc, or a script — never memory.
+
+**Verify's non-blocking findings are the retro's inbox.** Verify deliberately does
+not fix what it finds, and it runs in a transient worktree, so anything it rated
+non-blocking — stale doc prose, a deviation worth recording, a pre-existing wording
+trap — has no other home. Walk the list and, for each, either fix it in the retro
+commit (a doc or comment fix usually costs one line), file it as an issue, or say
+in the retro why it needs neither. Silently inheriting the list is how a "noted
+only" finding survives ten cycles.
 
 If the verify review recorded a **non-blocking coverage gap**, own its
 durable landing: either (a) confirm it was fixed in-cycle, or (b) commit the row

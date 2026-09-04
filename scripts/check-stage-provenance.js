@@ -11,6 +11,9 @@
  * declare its context, declared a shared one, or claimed a model id while also
  * admitting the session model was switched.
  *
+ * A `type: decision` issue runs the same stages under the names frame / record /
+ * verify (docs/runbooks/decision-issues.md); those names are accepted aliases.
+ *
  * Usage: node scripts/check-stage-provenance.js <issue> [<pr>]
  *
  * Requires the GitHub CLI, and network access, so it is deliberately NOT part
@@ -22,6 +25,21 @@ const { execFileSync } = require('node:child_process');
 
 const REPO = 'ciaran-slow/MellowMaker';
 const STAGES = ['plan', 'build', 'verify'];
+
+/**
+ * A `type: decision` issue runs the same three stages under different names
+ * (docs/runbooks/decision-issues.md): frame in place of plan, record in place of
+ * build, an adapted verify. They are the same independence obligation, so they
+ * resolve onto the canonical stage rather than getting a second script.
+ */
+const STAGE_ALIASES = { frame: 'plan', record: 'build' };
+
+/** How a missing stage is named, so a decision issue's report is not confusing. */
+const MISSING_LABEL = {
+  plan: 'plan (or `frame`)',
+  build: 'build (or `record`)',
+  verify: 'verify',
+};
 
 function gh(args) {
   return execFileSync('gh', args, {
@@ -97,7 +115,8 @@ function evaluate(blocks) {
 
   const seen = new Map();
   for (const block of blocks) {
-    const stage = (block.fields.stage ?? '').toLowerCase();
+    const declared = (block.fields.stage ?? '').toLowerCase();
+    const stage = STAGE_ALIASES[declared] ?? declared;
     if (!STAGES.includes(stage)) {
       problems.push(
         `${block.source}: provenance block has no recognised \`stage\` (got "${block.fields.stage ?? ''}")`,
@@ -109,26 +128,26 @@ function evaluate(blocks) {
     const context = (block.fields.context ?? '').toLowerCase();
     if (context === 'shared') {
       problems.push(
-        `${stage}: ran in a SHARED context (prior stages: ${block.fields['prior-stages-in-this-context'] ?? 'unstated'}) — not the independent pass the workflow intends`,
+        `${declared}: ran in a SHARED context (prior stages: ${block.fields['prior-stages-in-this-context'] ?? 'unstated'}) — not the independent pass the workflow intends`,
       );
     } else if (context !== 'fresh') {
-      problems.push(`${stage}: \`context\` must be \`fresh\` or \`shared\` (got "${block.fields.context ?? ''}")`);
+      problems.push(`${declared}: \`context\` must be \`fresh\` or \`shared\` (got "${block.fields.context ?? ''}")`);
     }
 
     const model = (block.fields.model ?? '').toLowerCase();
     const switched = (block.fields['model-switched-mid-session'] ?? '').toLowerCase();
     if (!model) {
-      problems.push(`${stage}: no \`model\` recorded`);
+      problems.push(`${declared}: no \`model\` recorded`);
     } else if (switched !== 'no' && model !== 'unverifiable') {
       problems.push(
-        `${stage}: claims model "${block.fields.model}" while \`model-switched-mid-session\` is "${block.fields['model-switched-mid-session'] ?? 'unstated'}" — a switched or unstated session must record \`model: unverifiable\``,
+        `${declared}: claims model "${block.fields.model}" while \`model-switched-mid-session\` is "${block.fields['model-switched-mid-session'] ?? 'unstated'}" — a switched or unstated session must record \`model: unverifiable\``,
       );
     }
   }
 
   for (const stage of STAGES) {
     if (!seen.has(stage)) {
-      problems.push(`${stage}: no Stage-Provenance block found in any posted artifact`);
+      problems.push(`${MISSING_LABEL[stage]}: no Stage-Provenance block found in any posted artifact`);
     }
   }
 
@@ -178,4 +197,4 @@ if (require.main === module) {
   main();
 }
 
-module.exports = { parseBlocks, evaluate, STAGES };
+module.exports = { parseBlocks, evaluate, STAGES, STAGE_ALIASES };
