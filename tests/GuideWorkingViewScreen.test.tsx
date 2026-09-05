@@ -198,6 +198,9 @@ describe('GuideWorkingViewScreen', () => {
       refreshGuideMetadata: jest.fn(real.refreshGuideMetadata.bind(real)),
       updateGuideDetails: jest.fn(real.updateGuideDetails.bind(real)),
       addGuideStep: jest.fn(real.addGuideStep.bind(real)),
+      appendImportedGuideSteps: jest.fn(
+        real.appendImportedGuideSteps.bind(real),
+      ),
       updateGuideStep: jest.fn(real.updateGuideStep.bind(real)),
       deleteGuideStep: jest.fn(real.deleteGuideStep.bind(real)),
       reorderGuideSteps: jest.fn(real.reorderGuideSteps.bind(real)),

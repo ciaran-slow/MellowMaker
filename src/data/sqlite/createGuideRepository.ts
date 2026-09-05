@@ -298,6 +298,52 @@ export function createGuideRepository({
       });
     },
 
+    appendImportedGuideSteps(guideId, steps): GuideWithSteps {
+      return transaction(() => {
+        const writtenAt = now();
+        // Read the count ONCE: positions are contiguous from zero, so the batch
+        // lands at count..count+n-1 and cannot straddle UNIQUE (guide_id,
+        // position). The whole batch plus the guide touch is one transaction, so
+        // a throw part-way through leaves no partial step list behind.
+        const startPosition =
+          connection.first<{ readonly total: number }>(SELECT_STEP_COUNT, [
+            guideId,
+          ])?.total ?? 0;
+
+        steps.forEach((step, index) => {
+          connection.run(INSERT_STEP, [
+            newId(),
+            guideId,
+            startPosition + index,
+            step.instruction,
+            step.videoOffsetMs ?? null,
+            step.transcriptExcerpt ?? null,
+            step.note ?? null,
+            null,
+            // The origin is owned here, never taken from the caller: parsed
+            // steps must stay distinguishable from maker-typed ones.
+            'import',
+            null,
+            writtenAt,
+            writtenAt,
+          ]);
+        });
+
+        if (steps.length > 0) {
+          connection.run(TOUCH_GUIDE, [writtenAt, guideId]);
+        }
+
+        const saved = read(guideId);
+        if (saved === undefined) {
+          throw new Error(
+            'No guide carries the id passed to appendImportedGuideSteps.',
+          );
+        }
+
+        return saved;
+      });
+    },
+
     updateGuideStep(stepId, input) {
       transaction(() => {
         const writtenAt = now();

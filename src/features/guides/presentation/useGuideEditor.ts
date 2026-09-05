@@ -44,6 +44,12 @@ export interface GuideEditor {
   retry(): void;
   saveDetails(input: GuideDetailsDraft): void;
   addStep(input: GuideStepAuthoringInput): void;
+  /**
+   * Appends parsed steps after the maker's existing ones, each `origin:
+   * 'import'`, in one repository transaction. Called only from an explicit
+   * confirm; reaching the paste review state never reaches this.
+   */
+  appendImportedSteps(steps: readonly GuideStepAuthoringInput[]): void;
   editStep(stepId: string, input: GuideStepAuthoringInput): void;
   deleteStep(stepId: string): void;
   moveStepUp(stepId: string): void;
@@ -131,6 +137,15 @@ export function useGuideEditor(guideId: string): GuideEditor {
     (input: GuideStepAuthoringInput) => {
       mutate(() => {
         guides.addGuideStep(guideId, input);
+      });
+    },
+    [guideId, guides, mutate],
+  );
+
+  const appendImportedSteps = useCallback(
+    (steps: readonly GuideStepAuthoringInput[]) => {
+      mutate(() => {
+        guides.appendImportedGuideSteps(guideId, steps);
       });
     },
     [guideId, guides, mutate],
@@ -259,6 +274,7 @@ export function useGuideEditor(guideId: string): GuideEditor {
     retry,
     saveDetails,
     addStep,
+    appendImportedSteps,
     editStep,
     deleteStep,
     moveStepUp,

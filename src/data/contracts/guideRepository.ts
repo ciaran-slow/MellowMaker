@@ -133,6 +133,22 @@ export interface GuideRepository {
    */
   addGuideStep(guideId: string, input: GuideStepAuthoringInput): GuideStep;
   /**
+   * Appends parsed steps after the last existing one, at
+   * `position = current count + index`, each with `origin = 'import'` and
+   * `completed_at`/`user_modified_at` NULL, in ONE transaction, then touches the
+   * guide. The input is the authoring shape, which carries no `origin`, so the
+   * method owns it and a caller cannot quietly write `'user'` for imported text.
+   * An empty list writes nothing and does not touch the guide. Applying the same
+   * parsed steps twice appends a second copy rather than deduplicating: a
+   * repeated instruction is ordinary in a pattern, and a duplicate is visible in
+   * the review list before the write and deletable after it. Returns the re-read
+   * guide, and throws if it cannot be read back.
+   */
+  appendImportedGuideSteps(
+    guideId: string,
+    steps: readonly GuideStepAuthoringInput[],
+  ): GuideWithSteps;
+  /**
    * Rewrites one step's instruction and optional fields (an omitted optional
    * becomes SQL `NULL`), stamps `user_modified_at`, and touches its parent guide.
    */
