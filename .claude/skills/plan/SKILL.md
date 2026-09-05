@@ -256,6 +256,31 @@ Fixtures for ordering, deduplication, boundaries, and migrations must differ
 under the wrong implementation. Do not derive boundary fixtures from the
 constant they are intended to pin.
 
+**Trace every negative fixture to the branch it claims to exercise, and name
+that branch in the plan.** A fixture written to pin a *narrowing* rule — "this
+input must **not** be read as X" — proves nothing unless the input actually
+reaches the code that would read it as X. #50's plan pinned D2 ("only
+colon-separated time codes are recognized as a line-leading timestamp, so a
+description line reading `6 double crochets` stays prose") with the fixture
+`"Chain 6 stitches\nThen turn"`. The recognizer is **line-leading**, and neither
+of those lines starts with a digit, so the fixture never reached the colon-only
+rule at all: it was rejected as `no-timestamps` for an entirely unrelated reason
+and would have been rejected identically under any recognizer whatsoever. The
+build widened the regex to accept bare seconds and every suite stayed green,
+while a real description line reading `6 double crochets` would have become a
+step at 0:06. The build's mutation pass caught it and strengthened the fixture to
+lead with the number; the plan is where it was cheap to catch.
+
+So for each negative fixture, write **the branch it must reach and the wrong
+output it produces once that branch is removed** — "this input reaches the
+line-leading recognizer, and without the colon-only rule it yields a step at
+0:06". If you cannot name the wrong output, the fixture is approaching the guard
+from outside and some earlier rule rejects it first; choose an input that gets
+past that earlier rule. This is the negative-space twin of "do not derive a
+boundary fixture from the constant it pins": that rule stops a fixture being
+unfalsifiable by construction, this one stops it being unfalsifiable by never
+arriving.
+
 **Confirm a contract is assertable in this harness before pinning it, and name
 the carrier the value lives in.** NativeWind classes are not resolved into
 styles under `jest-expo` (`docs/architecture.md` §14): a `className` arrives as

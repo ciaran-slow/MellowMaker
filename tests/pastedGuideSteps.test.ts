@@ -98,6 +98,24 @@ describe('parsePastedGuideSteps — chapters (the primary source)', () => {
       result.steps.some((step) => step.instruction.includes('Chapters')),
     ).toBe(false);
   });
+
+  it('drops prose that a blank line cut off from the entry above it', () => {
+    // A blank line CLOSES the open entry, so a sponsor blurb sitting between
+    // two chapter lines belongs to neither of them. Without that rule the
+    // blurb is appended to the entry above and ships inside a maker's step.
+    const result = stepsOf(
+      '0:00 Materials\n\nSponsored by Yarn Co\n1:12 Magic ring',
+    );
+
+    expect(result.source).toBe('chapters');
+    expect(result.steps.map((step) => step.instruction)).toStrictEqual([
+      'Materials',
+      'Magic ring',
+    ]);
+    expect(
+      result.steps.some((step) => step.instruction.includes('Sponsored')),
+    ).toBe(false);
+  });
 });
 
 describe('parsePastedGuideSteps — transcript cues (the fallback)', () => {
@@ -156,6 +174,22 @@ describe('parsePastedGuideSteps — transcript cues (the fallback)', () => {
       300000, 240000, 180000,
     ]);
   });
+
+  it('breaks a cue run when two consecutive cues share an offset', () => {
+    // The run-break rule is `offset <= lastOffset`, not `<`: a repeated offset
+    // has stopped ascending just as a descending one has. Under `<` all four
+    // cues fall inside the window and merge into a single block.
+    const result = stepsOf('0:00 a\n0:03 b\n0:03 c\n0:06 d');
+
+    expect(result.source).toBe('cues');
+    expect(result.steps).toHaveLength(2);
+    expect(
+      result.steps.map((step) => [step.videoOffsetMs, step.instruction]),
+    ).toStrictEqual([
+      [0, 'a b'],
+      [3000, 'c d'],
+    ]);
+  });
 });
 
 describe('parsePastedGuideSteps — classifier discrimination', () => {
@@ -202,6 +236,25 @@ describe('parsePastedGuideSteps — classifier discrimination', () => {
     expect(result.steps.every((step) => step.transcriptExcerpt !== undefined)).toBe(
       true,
     );
+  });
+
+  it('falls back to cues when any entry carries no label', () => {
+    // Load-bearing, not cosmetic. `guide_step.instruction` is NOT NULL but has
+    // no non-empty CHECK (`migrations.ts`), so without this condition the
+    // wordless 1:12 entry classifies as a chapter and a step with
+    // `instruction: ''` is drafted, confirmed, and persisted — the editor then
+    // renders a row named "Step 2 of 3 at 1:12: ". On the cue path the
+    // wordless block emits no step at all.
+    const result = stepsOf('0:00 Materials\n1:12\n2:40 Round 1');
+
+    expect(result.source).toBe('cues');
+    expect(result.steps).toHaveLength(2);
+    expect(
+      result.steps.map((step) => [step.videoOffsetMs, step.instruction]),
+    ).toStrictEqual([
+      [0, 'Materials'],
+      [160000, 'Round 1'],
+    ]);
   });
 });
 
