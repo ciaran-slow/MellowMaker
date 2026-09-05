@@ -256,6 +256,82 @@ describe('guides navigation', () => {
     ).toStrictEqual(['Stitches', 'Patterns', 'Guides']);
   });
 
+  it('re-reads the guide on a second visit to the review, and converts what the guide now holds', async () => {
+    const database = await createAppDatabase();
+    const created = database.repositories.guides.saveImportedGuide({
+      guide: {
+        videoId: 'dQw4w9WgXcQ',
+        sourceUrl: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
+        title: 'Amigurumi Basics',
+      },
+      steps: [
+        { instruction: 'Make a magic ring', origin: 'user' },
+        { instruction: 'Chain 12', origin: 'user' },
+      ],
+    });
+    const before = database.repositories.patterns.listPatterns().length;
+
+    const result = renderRouter(routes, {
+      initialUrl: `/guides/${created.guide.id}`,
+    });
+    await result;
+
+    // First visit: two steps.
+    await fireEvent.press(
+      await screen.findByRole('button', { name: 'Save as pattern' }),
+    );
+    expect(
+      await screen.findByText('2 steps will be copied into your new pattern'),
+    ).toBeOnTheScreen();
+
+    await fireEvent.press(screen.getByRole('button', { name: 'Cancel' }));
+    await waitFor(() => {
+      expect(result.getPathname()).not.toBe(
+        `/guides/${created.guide.id}/save-as-pattern`,
+      );
+    });
+
+    // The maker adds a third step, exactly as the guide editor does.
+    database.repositories.guides.addGuideStep(created.guide.id, {
+      instruction: 'Fasten off',
+    });
+
+    // Back to the guide the way a maker returns — the Guides tab, then the row.
+    await fireEvent.press(screen.getByRole('tab', { name: 'Guides' }));
+    await fireEvent.press(await screen.findByLabelText('Amigurumi Basics'));
+    await waitFor(() => {
+      expect(result.getPathname()).toBe(`/guides/${created.guide.id}`);
+    });
+    // The working view re-reads on focus, so it already shows all three.
+    expect(await screen.findByText('0 of 3 steps done')).toBeOnTheScreen();
+
+    // The review route is a hidden `Tabs` screen and is still mounted from the
+    // first visit. Without a focus re-read it would keep showing the two-step
+    // draft and confirm would write a two-step pattern.
+    await fireEvent.press(
+      screen.getByRole('button', { name: 'Save as pattern' }),
+    );
+    await waitFor(() => {
+      expect(result.getPathname()).toBe(
+        `/guides/${created.guide.id}/save-as-pattern`,
+      );
+    });
+    expect(
+      await screen.findByText('3 steps will be copied into your new pattern'),
+    ).toBeOnTheScreen();
+
+    await fireEvent.press(screen.getByRole('button', { name: 'Save pattern' }));
+
+    const patterns = database.repositories.patterns.listPatterns();
+    expect(patterns).toHaveLength(before + 1);
+    const newest = patterns[0];
+    expect(
+      database.repositories.patterns
+        .getPatternWithSteps(newest?.id ?? '')
+        ?.steps.map((step) => step.instruction),
+    ).toStrictEqual(['Make a magic ring', 'Chain 12', 'Fasten off']);
+  });
+
   it('releases the WebView player on navigating away, even on the still-mounted replace fallback (NFR-10 / AC#4)', async () => {
     const database = await createAppDatabase();
     const created = database.repositories.guides.saveImportedGuide({

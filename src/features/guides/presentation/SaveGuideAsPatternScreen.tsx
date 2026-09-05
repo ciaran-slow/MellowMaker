@@ -1,6 +1,6 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
-import { useState } from 'react';
+import { useFocusEffect, useRouter } from 'expo-router';
+import { useCallback, useState } from 'react';
 import { ActivityIndicator, Text, View } from 'react-native';
 
 import type { PatternSnapshotDraft } from '@/domain/guides/guidePatternSnapshot';
@@ -49,7 +49,20 @@ export function SaveGuideAsPatternScreen({
 }: SaveGuideAsPatternScreenProps) {
   const router = useRouter();
   const draft = useGuidePatternDraft(guideId);
-  const { state } = draft;
+  const { state, refresh } = draft;
+
+  // This route is a hidden `Tabs` screen (`href: null`), so it stays mounted
+  // once visited: returning to it re-runs no effect of its own. Re-reading on
+  // focus is what keeps a second visit a review of the guide rather than of the
+  // first visit's draft — the same `useFocusEffect` + stable `refresh` pairing
+  // the guide working view and the pattern viewer use. Depends on `refresh`,
+  // never the per-render `draft`, so a focused screen refreshes once rather
+  // than looping.
+  useFocusEffect(
+    useCallback(() => {
+      refresh();
+    }, [refresh]),
+  );
 
   // VoiceOver never reads a live region, so the failure title is spoken through
   // the iOS announcement seam as well (A11Y-07).
@@ -182,9 +195,12 @@ type ReviewFormProps = {
 };
 
 /**
- * The reviewed draft. The title seeds a controlled field once — a seed, not a
- * lock — while the source line and the steps are shown exactly as they will be
- * written. Confirming is disabled while the title is empty or the guide has no
+ * The reviewed draft. The title seeds a controlled field — a seed, not a lock —
+ * while the source line and the steps are shown exactly as they will be
+ * written. Each read of the guide produces a fresh `draft` object, and the field
+ * re-seeds from it, so a review re-entered after the guide was renamed shows the
+ * guide's current name rather than the previous visit's abandoned edit.
+ * Confirming is disabled while the title is empty or the guide has no
  * steps: every guide starts with zero steps (an import saves none), so an
  * unconditional confirm would put an empty, useless pattern in the library on
  * the most common path. The same rule guards the entry control on the working
@@ -193,6 +209,15 @@ type ReviewFormProps = {
  */
 function ReviewForm({ draft, onSave, onSaved }: ReviewFormProps) {
   const [title, setTitle] = useState(draft.title);
+  // Re-seed when a focus re-read produces a new draft. Keyed on the draft's
+  // identity rather than on focus itself: the read resolves a microtask after
+  // focus, so resetting at focus time would re-seed from the *stale* draft and
+  // miss a guide renamed in between.
+  const [seededFrom, setSeededFrom] = useState(draft);
+  if (seededFrom !== draft) {
+    setSeededFrom(draft);
+    setTitle(draft.title);
+  }
 
   const titleResult = validatePatternTitle(title);
   const hasSteps = draft.steps.length > 0;

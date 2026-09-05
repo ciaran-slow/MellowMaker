@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react-native';
+import { act, fireEvent, render, screen } from '@testing-library/react-native';
 import { AccessibilityInfo, Platform } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
@@ -15,6 +15,13 @@ const mockPush = jest.fn();
 const mockReplace = jest.fn();
 const mockBack = jest.fn();
 const mockCanGoBack = jest.fn(() => true);
+// `useFocusEffect` is captured rather than run, so the mount read stays the only
+// automatic load and every existing case keeps its exact call counts. The
+// revisit case fires the captured callback itself, which is what a second focus
+// on this still-mounted hidden tab screen does.
+const mockFocusEffect: { current: (() => void) | undefined } = {
+  current: undefined,
+};
 
 jest.mock('expo-router', () => ({
   useRouter: () => ({
@@ -23,6 +30,9 @@ jest.mock('expo-router', () => ({
     back: mockBack,
     canGoBack: mockCanGoBack,
   }),
+  useFocusEffect: (effect: () => void) => {
+    mockFocusEffect.current = effect;
+  },
 }));
 
 const safeAreaMetrics = {
@@ -76,7 +86,22 @@ describe('SaveGuideAsPatternScreen', () => {
     mockBack.mockClear();
     mockCanGoBack.mockClear();
     mockCanGoBack.mockReturnValue(true);
+    mockFocusEffect.current = undefined;
   });
+
+  /** Re-runs the screen's focus effect, the way returning to it does. */
+  async function refocus() {
+    const effect = mockFocusEffect.current;
+    if (effect === undefined) {
+      throw new Error(
+        'the review screen registered no focus effect, so it cannot re-read the guide on a return visit',
+      );
+    }
+
+    await act(async () => {
+      effect();
+    });
+  }
 
   afterEach(() => {
     jest.restoreAllMocks();
@@ -103,6 +128,57 @@ describe('SaveGuideAsPatternScreen', () => {
     expect(
       screen.getByText('3 steps will be copied into your new pattern'),
     ).toBeOnTheScreen();
+  });
+
+  it('re-seeds the review and resets the title draft when the screen is focused again', async () => {
+    const guideId = seedGuide(['Magic ring', 'Chain 12']);
+    await render(tree(repositories, guideId));
+    await screen.findByRole('header', { name: 'Save as pattern' });
+    expect(
+      screen.getByText('2 steps will be copied into your new pattern'),
+    ).toBeOnTheScreen();
+
+    // The maker starts renaming, leaves without saving, adds a step to the
+    // guide, then comes back. This screen is a hidden `Tabs` route that stays
+    // mounted, so nothing re-runs unless focus re-reads: the review must show
+    // the guide as it is now, and the title must follow the freshly read guide
+    // rather than the abandoned edit.
+    await fireEvent.changeText(
+      screen.getByLabelText('Pattern title'),
+      'Half-typed name',
+    );
+    repositories.guides.addGuideStep(guideId, { instruction: 'Fasten off' });
+
+    await refocus();
+
+    expect(
+      await screen.findByText('3 steps will be copied into your new pattern'),
+    ).toBeOnTheScreen();
+    expect(screen.getByLabelText('Step 3 of 3: Fasten off')).toBeOnTheScreen();
+    expect(screen.getByLabelText('Pattern title').props.value).toBe(
+      'Amigurumi Basics',
+    );
+  });
+
+  it('re-seeds the title from a guide retitled between visits', async () => {
+    const guideId = seedGuide(['Magic ring', 'Chain 12']);
+    await render(tree(repositories, guideId));
+    await screen.findByRole('header', { name: 'Save as pattern' });
+
+    repositories.guides.updateGuideDetails({
+      id: guideId,
+      title: 'Amigurumi Basics, take two',
+    });
+
+    await refocus();
+
+    // Pins the re-seed on the *guide's* title, not merely on "reset to whatever
+    // the first visit read": a reset that re-used the stale draft would leave
+    // the old name here.
+    await screen.findByLabelText('Pattern title');
+    expect(screen.getByLabelText('Pattern title').props.value).toBe(
+      'Amigurumi Basics, take two',
+    );
   });
 
   it('writes nothing until confirm — cancelling leaves the library untouched', async () => {
