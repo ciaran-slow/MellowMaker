@@ -112,9 +112,14 @@ describe('patterns navigation', () => {
     await result;
 
     // On the REAL navigation path — which the isolated screen suite cannot see —
-    // the counter and the title scroll with the steps. A route-level wrapper (a
-    // `ScrollView`, or a second pinned region above the list) would put them
-    // back outside it.
+    // the counter and the title scroll with the steps. What this case catches is
+    // chrome re-pinned ABOVE the list at the route level: that moves the title
+    // and counter back out of `pattern-steps`, and the queries below fail.
+    // It does NOT catch a route-level `ScrollView` wrapped around the whole
+    // route — the counter and the title would still be inside `pattern-steps`,
+    // so every query below would still pass. A `FlatList` nested in a
+    // `ScrollView` is a separate defect (architecture §10) that no containment
+    // assertion can see.
     await screen.findByTestId('pattern-steps');
     // The counter resolves a tick after the pattern, so wait for it and re-read
     // the list each attempt rather than holding a node from an earlier render.

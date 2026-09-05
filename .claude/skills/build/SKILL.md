@@ -198,6 +198,34 @@ Prefer behavior over implementation details. For every test, identify a
 plausible source bug that makes it fail. Use independent fixtures for
 ordering and numeric/time boundaries.
 
+**Run the new tests against the base branch first, classify every one, and
+disclose both columns.** Before the source changes — or by checking the base
+version of the changed file back in over your tests, which is what verify does —
+run the new block and record which cases are red and which are green on the
+base. Every new test is then exactly one of two kinds, and the PR body must say
+which:
+
+- a **falsifier of this diff** — **red on the base**, green after the change. It
+  is the proof the change did something. A test written to pin the change that
+  is already green on the base pins nothing.
+- a **regression guard** — **green on the base** and still green after, because
+  it pins a contract the diff must not break, or guards a hazard the *new*
+  structure introduces that the old structure could not exhibit. A guard is
+  legitimate and worth keeping, but on its own it is unfalsified: **name the
+  mutation of the new code that turns it red**, in the same row, and run that
+  mutation in the self-check below.
+
+Both lists go in the PR body, and together they must account for **every** case
+in the new block. #56 got the first half right and the second half wrong: its
+build disclosed T4 as green-on-`main` and named M2 (an inline
+`ListHeaderComponent`) as the mutation that reddens it — exactly the model to
+copy — but listed T7 in neither column, so verify had to re-check out `main` to
+discover that T7 is also green there and is a regression guard for FR-PV-05's
+durable position, which no header/list mutation can touch. A case that appears
+in neither column reads as an unclassified claim, and the next stage has to redo
+the base run to settle it. Green-on-base is not a finding to hide; an
+undisclosed green is.
+
 **Mutation self-check on contract guards.** For each conditional guard you write
 to satisfy a plan-stated "only / never / exactly / does not" contract (for
 example an `if (stepId === currentBefore)` that suppresses an action), before
@@ -463,6 +491,9 @@ The PR body must include:
 - user-visible behavior delivered;
 - implementation and persistence notes;
 - tests, gates, simulators/devices, and platforms actually run;
+- the base-branch classification of **every** new test — the falsifiers (red on
+  base) and the regression guards (green on base, each with the mutation that
+  reddens it), accounting for the whole new block (§6);
 - any approved deviation from the plan;
 - any contract found to be **double-defended** during the mutation self-check,
   and any guard carrier the self-check could not turn red;

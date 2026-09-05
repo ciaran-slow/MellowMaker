@@ -452,6 +452,46 @@ describe('PatternViewerScreen', () => {
       ).toContain(stepIds[0]);
     });
 
+    it('keeps the counter read-failure alert inside the step list', async () => {
+      // The header took ownership of the counter's failed/retry branch in #56,
+      // and nothing on this screen rendered that branch at all — so nothing
+      // proved the alert lands inside the scroll surface with the rest of the
+      // chrome. Only the counter read fails here; the pattern read succeeds, so
+      // the steps are present and a single bad counter read must not black them
+      // out (the screen-local failure rule, architecture §10).
+      const failing: Repositories = {
+        ...repositories,
+        counters: {
+          ...repositories.counters,
+          getOrCreatePrimaryCounter: () => {
+            throw new Error('simulated counter read failure');
+          },
+        },
+      };
+
+      await render(tree(failing, patternId, 'counter-failed'));
+      await screen.findByRole('header', {
+        name: "We couldn't load this counter",
+      });
+
+      const list = screen.getByTestId('pattern-steps');
+      expect(
+        within(list).getByRole('header', {
+          name: "We couldn't load this counter",
+        }),
+      ).toBeOnTheScreen();
+      expect(
+        within(list).getByLabelText('Try again to load the counter'),
+      ).toBeOnTheScreen();
+      // The steps and the rest of the chrome are unaffected.
+      expect(
+        within(list).getByRole('header', { name: 'Test Scarf' }),
+      ).toBeOnTheScreen();
+      expect(
+        within(list).getByLabelText('Mark step 1 complete'),
+      ).toBeOnTheScreen();
+    });
+
     it('renders the chrome above the empty state when the pattern has no steps', async () => {
       const empty = repositories.patterns.createPattern({
         title: 'Empty Scarf',
