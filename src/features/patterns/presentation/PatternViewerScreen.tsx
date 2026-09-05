@@ -4,9 +4,13 @@ import { useCallback, useMemo } from 'react';
 import { ActivityIndicator, FlatList, Text, View } from 'react-native';
 
 import type { CounterOwner } from '@/data/contracts/counterRepository';
+import type { PatternProgressView } from '@/domain/patterns/patternProgress';
 import { progressSummaryLabel } from '@/features/patterns/presentation/patternLabels';
 import { PatternViewerStepRow } from '@/features/patterns/presentation/PatternViewerStepRow';
-import { useCounter } from '@/features/patterns/presentation/useCounter';
+import {
+  useCounter,
+  type CounterController,
+} from '@/features/patterns/presentation/useCounter';
 import { usePatternViewer } from '@/features/patterns/presentation/usePatternViewer';
 import { CraftAnnouncement } from '@/ui/accessibility/CraftAnnouncement';
 import { useAnnouncement } from '@/ui/accessibility/useAnnouncement';
@@ -23,19 +27,15 @@ type PatternViewerScreenProps = {
   patternId: string;
 };
 
-// An average row height used only to let the list jump the current step into
-// view on open (FR-PV-05). Rows still lay out at their real size; this estimate
-// only feeds `initialScrollIndex`, so approximate is fine and precise
-// on-device scroll position is the deferred smoke item.
-const ESTIMATED_STEP_HEIGHT = 132;
-
 /**
  * The interactive working viewer: the pattern's home. It renders the saved steps
  * in order, marks the current/next step, and lets the maker complete or reopen
  * any step with immediate durable writes. Structural editing lives on the child
  * `/patterns/[patternId]/edit` route, reached from the header's "Edit pattern".
  * Like the library it owns its list directly rather than nesting a `FlatList` in
- * a `ScrollView` (NFR-09).
+ * a `ScrollView` (NFR-09); the pattern's chrome scrolls *with* the list as its
+ * `ListHeaderComponent` (issue #56, matching the guide working view since #43),
+ * so only the bounded back control sits outside the scroll surface.
  */
 export function PatternViewerScreen({ patternId }: PatternViewerScreenProps) {
   const router = useRouter();
@@ -87,13 +87,6 @@ export function PatternViewerScreen({ patternId }: PatternViewerScreenProps) {
     counter.state.status === 'failed' ? COUNTER_FAILED_TITLE : undefined,
   );
 
-  const currentIndex =
-    state.status === 'ready'
-      ? state.view.steps.findIndex(
-          (step) => step.id === state.view.currentStepId,
-        )
-      : -1;
-
   return (
     <View
       accessibilityLabel="Pattern viewer screen"
@@ -104,7 +97,7 @@ export function PatternViewerScreen({ patternId }: PatternViewerScreenProps) {
         paddingLeft: contentInsets.paddingLeft,
       }}
     >
-      <View className="w-full max-w-screen-sm self-center gap-4 pb-4">
+      <View className="w-full max-w-screen-sm self-center pb-4">
         <CraftPressable
           accessibilityLabel="Back to patterns"
           className="items-center self-start bg-surface px-4"
@@ -117,87 +110,6 @@ export function PatternViewerScreen({ patternId }: PatternViewerScreenProps) {
             size={tokens.typography.heading.fontSize}
           />
         </CraftPressable>
-
-        {state.status === 'ready' ? (
-          <>
-            <Text accessibilityRole="header" className="text-display text-ink">
-              {state.pattern.title}
-            </Text>
-            <View className="flex-row items-center justify-between gap-3">
-              <CraftAnnouncement
-                className="flex-1 text-label text-ink"
-                message={progressSummaryLabel(
-                  state.view.completedCount,
-                  state.view.totalCount,
-                )}
-              />
-              <CraftPressable
-                accessibilityHint="Change this pattern's steps, title, or notes"
-                accessibilityLabel="Edit pattern"
-                className="flex-row items-center gap-2 bg-surface px-4 py-2"
-                onPress={openEditor}
-              >
-                <MaterialCommunityIcons
-                  accessibilityElementsHidden
-                  color={tokens.colors.ink}
-                  name="pencil"
-                  size={tokens.typography.body.fontSize}
-                />
-                <Text className="text-label text-ink">Edit pattern</Text>
-              </CraftPressable>
-            </View>
-            {/*
-              The maker-labelled project counter (FR-CO, issue #7) is pinned
-              above the scrolling step list so it stays reachable one-handed. Its
-              read failure is screen-local and retryable, so it never blacks out
-              the steps.
-            */}
-            {counter.state.status === 'ready' ? (
-              <CraftCounter
-                announcement={counter.state.announcement}
-                label={counter.state.label}
-                onDecrement={counter.decrement}
-                onIncrement={counter.increment}
-                onRename={counter.rename}
-                onReset={counter.reset}
-                value={counter.state.value}
-              />
-            ) : counter.state.status === 'failed' ? (
-              <View
-                accessible
-                accessibilityRole="alert"
-                accessibilityLiveRegion="assertive"
-              >
-                <CraftCard accent="pink">
-                  <Text
-                    accessibilityRole="header"
-                    className="text-heading text-ink"
-                  >
-                    {COUNTER_FAILED_TITLE}
-                  </Text>
-                  <Text className="text-body text-ink">
-                    Your count is saved on this device. Nothing was changed.
-                  </Text>
-                  <CraftPressable
-                    accessibilityLabel="Try again to load the counter"
-                    className="items-center self-start bg-yellow px-6 py-3"
-                    onPress={counter.retry}
-                  >
-                    <Text className="text-label text-ink">Try again</Text>
-                  </CraftPressable>
-                </CraftCard>
-              </View>
-            ) : null}
-            {/*
-              The polite live region below speaks completion and position
-              changes to a screen reader (A11Y-07).
-            */}
-            <CraftAnnouncement
-              className="text-label text-ink opacity-70"
-              message={state.announcement}
-            />
-          </>
-        ) : null}
       </View>
 
       {state.status === 'loading' ? (
@@ -266,14 +178,30 @@ export function PatternViewerScreen({ patternId }: PatternViewerScreenProps) {
       {state.status === 'ready' ? (
         <FlatList
           accessibilityLabel="Pattern steps"
-          className="w-full max-w-screen-sm self-center"
+          className="w-full max-w-screen-sm flex-1 self-center"
           contentContainerStyle={{
             gap: tokens.spacing[3],
             paddingBottom: contentInsets.paddingBottom,
           }}
           data={state.view.steps}
-          initialScrollIndex={currentIndex >= 0 ? currentIndex : undefined}
           keyExtractor={(step) => step.id}
+          /*
+            The pattern's chrome scrolls WITH the steps (issue #56). It must be
+            an element of a module-level component type, never an inline
+            `() => (<View>…</View>)`: an inline function is a new component type
+            on every render, so React would unmount and remount this subtree —
+            resetting the counter's local state and dropping an open rename
+            draft and its keyboard focus — on every completion or counter tap.
+          */
+          ListHeaderComponent={
+            <PatternViewerHeader
+              announcement={state.announcement}
+              counter={counter}
+              onOpenEditor={openEditor}
+              title={state.pattern.title}
+              view={state.view}
+            />
+          }
           ListEmptyComponent={
             <View className="gap-4">
               <CraftCard accent="teal">
@@ -296,11 +224,13 @@ export function PatternViewerScreen({ patternId }: PatternViewerScreenProps) {
               </CraftPressable>
             </View>
           }
-          getItemLayout={(_data, index) => ({
-            length: ESTIMATED_STEP_HEIGHT,
-            offset: ESTIMATED_STEP_HEIGHT * index,
-            index,
-          })}
+          /*
+            The counter's rename opens a text field and a "Save name" button
+            inside this scroll surface; the default `"never"` would spend the
+            first tap dismissing the keyboard, so saving a new name would need
+            two taps.
+          */
+          keyboardShouldPersistTaps="handled"
           renderItem={({ item }) => (
             <PatternViewerStepRow
               onComplete={() => {
@@ -319,6 +249,117 @@ export function PatternViewerScreen({ patternId }: PatternViewerScreenProps) {
           testID="pattern-steps"
         />
       ) : null}
+    </View>
+  );
+}
+
+type PatternViewerHeaderProps = {
+  title: string;
+  view: PatternProgressView;
+  announcement: string;
+  counter: CounterController;
+  onOpenEditor(): void;
+};
+
+/**
+ * The pattern's chrome — title, progress summary with "Edit pattern", the
+ * counter, and the completion announcement — rendered as the step list's
+ * `ListHeaderComponent` so the whole working view is one scroll surface
+ * (issue #56). Before this, the chrome was a sibling *above* the list and the
+ * list carried no `flex-1`, so the list's height was whatever the chrome left:
+ * 639pt of chrome on a 390x844 phone leaves 205pt — under one and a half step
+ * rows — 55pt on an iPhone SE class phone, and nothing at all at iOS
+ * accessibility text sizes, which is the freeze #43 fixed for the guide view.
+ *
+ * It is declared at module scope, and calls no hook of its own, so its component
+ * type is stable across renders and a completion or counter tap reconciles the
+ * header rather than remounting it — which would drop an open rename draft and
+ * its keyboard focus. It carries no `max-w-screen-sm self-center`: the
+ * `FlatList` already constrains and centres this column, and constraining twice
+ * would centre a narrower column inside the centred one.
+ */
+function PatternViewerHeader({
+  announcement,
+  counter,
+  onOpenEditor,
+  title,
+  view,
+}: PatternViewerHeaderProps) {
+  return (
+    <View className="w-full gap-4 pb-4">
+      <Text accessibilityRole="header" className="text-display text-ink">
+        {title}
+      </Text>
+      <View className="flex-row items-center justify-between gap-3">
+        <CraftAnnouncement
+          className="flex-1 text-label text-ink"
+          message={progressSummaryLabel(view.completedCount, view.totalCount)}
+        />
+        <CraftPressable
+          accessibilityHint="Change this pattern's steps, title, or notes"
+          accessibilityLabel="Edit pattern"
+          className="flex-row items-center gap-2 bg-surface px-4 py-2"
+          onPress={onOpenEditor}
+        >
+          <MaterialCommunityIcons
+            accessibilityElementsHidden
+            color={tokens.colors.ink}
+            name="pencil"
+            size={tokens.typography.body.fontSize}
+          />
+          <Text className="text-label text-ink">Edit pattern</Text>
+        </CraftPressable>
+      </View>
+
+      {/*
+        The maker-labelled project counter (FR-CO, issue #7). It sits directly
+        above the step list so "+" stays one short flick away one-handed
+        (UX-06); since #56 it scrolls with the steps rather than standing on
+        top of them. Its read failure is screen-local and retryable, so it
+        never blacks out the steps.
+      */}
+      {counter.state.status === 'ready' ? (
+        <CraftCounter
+          announcement={counter.state.announcement}
+          label={counter.state.label}
+          onDecrement={counter.decrement}
+          onIncrement={counter.increment}
+          onRename={counter.rename}
+          onReset={counter.reset}
+          value={counter.state.value}
+        />
+      ) : counter.state.status === 'failed' ? (
+        <View
+          accessible
+          accessibilityRole="alert"
+          accessibilityLiveRegion="assertive"
+        >
+          <CraftCard accent="pink">
+            <Text accessibilityRole="header" className="text-heading text-ink">
+              {COUNTER_FAILED_TITLE}
+            </Text>
+            <Text className="text-body text-ink">
+              Your count is saved on this device. Nothing was changed.
+            </Text>
+            <CraftPressable
+              accessibilityLabel="Try again to load the counter"
+              className="items-center self-start bg-yellow px-6 py-3"
+              onPress={counter.retry}
+            >
+              <Text className="text-label text-ink">Try again</Text>
+            </CraftPressable>
+          </CraftCard>
+        </View>
+      ) : null}
+
+      {/*
+        The polite live region below speaks completion and position changes to a
+        screen reader (A11Y-07).
+      */}
+      <CraftAnnouncement
+        className="text-label text-ink opacity-70"
+        message={announcement}
+      />
     </View>
   );
 }
