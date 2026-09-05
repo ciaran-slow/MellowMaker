@@ -1,3 +1,4 @@
+import { within } from '@testing-library/react-native';
 import {
   fireEvent,
   renderRouter,
@@ -96,6 +97,39 @@ describe('patterns navigation', () => {
     expect(
       screen.queryByRole('header', { name: 'Edit pattern' }),
     ).not.toBeOnTheScreen();
+  });
+
+  it('renders the pattern route as one scroll surface, chrome included (issue #56)', async () => {
+    const database = await createAppDatabase();
+    const created = database.repositories.patterns.createPattern({
+      title: 'Sky Scarf',
+      steps: ['Chain 20', 'Single crochet across'],
+    });
+
+    const result = renderRouter(routes, {
+      initialUrl: `/patterns/${created.pattern.id}`,
+    });
+    await result;
+
+    // On the REAL navigation path — which the isolated screen suite cannot see —
+    // the counter and the title scroll with the steps. A route-level wrapper (a
+    // `ScrollView`, or a second pinned region above the list) would put them
+    // back outside it.
+    await screen.findByTestId('pattern-steps');
+    // The counter resolves a tick after the pattern, so wait for it and re-read
+    // the list each attempt rather than holding a node from an earlier render.
+    await waitFor(() => {
+      expect(
+        within(screen.getByTestId('pattern-steps')).getByLabelText(
+          'Increase Rows',
+        ),
+      ).toBeOnTheScreen();
+    });
+    expect(
+      within(screen.getByTestId('pattern-steps')).getByRole('header', {
+        name: 'Sky Scarf',
+      }),
+    ).toBeOnTheScreen();
   });
 
   it('opens the editor from the viewer via Edit pattern', async () => {

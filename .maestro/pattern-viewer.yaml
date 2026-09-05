@@ -64,9 +64,33 @@ appId: ${APP_ID}
 
 # After restart the completion and the restored position are intact: two steps
 # done and step 3 current.
+#
+# Since issue #56 the title, progress summary, and counter scroll WITH the steps
+# as the list's header, and the mount-time jump to the current step is gone. The
+# arithmetic (unverified - Maestro cannot run on this machine, see
+# docs/runbooks/smoke-verification.md section 1): the list viewport starts at
+# 135, the header occupies 135-639, gap-3 puts step 1 at 651, and with steps 1
+# and 2 completed at 92pt each step 3 begins at about 859 on an 844pt screen.
+# `assertVisible` does not scroll, so each leg below scrolls its target into
+# view first. Every element named is a standalone Text node or an accessible
+# control label, metacharacter-free, and every assertion here is positive.
 - assertVisible: "2 of 3 steps done"
+- scrollUntilVisible:
+    element:
+      text: "Current step"
+    direction: DOWN
 - assertVisible: "Current step"
 
-# Reopen step 1: it is no longer complete, and the summary falls back.
+# Reopen step 1: it is no longer complete, and the summary falls back. Step 1 is
+# now above the fold after the scroll down, and the progress summary scrolls
+# with the list, so both are scrolled back up to before they are used.
+- scrollUntilVisible:
+    element:
+      text: "Reopen step 1"
+    direction: UP
 - tapOn: "Reopen step 1"
+- scrollUntilVisible:
+    element:
+      text: "1 of 3 steps done"
+    direction: UP
 - assertVisible: "1 of 3 steps done"

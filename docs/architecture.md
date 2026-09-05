@@ -753,7 +753,24 @@ control) may sit outside; the list carries `flex-1` so its height never depends
 on what the header contains. Chrome left as a sibling above the list starves it:
 the guide working view's header stood ~897pt tall on an 844pt phone, so the list
 was laid out entirely off-screen and the whole screen appeared frozen (issue
-#43). The `ListHeaderComponent` must be an element of a module-level component
+#43). **Both** working views follow this convention: the pattern viewer was
+brought into line by issue #56, where the same sibling chrome came to 639pt on
+the same 844pt frame — 205pt of list, under one and a half step rows — 55pt on
+an iPhone SE class phone, and off-screen entirely at iOS accessibility text size
+AX1 on an SE or AX3 on an 844pt phone. That screen was never frozen at default
+text size, which is why it was correctly out of #43's scope; `flex-1` is
+nonetheless the fix, because it makes the list's height a function of the frame
+rather than of the header, so the failure becomes structurally impossible
+instead of arithmetically unlikely. The pattern viewer **gave up** its
+`initialScrollIndex` jump to the current step rather than making the offsets
+header-aware: its header is 504pt tall inside the list, so a header-unaware
+offset would have landed a maker on step 3 at 264pt — inside the counter card,
+hiding the title and not reaching the step — and the estimate it used
+(`ESTIMATED_STEP_HEIGHT = 132` against real rows of 92 and 148) already drifted
+about three steps by step 25. FR-PV-05's restored position is durable state
+(`activeStepId` plus completion in SQLite, rendered as the `selected` current
+step), never a persisted scroll offset, so only the approximate visual jump was
+lost. The `ListHeaderComponent` must be an element of a module-level component
 type, never an inline `() => (…)`, which is a new component type on every render
 and would remount the header — tearing down a WebView player mid-session. A list
 with a `ListHeaderComponent` also cannot keep `getItemLayout`/`initialScrollIndex`
