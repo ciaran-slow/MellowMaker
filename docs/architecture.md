@@ -1201,14 +1201,28 @@ and whose templates risk third-party derivation. It also adds no file under
 `assets/`, so the bundled-imagery gate stays green untouched, and it is one
 package rather than a package plus an authoring tool in the loop.
 
-What #46 deliberately leaves open is **whether the approach scales to the
-remaining eleven stitches**. That is answered by the numbers this spike posts on
-the issue against its pre-registered thresholds — minimum UI fps ≥ 55 on the
-physical iPhone, per-stitch art ≤ 4 KB gzipped with a one-time library bundle
-delta ≤ 150 KB, median authoring time ≤ 30 minutes per step, and no regression
-in reduced motion, contrast, offline, or imagery — and is owned by the follow-up
-full-set issue. A no-go names which threshold failed and by how much; the whole
-spike is one revert.
+The **spike itself is merged**; what #46 deliberately leaves open is **whether
+the approach scales to the remaining eleven stitches**. That rollout question is
+answered against the thresholds pre-registered in the plan before any number
+existed, and its state as of the product owner's decision of **2026-09-04**
+([issue comment](https://github.com/ciaran-slow/MellowMaker/issues/46#issuecomment-5534448327))
+is:
+
+| Pre-registered threshold | State |
+|---|---|
+| (1) minimum UI fps ≥ 55 across three list→detail cascade runs on the physical iPhone | **Deferred to #16, unmeasured.** No JDK, no Android SDK, no iOS simulator runtime on the build machine, and `react-native-svg` is mocked in every Jest suite, so nothing in this repository bears on it |
+| (2) per-stitch art ≤ 4 KB gzipped **and** a one-time `react-native-svg` bundle delta ≤ 150 KB | **Met.** Art 2,459 B gzipped (61% of budget); library delta 65,145 B gzipped (43% of budget). The owner decided the delta is read as **gzip** — compressed bytes are what cross the network and land on install. Read as raw Hermes bytecode the same delta is 180,981 B and would have **missed** by ~31 kB; both readings and the fact that the reading was chosen after the number existed are recorded in PR #55's go/no-go rather than hidden |
+| (3) median authoring time ≤ 30 minutes per step | **Retired by owner decision.** Paths are authored by agents in practice, so a human authoring clock does not describe the real cost. The rollout is judged on fps and size only |
+| (4) no regression in reduced motion, contrast, offline, or imagery | **Met**, each pinned by a suite; `offlineColdStart` and the imagery gate pass unedited |
+
+The resulting recommendation is a **provisional GO for the eleven-stitch
+rollout, contingent on #16's fps measurement clearing ≥ 55**. If it does not, the
+plan's pre-registered fallback applies: re-scope to **one animation per stitch
+instead of per step** and re-measure, rather than proceeding with the per-step
+cascade. The remaining device measurements #16 must clear are listed in
+[`runbooks/deferred-smokes/046-issue-46.md`](./runbooks/deferred-smokes/046-issue-46.md).
+A no-go names which threshold failed and by how much; the whole spike is one
+revert.
 
 The only remaining PRD0 decision is the minimum supported iOS/Android versions
 for the first EAS release (PRD0 decision 8), which belongs to the EAS/release
