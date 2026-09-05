@@ -315,6 +315,31 @@ expression decides — not only the one it was written for — and add the missi
 test for any the suite does not name. #44 did exactly this and shipped the extra
 test as its second commit; that is the outcome to copy.
 
+**And a fourth meaning: the test that should have gone red never reaches the
+mutated expression.** The three readings above all assume the contract-naming
+test at least *executes* the line you mutated. Check that assumption before
+accepting any of them, because it is the one reading under which the fix is to
+the **fixture**, not to the guard or to the test list. #50's M6 widened the
+line-leading time-code recognizer from `\d{1,2}` to `\d{0,2}` — accepting a bare
+`6` as 0:06 — and every suite stayed green. Not double-defended, and no second
+contract riding along: the single fixture named for that rule,
+`"Chain 6 stitches\nThen turn"`, has no line beginning with a digit, so it never
+reached the recognizer. It was rejected upstream as `no-timestamps` and would
+have been rejected identically under any recognizer at all. That is not a
+passing test, it is a test that has never once run against the thing it claims
+to pin — and meanwhile a real description line reading `6 double crochets` would
+have become a step at 0:06 with the suite green.
+
+The diagnostic is cheap: when a mutation stays green, put a `throw` on the
+mutated line and re-run **only** the test whose name asserts the contract. If it
+still passes, the test never got there and the mutation told you nothing. Then
+change the input until it does reach the line (here, a line that actually leads
+with the number), confirm it now goes red under the original mutation, and keep
+the plan's version beside it if it still pins something else. **Disclose it in
+the PR body**: a strengthened fixture is a deviation from the plan's test list,
+and the reviewer needs to know the plan's version was inert rather than
+redundant. #50 did exactly this and shipped the fix as its second commit.
+
 **Plant the mutation in every carrier the guard claims to cover.** For an
 enumeration/walk guard, a single mutation in the obvious syntactic form proves
 only that form. Plant the same violation in each distinct place the value can be
