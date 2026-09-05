@@ -165,6 +165,30 @@ describe('SaveGuideAsPatternScreen', () => {
     });
   });
 
+  it('commits the draft that was reviewed, not a re-read of the guide', async () => {
+    // The hook deliberately does not re-read at save time, so a guide edited
+    // between review and confirm cannot silently change what the maker approved.
+    // This goes red under any implementation that calls `getGuideWithSteps`
+    // again inside `save`.
+    const guideId = seedGuide(['Magic ring', 'Chain 12']);
+    await render(tree(repositories, guideId));
+    await screen.findByRole('header', { name: 'Save as pattern' });
+
+    repositories.guides.addGuideStep(guideId, {
+      instruction: 'Added after the review was on screen',
+    });
+
+    await fireEvent.press(screen.getByRole('button', { name: 'Save pattern' }));
+
+    const saved = repositories.patterns.listPatterns();
+    expect(saved).toHaveLength(1);
+    expect(
+      repositories.patterns
+        .getPatternWithSteps(saved[0]?.id ?? '')
+        ?.steps.map((step) => step.instruction),
+    ).toStrictEqual(['Magic ring', 'Chain 12']);
+  });
+
   it('refuses an empty title and writes nothing', async () => {
     const guideId = seedGuide(['Magic ring']);
     await render(tree(repositories, guideId));
