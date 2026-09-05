@@ -162,4 +162,100 @@ describe('useAnnouncement', () => {
     expect(announce).toHaveBeenCalledTimes(1);
     expect(announce).toHaveBeenCalledWith('3 patterns');
   });
+
+  /**
+   * Issue #66: the attempt argument. Every case above runs on the one-argument
+   * form and is untouched; these five cover the widening and the clause it adds.
+   */
+  describe('attempt-scoped repeats (issue #66)', () => {
+    const M = "We couldn't find any timestamps in that text.";
+
+    function useAttemptAnnouncement({
+      attempt,
+      message,
+    }: {
+      attempt: number;
+      message: string | undefined;
+    }) {
+      useAnnouncement(message, attempt);
+    }
+
+    it('repeated same input: an unchanged message whose attempt advanced is announced again', async () => {
+      // The dead tap this issue exists to fix — the maker taps the same failing
+      // control three times and the rejection is spoken each time.
+      jest.replaceProperty(Platform, 'OS', 'ios');
+      const { rerender } = await renderHook(useAttemptAnnouncement, {
+        initialProps: { attempt: 0, message: undefined as string | undefined },
+      });
+
+      await rerender({ attempt: 1, message: M });
+      await rerender({ attempt: 2, message: M });
+      await rerender({ attempt: 3, message: M });
+
+      expect(announce.mock.calls.map(([text]) => text)).toStrictEqual([M, M, M]);
+    });
+
+    it('negative branch (unrelated re-render): an unchanged attempt stays silent', async () => {
+      // The #14 clause this widening must not break: a re-render the maker did
+      // not cause — a keystroke in a neighbouring field — says nothing.
+      jest.replaceProperty(Platform, 'OS', 'ios');
+      const { rerender } = await renderHook(useAttemptAnnouncement, {
+        initialProps: { attempt: 0, message: undefined as string | undefined },
+      });
+
+      await rerender({ attempt: 1, message: M });
+      await rerender({ attempt: 1, message: M });
+      await rerender({ attempt: 1, message: M });
+
+      expect(announce).toHaveBeenCalledTimes(1);
+    });
+
+    it('negative branch (platform): an advancing attempt never announces on Android', async () => {
+      // Android speaks the remounted live region; announcing here as well would
+      // double-speak under TalkBack.
+      jest.replaceProperty(Platform, 'OS', 'android');
+      const { rerender } = await renderHook(useAttemptAnnouncement, {
+        initialProps: { attempt: 1, message: M as string | undefined },
+      });
+
+      await rerender({ attempt: 2, message: M });
+      await rerender({ attempt: 3, message: M });
+
+      expect(announce).not.toHaveBeenCalled();
+    });
+
+    it('the default argument is inert: a one-argument caller still announces once', async () => {
+      // Proves the widening cannot change any of the ~20 existing call sites,
+      // which never pass an attempt and therefore never advance one.
+      jest.replaceProperty(Platform, 'OS', 'ios');
+      const { rerender } = await renderHook(useAnnouncement, {
+        initialProps: undefined as string | undefined,
+      });
+
+      await rerender(M);
+      await rerender(M);
+      await rerender(M);
+
+      expect(announce).toHaveBeenCalledTimes(1);
+    });
+
+    it('a cleared message still clears while the attempt is changing', async () => {
+      // The clearing clause outranks the attempt: an undefined message is
+      // silent even on a new attempt, and clears the memory as before.
+      jest.replaceProperty(Platform, 'OS', 'ios');
+      const { rerender } = await renderHook(useAttemptAnnouncement, {
+        initialProps: { attempt: 0, message: undefined as string | undefined },
+      });
+
+      await rerender({ attempt: 1, message: M });
+      expect(announce).toHaveBeenCalledTimes(1);
+
+      await rerender({ attempt: 2, message: undefined });
+      expect(announce).toHaveBeenCalledTimes(1);
+
+      await rerender({ attempt: 3, message: M });
+
+      expect(announce.mock.calls.map(([text]) => text)).toStrictEqual([M, M]);
+    });
+  });
 });

@@ -1,4 +1,5 @@
 import { fireEvent, render, screen } from '@testing-library/react-native';
+import { AccessibilityInfo, Platform } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import type { Repositories } from '@/data/contracts/appDatabase';
@@ -511,6 +512,206 @@ describe('GuideEditorScreen', () => {
       expect(
         screen.getByLabelText('Video timestamp 1:12').props.onPress,
       ).toBeUndefined();
+    });
+
+    /**
+     * Issue #66: a repeated identical rejection is spoken again. Both fixtures
+     * are digit-free prose, so each is unambiguously `no-timestamps` and no
+     * later change to the timestamp recognizer can re-classify one of them —
+     * which matters here because the message's *identity* is the contract.
+     */
+    describe('a repeated identical rejection (issue #66)', () => {
+      const NO_TIMESTAMPS =
+        "We couldn't find any timestamps in that text. Copy the description's chapter list, or the transcript panel, and try again.";
+      const PASTE_A = 'Chain six stitches\nThen turn';
+      const PASTE_B = 'Row two is all double crochet\nKeep going';
+      let announce: jest.SpyInstance;
+
+      beforeEach(() => {
+        announce = jest
+          .spyOn(AccessibilityInfo, 'announceForAccessibility')
+          .mockImplementation(() => {});
+        announce.mockClear();
+      });
+
+      it('AC1: a second wrong paste rejected for the same reason is announced again', async () => {
+        jest.replaceProperty(Platform, 'OS', 'ios');
+        const guide = seedBareGuide(repositories);
+        await render(tree(repositories, offlineGateway(), guide.guide.id));
+        await screen.findByRole('header', { name: 'Edit guide' });
+
+        await pasteAndReview(PASTE_A);
+        expect(screen.getByRole('alert')).toHaveTextContent(NO_TIMESTAMPS);
+        expect(announce).toHaveBeenCalledTimes(1);
+
+        await pasteAndReview(PASTE_B);
+
+        expect(announce.mock.calls.map(([text]) => text)).toStrictEqual([
+          NO_TIMESTAMPS,
+          NO_TIMESTAMPS,
+        ]);
+      });
+
+      it('falsifier: reviewing the same text twice, with nothing edited, is announced twice', async () => {
+        // The pure dead tap. Clearing the error on input change — the issue's
+        // own option (a) — cannot reach this case: nothing changed.
+        jest.replaceProperty(Platform, 'OS', 'ios');
+        const guide = seedBareGuide(repositories);
+        await render(tree(repositories, offlineGateway(), guide.guide.id));
+        await screen.findByRole('header', { name: 'Edit guide' });
+
+        await pasteAndReview(PASTE_A);
+        await fireEvent.press(
+          screen.getByRole('button', { name: 'Review pasted steps' }),
+        );
+
+        expect(announce).toHaveBeenCalledTimes(2);
+      });
+
+      it('AC2 negative branch: a re-render the maker did not cause stays silent', async () => {
+        jest.replaceProperty(Platform, 'OS', 'ios');
+        const guide = seedBareGuide(repositories);
+        await render(tree(repositories, offlineGateway(), guide.guide.id));
+        await screen.findByRole('header', { name: 'Edit guide' });
+
+        await pasteAndReview(PASTE_A);
+        expect(announce).toHaveBeenCalledTimes(1);
+
+        // Typing in the paste field, and in a field that re-renders the whole
+        // editor form around the section.
+        await fireEvent.changeText(
+          screen.getByLabelText(PASTE_FIELD),
+          `${PASTE_A} more`,
+        );
+        await fireEvent.changeText(
+          screen.getByLabelText('Guide title'),
+          'Amigurumi Basics, edited',
+        );
+
+        expect(announce).toHaveBeenCalledTimes(1);
+        expect(screen.getByRole('alert')).toHaveTextContent(NO_TIMESTAMPS);
+      });
+
+      it('AC4 Android: the announcer never fires, and the alert identity advances', async () => {
+        // TalkBack speaks the remounted live region; the identity the remount is
+        // derived from is what this harness can see (see CraftInlineError).
+        jest.replaceProperty(Platform, 'OS', 'android');
+        const guide = seedBareGuide(repositories);
+        await render(tree(repositories, offlineGateway(), guide.guide.id));
+        await screen.findByRole('header', { name: 'Edit guide' });
+
+        await pasteAndReview(PASTE_A);
+        const first = screen.getByRole('alert').props.nativeID;
+
+        await pasteAndReview(PASTE_B);
+        const second = screen.getByRole('alert').props.nativeID;
+
+        expect(announce).not.toHaveBeenCalled();
+        expect(second).not.toBe(first);
+
+        // The negative branch on Android too: an uncaused re-render leaves the
+        // identity alone, so nothing remounts and TalkBack does not chatter.
+        await fireEvent.changeText(
+          screen.getByLabelText('Guide title'),
+          'Amigurumi Basics, edited',
+        );
+
+        expect(screen.getByRole('alert').props.nativeID).toBe(second);
+      });
+    });
+  });
+
+  /**
+   * Issue #66, AC3: the same idiom on the hand-typed field, so the fix lands at
+   * both sites rather than one. `'Add an instruction for this step.'` is
+   * `guideStepDraft`'s blank-instruction rejection.
+   */
+  describe('a repeated identical rejection on Add step (issue #66)', () => {
+    const BLANK_INSTRUCTION = 'Add an instruction for this step.';
+    let announce: jest.SpyInstance;
+
+    beforeEach(() => {
+      announce = jest
+        .spyOn(AccessibilityInfo, 'announceForAccessibility')
+        .mockImplementation(() => {});
+      announce.mockClear();
+    });
+
+    async function addStep() {
+      await fireEvent.press(screen.getByRole('button', { name: 'Add step' }));
+    }
+
+    it('falsifier: pressing Add step twice on a blank instruction announces twice', async () => {
+      jest.replaceProperty(Platform, 'OS', 'ios');
+      const guide = seedBareGuide(repositories);
+      await render(tree(repositories, offlineGateway(), guide.guide.id));
+      await screen.findByRole('header', { name: 'Edit guide' });
+
+      await addStep();
+      expect(screen.getByRole('alert')).toHaveTextContent(BLANK_INSTRUCTION);
+      expect(announce).toHaveBeenCalledTimes(1);
+
+      await addStep();
+
+      expect(announce.mock.calls.map(([text]) => text)).toStrictEqual([
+        BLANK_INSTRUCTION,
+        BLANK_INSTRUCTION,
+      ]);
+    });
+
+    it('the same rejection reached by a different route is announced again', async () => {
+      // Type something, clear it back to blank, submit again: the message is
+      // identical, the route in is not.
+      jest.replaceProperty(Platform, 'OS', 'ios');
+      const guide = seedBareGuide(repositories);
+      await render(tree(repositories, offlineGateway(), guide.guide.id));
+      await screen.findByRole('header', { name: 'Edit guide' });
+
+      await addStep();
+      await fireEvent.changeText(
+        screen.getByLabelText('New step instruction'),
+        'Make a magic ring',
+      );
+      await fireEvent.changeText(
+        screen.getByLabelText('New step instruction'),
+        '',
+      );
+      await addStep();
+
+      expect(announce).toHaveBeenCalledTimes(2);
+    });
+
+    it('negative branch: typing in a field the failed validation did not read stays silent', async () => {
+      jest.replaceProperty(Platform, 'OS', 'ios');
+      const guide = seedBareGuide(repositories);
+      await render(tree(repositories, offlineGateway(), guide.guide.id));
+      await screen.findByRole('header', { name: 'Edit guide' });
+
+      await addStep();
+      expect(announce).toHaveBeenCalledTimes(1);
+
+      await fireEvent.changeText(
+        screen.getByLabelText('New step note'),
+        'Remember to count',
+      );
+
+      expect(announce).toHaveBeenCalledTimes(1);
+      expect(screen.getByRole('alert')).toHaveTextContent(BLANK_INSTRUCTION);
+    });
+
+    it('Android: the announcer never fires, and the alert identity advances', async () => {
+      jest.replaceProperty(Platform, 'OS', 'android');
+      const guide = seedBareGuide(repositories);
+      await render(tree(repositories, offlineGateway(), guide.guide.id));
+      await screen.findByRole('header', { name: 'Edit guide' });
+
+      await addStep();
+      const first = screen.getByRole('alert').props.nativeID;
+
+      await addStep();
+
+      expect(announce).not.toHaveBeenCalled();
+      expect(screen.getByRole('alert').props.nativeID).not.toBe(first);
     });
   });
 });

@@ -18,6 +18,7 @@ import {
   usePatternEditor,
   type PatternEditor,
 } from '@/features/patterns/presentation/usePatternEditor';
+import { CraftInlineError } from '@/ui/accessibility/CraftInlineError';
 import { useAnnouncement } from '@/ui/accessibility/useAnnouncement';
 import { CraftCard } from '@/ui/components/CraftCard';
 import { CraftConfirmDialog } from '@/ui/components/CraftConfirmDialog';
@@ -480,10 +481,13 @@ type AddStepFieldProps = {
 function AddStepField({ onAdd }: AddStepFieldProps) {
   const [value, setValue] = useState('');
   const [error, setError] = useState<string | undefined>(undefined);
-  // The inline alert below is Android's path; iOS hears the same text here.
-  useAnnouncement(error);
+  // Bumped once per maker-initiated submit, whatever the outcome, so a repeat
+  // of the same rejection is spoken again (issue #66). Both `onPress` and
+  // `onSubmitEditing` reach this handler; both are maker-initiated, both count.
+  const [attempt, setAttempt] = useState(0);
 
   function submit() {
+    setAttempt((n) => n + 1);
     const result = validateStepInstruction(value);
     if (!result.ok) {
       setError(result.message);
@@ -511,15 +515,7 @@ function AddStepField({ onAdd }: AddStepFieldProps) {
         testID="pattern-step-field"
         value={value}
       />
-      {error === undefined ? null : (
-        <Text
-          accessibilityLiveRegion="assertive"
-          accessibilityRole="alert"
-          className="text-label text-pinkStrong"
-        >
-          {error}
-        </Text>
-      )}
+      <CraftInlineError attempt={attempt} message={error} />
       <CraftPressable
         accessibilityLabel="Add step"
         className="items-center bg-tealStrong px-6 py-3"
