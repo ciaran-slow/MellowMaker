@@ -7,6 +7,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import type { Repositories } from '@/data/contracts/appDatabase';
 import { applyBundledPatternSeed } from '@/data/seed/patternSeed';
 import { applyBundledStitchSeed } from '@/data/seed/stitchSeed';
+import { guidePatternSnapshot } from '@/domain/guides/guidePatternSnapshot';
 import { DictionaryScreen } from '@/features/dictionary/presentation/DictionaryScreen';
 import { RepositoriesContext } from '@/ui/database/repositoriesContext';
 
@@ -198,6 +199,36 @@ describe('offline cold start — core reads and writes never touch the network',
     expect(
       guides.listGuides().some((guide) => guide.id === BASELINE.guide.id),
     ).toBe(true);
+
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it('saves a guide as a pattern with no network (issue #51)', () => {
+    const { guides, patterns } = database.repositories;
+
+    // The exact composition the review screen commits: one local read, the pure
+    // snapshot, one local transactional write. Nothing in it can await a fetch.
+    const loaded = guides.getGuideWithSteps(BASELINE.guide.id);
+    expect(loaded).toBeDefined();
+    const draft = guidePatternSnapshot({
+      videoId: loaded!.guide.videoId,
+      title: loaded!.guide.title,
+      notes: loaded!.guide.notes,
+      steps: loaded!.steps,
+    });
+    const created = patterns.createPattern({
+      title: draft.title,
+      notes: draft.notes,
+      steps: draft.steps,
+    });
+
+    const reread = patterns.getPatternWithSteps(created.pattern.id);
+    expect(reread?.pattern.notes).toContain(
+      'Saved from YouTube: https://www.youtube.com/watch?v=mM8Wx2pQ1nA',
+    );
+    expect(reread?.steps.map((step) => step.instruction)).toStrictEqual([
+      'Make a magic ring and chain three',
+    ]);
 
     expect(fetchSpy).not.toHaveBeenCalled();
   });

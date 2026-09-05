@@ -38,9 +38,11 @@ async function firePlayerError(reason: string): Promise<void> {
 // The isolated screen renders outside a navigator, so router focus and
 // navigation are stubbed; the navigation suite exercises the real router.
 // `useFocusEffect` is a no-op so the initial mount read is the only load.
+const mockPush = jest.fn();
+
 jest.mock('expo-router', () => ({
   useRouter: () => ({
-    push: jest.fn(),
+    push: mockPush,
     replace: jest.fn(),
     back: jest.fn(),
     canGoBack: () => true,
@@ -96,6 +98,7 @@ describe('GuideWorkingViewScreen', () => {
   beforeEach(() => {
     database = createTestDatabase();
     repositories = database.repositories;
+    mockPush.mockClear();
   });
 
   afterEach(() => {
@@ -483,11 +486,20 @@ describe('GuideWorkingViewScreen', () => {
       const title = within(list).getByRole('header', {
         name: 'Amigurumi Basics',
       });
+      const progress = within(list).getByText('0 of 3 steps done');
+      const editGuide = within(list).getByLabelText('Edit guide');
+      const saveAsPattern = within(list).getByLabelText('Save as pattern');
       const video = within(list).getByText('Loading video…');
       const counter = within(list).getByLabelText('Increase Rows');
       const firstStep = within(list).getByLabelText('Mark step 1 complete');
 
-      expect(positionOf(title)).toBeLessThan(positionOf(video));
+      // The action row added by #51 sits with the rest of the chrome ABOVE the
+      // video; pinning it here stops it drifting below the 16:9 card, where a
+      // maker would have to scroll past the player to reach either action.
+      expect(positionOf(title)).toBeLessThan(positionOf(progress));
+      expect(positionOf(progress)).toBeLessThan(positionOf(editGuide));
+      expect(positionOf(editGuide)).toBeLessThan(positionOf(saveAsPattern));
+      expect(positionOf(saveAsPattern)).toBeLessThan(positionOf(video));
       expect(positionOf(video)).toBeLessThan(positionOf(counter));
       expect(positionOf(counter)).toBeLessThan(positionOf(firstStep));
     });
@@ -578,6 +590,60 @@ describe('GuideWorkingViewScreen', () => {
         within(list).getByRole('header', { name: 'No steps yet' }),
       ).toBeOnTheScreen();
     });
+
+    it('keeps the Save as pattern control inside the scroll surface', async () => {
+      const { guideId } = seedGuide(repositories, ['A', 'B', 'C']);
+      await render(tree(repositories, guideId));
+      await screen.findByRole('header', { name: 'Amigurumi Basics' });
+
+      const control = within(screen.getByTestId('guide-steps')).getByRole(
+        'button',
+        { name: 'Save as pattern' },
+      );
+
+      expect(control).toBeOnTheScreen();
+      expect(control.props.accessibilityHint).toBe(
+        "Copy this guide's steps into a new pattern",
+      );
+      // The inline `tokens.touch.minimum` carrier from `CraftPressable`; a
+      // class-expressed minimum is invisible to `toHaveStyle` here
+      // (architecture §14), so this is the only real assertion available.
+      expect(control).toHaveStyle({ minHeight: 48 });
+    });
+
+    it('pushes the review route rather than writing anything', async () => {
+      const { guideId } = seedGuide(repositories, ['A', 'B', 'C']);
+      await render(tree(repositories, guideId));
+      await screen.findByRole('header', { name: 'Amigurumi Basics' });
+
+      await fireEvent.press(
+        screen.getByRole('button', { name: 'Save as pattern' }),
+      );
+
+      expect(mockPush).toHaveBeenCalledWith({
+        pathname: '/guides/[guideId]/save-as-pattern',
+        params: { guideId },
+      });
+      expect(repositories.patterns.listPatterns()).toStrictEqual([]);
+    });
+
+    it.each([
+      ['a guide with no steps', [] as readonly string[], true],
+      ['a guide with one step', ['A'] as readonly string[], false],
+    ])(
+      'disables Save as pattern for %s: %s',
+      async (_label, instructions, expectedDisabled) => {
+        const { guideId } = seedGuide(repositories, instructions);
+        await render(tree(repositories, guideId));
+        await screen.findByRole('header', { name: 'Amigurumi Basics' });
+
+        const control = screen.getByRole('button', { name: 'Save as pattern' });
+        expect(control.props.accessibilityState.disabled).toBe(expectedDisabled);
+
+        await fireEvent.press(control);
+        expect(mockPush).toHaveBeenCalledTimes(expectedDisabled ? 0 : 1);
+      },
+    );
 
     it('carries the list props the scroll decisions depend on', async () => {
       const { guideId } = seedGuide(repositories, ['A']);

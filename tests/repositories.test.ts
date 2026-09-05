@@ -6,6 +6,7 @@ import {
   resolvePage,
 } from '@/data/contracts/page';
 import { applyBundledPatternSeed } from '@/data/seed/patternSeed';
+import { guidePatternSnapshot } from '@/domain/guides/guidePatternSnapshot';
 import { applyBundledStitchSeed } from '@/data/seed/stitchSeed';
 import { createRepositories } from '@/data/sqlite/createRepositories';
 import { initializeDatabase } from '@/data/sqlite/initializeDatabase';
@@ -1172,6 +1173,242 @@ describe('SQLite repositories', () => {
           'SELECT COUNT(*) AS total FROM guide_step',
         )?.total,
       ).toBe(0);
+    });
+
+    /**
+     * Issue #51 / architecture §9.3 — saving a guide as a pattern is a
+     * **notes-only snapshot**: a composition over `getGuideWithSteps` and
+     * `createPattern` with no foreign key, no new column, and no migration. These
+     * cases pin the persistence half of that contract at the layer where a
+     * cascade, a dedupe, or a wrong sort would actually happen; the screen and
+     * router suites cover the hook that performs the same composition in the app.
+     */
+    describe('saved as a pattern (issue #51)', () => {
+      const VIDEO_ID = 'dQw4w9WgXcQ';
+      const CANONICAL = 'https://www.youtube.com/watch?v=dQw4w9WgXcQ';
+
+      function seedGuide(instructions: readonly string[]) {
+        return database.repositories.guides.saveImportedGuide({
+          guide: {
+            videoId: VIDEO_ID,
+            sourceUrl: `https://youtu.be/${VIDEO_ID}`,
+            title: 'Amigurumi Basics',
+            notes: 'Hook 4.0 mm',
+          },
+          steps: instructions.map((instruction) => ({
+            instruction,
+            origin: 'import' as const,
+          })),
+        });
+      }
+
+      /** The exact composition the review screen commits. */
+      function convert(guideId: string) {
+        const loaded = database.repositories.guides.getGuideWithSteps(guideId);
+        if (loaded === undefined) {
+          throw new Error('guide not found');
+        }
+
+        const draft = guidePatternSnapshot({
+          videoId: loaded.guide.videoId,
+          title: loaded.guide.title,
+          notes: loaded.guide.notes,
+          steps: loaded.steps,
+        });
+
+        return database.repositories.patterns.createPattern({
+          title: draft.title,
+          notes: draft.notes,
+          steps: draft.steps,
+        });
+      }
+
+      function rawStepCount(patternId: string): number {
+        return (
+          database.connection.first<{ readonly total: number }>(
+            'SELECT COUNT(*) AS total FROM pattern_step WHERE pattern_id = ?',
+            [patternId],
+          )?.total ?? -1
+        );
+      }
+
+      it('records the canonical watch URL and every step, in order', () => {
+        const guide = seedGuide(['Magic ring', 'Chain 12', 'Fasten off']);
+        const created = convert(guide.guide.id);
+
+        expect(created.pattern.notes).toContain(`Saved from YouTube: ${CANONICAL}`);
+        expect(created.pattern.notes).toContain('Hook 4.0 mm');
+        expect(created.steps.map((step) => step.instruction)).toStrictEqual([
+          'Magic ring',
+          'Chain 12',
+          'Fasten off',
+        ]);
+        expect(created.steps.map((step) => step.position)).toStrictEqual([0, 1, 2]);
+      });
+
+      it('survives deleting the guide, pattern steps included', () => {
+        const guide = seedGuide(['Magic ring', 'Chain 12', 'Fasten off']);
+        const created = convert(guide.guide.id);
+
+        database.repositories.guides.deleteGuide(guide.guide.id);
+
+        expect(
+          database.repositories.guides.getGuideWithSteps(guide.guide.id),
+        ).toBeUndefined();
+
+        const reread = database.repositories.patterns.getPatternWithSteps(
+          created.pattern.id,
+        );
+        expect(reread?.steps.map((step) => step.instruction)).toStrictEqual([
+          'Magic ring',
+          'Chain 12',
+          'Fasten off',
+        ]);
+        // The raw count matters: a cascade that took the pattern AND its steps
+        // would make the repository read return `undefined`, which is easy to
+        // misread as "missing". Both layers are pinned so neither can hide it.
+        expect(rawStepCount(created.pattern.id)).toBe(3);
+      });
+
+      it('is a snapshot: editing the guide afterwards changes nothing', () => {
+        const guide = seedGuide(['Magic ring', 'Chain 12', 'Fasten off']);
+        const created = convert(guide.guide.id);
+        const before = database.repositories.patterns.getPatternWithSteps(
+          created.pattern.id,
+        );
+
+        const { guides } = database.repositories;
+        const stepIds = guide.steps.map((step) => step.id);
+        guides.updateGuideStep(stepIds[0] as string, {
+          instruction: 'Rewritten first step',
+        });
+        guides.reorderGuideSteps(guide.guide.id, [...stepIds].reverse());
+        guides.updateGuideDetails({
+          id: guide.guide.id,
+          title: 'A completely different guide',
+          notes: 'Different notes',
+        });
+        guides.deleteGuideStep(stepIds[1] as string);
+
+        const after = database.repositories.patterns.getPatternWithSteps(
+          created.pattern.id,
+        );
+        expect(after?.pattern.title).toBe(before?.pattern.title);
+        expect(after?.pattern.notes).toBe(before?.pattern.notes);
+        expect(after?.steps.map((step) => step.instruction)).toStrictEqual(
+          before?.steps.map((step) => step.instruction),
+        );
+        expect(after?.steps.map((step) => step.position)).toStrictEqual(
+          before?.steps.map((step) => step.position),
+        );
+      });
+
+      it('creates two fully independent patterns from the identical input twice', () => {
+        // The duplicate decision, pinned. This fails under any implementation
+        // that dedupes on the title or the notes URL, or that updates an
+        // existing pattern in place.
+        const guide = seedGuide(['Magic ring', 'Chain 12', 'Fasten off']);
+        const before = database.repositories.patterns.listPatterns().length;
+
+        const first = convert(guide.guide.id);
+        const second = convert(guide.guide.id);
+
+        expect(first.pattern.id).not.toBe(second.pattern.id);
+        expect(database.repositories.patterns.listPatterns()).toHaveLength(
+          before + 2,
+        );
+        expect(first.steps).toHaveLength(3);
+        expect(second.steps).toHaveLength(3);
+
+        const firstStepIds = new Set(first.steps.map((step) => step.id));
+        expect(
+          second.steps.filter((step) => firstStepIds.has(step.id)),
+        ).toStrictEqual([]);
+
+        // And they stay independent: editing one leaves the other untouched.
+        database.repositories.patterns.editStep(
+          second.steps[0]?.id ?? '',
+          'Only the fork changes',
+        );
+        expect(
+          database.repositories.patterns
+            .getPatternWithSteps(first.pattern.id)
+            ?.steps.map((step) => step.instruction),
+        ).toStrictEqual(['Magic ring', 'Chain 12', 'Fasten off']);
+      });
+
+      it('is the maker’s own pattern, never a bundled one', () => {
+        const guide = seedGuide(['Magic ring']);
+        const created = convert(guide.guide.id);
+
+        expect(created.pattern.origin).toBe('user');
+        expect(
+          database.connection.first<{ readonly total: number }>(
+            'SELECT COUNT(*) AS total FROM pattern_seed_state WHERE pattern_id = ?',
+            [created.pattern.id],
+          )?.total,
+        ).toBe(0);
+      });
+
+      it('carries no completion over, whatever the guide’s progress', () => {
+        const guide = seedGuide(['Magic ring', 'Chain 12', 'Fasten off']);
+        const stepIds = guide.steps.map((step) => step.id);
+        database.repositories.guides.setGuideStepCompleted(
+          stepIds[0] as string,
+          true,
+        );
+        database.repositories.guides.setGuideStepCompleted(
+          stepIds[2] as string,
+          true,
+        );
+
+        const created = convert(guide.guide.id);
+
+        expect(created.steps).toHaveLength(3);
+        expect(
+          database.repositories.progress.getProgress(created.pattern.id)
+            .completedStepIds,
+        ).toStrictEqual([]);
+        expect(
+          database.connection.first<{ readonly total: number }>(
+            'SELECT COUNT(*) AS total FROM pattern_step_progress WHERE pattern_id = ?',
+            [created.pattern.id],
+          )?.total,
+        ).toBe(0);
+      });
+
+      it('follows a reordered guide, not insertion or alphabetical order', () => {
+        const guide = seedGuide(['A', 'B', 'C']);
+        const [a, b, c] = guide.steps.map((step) => step.id) as [
+          string,
+          string,
+          string,
+        ];
+        database.repositories.guides.reorderGuideSteps(guide.guide.id, [c, a, b]);
+
+        const created = convert(guide.guide.id);
+
+        expect(created.steps.map((step) => step.instruction)).toStrictEqual([
+          'C',
+          'A',
+          'B',
+        ]);
+        expect(created.steps.map((step) => step.position)).toStrictEqual([0, 1, 2]);
+      });
+
+      it('tops the library under the recency ordering (FR-PA-07)', () => {
+        database.repositories.patterns.createPattern({
+          title: 'An older pattern',
+          steps: ['Chain 20'],
+        });
+        const guide = seedGuide(['Magic ring']);
+
+        const created = convert(guide.guide.id);
+
+        expect(database.repositories.patterns.listPatterns()[0]?.id).toBe(
+          created.pattern.id,
+        );
+      });
     });
   });
 

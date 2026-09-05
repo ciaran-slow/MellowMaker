@@ -86,6 +86,10 @@ export default function TabsLayout() {
       <Tabs.Screen name="guides/import" options={{ href: null }} />
       <Tabs.Screen name="guides/[guideId]/index" options={{ href: null }} />
       <Tabs.Screen name="guides/[guideId]/edit" options={{ href: null }} />
+      <Tabs.Screen
+        name="guides/[guideId]/save-as-pattern"
+        options={{ href: null }}
+      />
     </Tabs>
   );
 }
