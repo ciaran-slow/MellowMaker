@@ -23,21 +23,41 @@ import { AccessibilityInfo, Platform } from 'react-native';
  *   same way twice. Android's remounting alert speaks those again too; the
  *   list screens never clear mid-reload (their `reload` keeps `ready`), so a
  *   tab return with an unchanged count stays quiet.
+ * - an **unchanged** message whose `attempt` advanced is announced again
+ *   (issue #66). `attempt` is a maker-initiated validation counter, bumped by
+ *   whoever owns the submit handler and never by an input change, a mount, or
+ *   an effect. It defaults to `0` and never moves for a caller that omits it,
+ *   so every unconverted call site behaves exactly as before. The two
+ *   scenarios this clause stands between:
+ *   - **serves** — the maker taps the same failing control twice. The rejection
+ *     is already on screen, so nothing changes and, without the attempt,
+ *     nothing is spoken: a dead tap.
+ *   - **must not break** — a re-render the maker did not cause (the editor
+ *     re-reading the guide after a step mutation, a keystroke in a neighbouring
+ *     field) leaves both message and attempt untouched, and stays silent.
  *
  * It is presentation-only: no persistence waits on it and it holds no durable
  * state. It announces only text the maker can already see on screen.
  */
-export function useAnnouncement(message: string | undefined): void {
+export function useAnnouncement(
+  message: string | undefined,
+  attempt = 0,
+): void {
   const previous = useRef<string | undefined>(undefined);
+  const previousAttempt = useRef(attempt);
   const settled = useRef(false);
 
   useEffect(() => {
     if (!settled.current) {
       settled.current = true;
       previous.current = message;
+      previousAttempt.current = attempt;
 
       return;
     }
+
+    const attemptChanged = attempt !== previousAttempt.current;
+    previousAttempt.current = attempt;
 
     if (message === undefined || message === '') {
       previous.current = undefined;
@@ -45,7 +65,7 @@ export function useAnnouncement(message: string | undefined): void {
       return;
     }
 
-    if (message === previous.current) {
+    if (message === previous.current && !attemptChanged) {
       return;
     }
 
@@ -54,5 +74,5 @@ export function useAnnouncement(message: string | undefined): void {
     if (Platform.OS === 'ios') {
       AccessibilityInfo.announceForAccessibility(message);
     }
-  }, [message]);
+  }, [attempt, message]);
 }

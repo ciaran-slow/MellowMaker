@@ -4,7 +4,7 @@ import { Text, View } from 'react-native';
 
 import { validateStepInstruction } from '@/domain/patterns/patternDraft';
 import { stepAccessibilityLabel } from '@/features/patterns/presentation/patternLabels';
-import { useAnnouncement } from '@/ui/accessibility/useAnnouncement';
+import { CraftInlineError } from '@/ui/accessibility/CraftInlineError';
 import { CraftPressable } from '@/ui/components/CraftPressable';
 import { CraftTextField } from '@/ui/components/CraftTextField';
 import tokens from '@/ui/theme/tokens.json';
@@ -43,8 +43,10 @@ export function PatternStepEditorRow({
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(instruction);
   const [error, setError] = useState<string | undefined>(undefined);
-  // The inline alert below is Android's path; iOS hears the same text here.
-  useAnnouncement(error);
+  // Bumped once per maker-initiated save, whatever the outcome, so a repeat of
+  // the same rejection is spoken again (issue #66). `beginEdit` never bumps —
+  // it clears the error.
+  const [attempt, setAttempt] = useState(0);
 
   function beginEdit() {
     setDraft(instruction);
@@ -53,6 +55,7 @@ export function PatternStepEditorRow({
   }
 
   function saveEdit() {
+    setAttempt((n) => n + 1);
     const result = validateStepInstruction(draft);
     if (!result.ok) {
       setError(result.message);
@@ -91,15 +94,7 @@ export function PatternStepEditorRow({
             returnKeyType="done"
             value={draft}
           />
-          {error === undefined ? null : (
-            <Text
-              accessibilityLiveRegion="assertive"
-              accessibilityRole="alert"
-              className="text-label text-pinkStrong"
-            >
-              {error}
-            </Text>
-          )}
+          <CraftInlineError attempt={attempt} message={error} />
           <View className="flex-row gap-3">
             <CraftPressable
               accessibilityLabel={`Save step ${number}`}

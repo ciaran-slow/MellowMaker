@@ -13,7 +13,7 @@ import {
 import { timestampBadgeLabel } from '@/features/guides/presentation/guideStepLabels';
 import { useGuideStepPaste } from '@/features/guides/presentation/useGuideStepPaste';
 import { CraftAnnouncement } from '@/ui/accessibility/CraftAnnouncement';
-import { useAnnouncement } from '@/ui/accessibility/useAnnouncement';
+import { CraftInlineError } from '@/ui/accessibility/CraftInlineError';
 import { CraftPressable } from '@/ui/components/CraftPressable';
 import { CraftTextField } from '@/ui/components/CraftTextField';
 import tokens from '@/ui/theme/tokens.json';
@@ -39,14 +39,20 @@ type GuidePasteSectionProps = {
  */
 export function GuidePasteSection({ onAppend }: GuidePasteSectionProps) {
   const [raw, setRaw] = useState('');
+  // Bumped once per maker-initiated review, whatever the outcome, so a repeat
+  // of the same rejection is spoken again (issue #66).
+  const [attempt, setAttempt] = useState(0);
   const paste = useGuideStepPaste(onAppend);
   const { phase } = paste;
   const errorMessage =
     phase.kind === 'input' && phase.error !== undefined
       ? pasteRejectionMessage(phase.error)
       : undefined;
-  // The inline alert below is Android's path; iOS hears the same text here.
-  useAnnouncement(errorMessage);
+
+  function review() {
+    setAttempt((n) => n + 1);
+    paste.review(raw);
+  }
 
   function confirm() {
     paste.confirm();
@@ -83,22 +89,12 @@ export function GuidePasteSection({ onAppend }: GuidePasteSectionProps) {
             testID="guide-paste-field"
             value={raw}
           />
-          {errorMessage === undefined ? null : (
-            <Text
-              accessibilityLiveRegion="assertive"
-              accessibilityRole="alert"
-              className="text-label text-pinkStrong"
-            >
-              {errorMessage}
-            </Text>
-          )}
+          <CraftInlineError attempt={attempt} message={errorMessage} />
           <CraftPressable
             accessibilityLabel="Review pasted steps"
             className="items-center bg-tealStrong px-6 py-3"
             disabled={raw.trim() === ''}
-            onPress={() => {
-              paste.review(raw);
-            }}
+            onPress={review}
           >
             <Text className="text-label text-surface">Review pasted steps</Text>
           </CraftPressable>

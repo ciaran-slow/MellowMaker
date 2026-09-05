@@ -796,8 +796,9 @@ Shared primitives exist so a second copy of the same behaviour never appears:
 uses (`Screen` applies it to its `ScrollView`; a screen that owns a virtualized
 list applies it directly rather than nesting a `FlatList` in a `ScrollView`),
 `usePressScale` owns the reduced-motion-aware press feedback behind
-`CraftPressable` and `CraftTabBarButton`, and `CraftTextField` owns the one
-controlled input.
+`CraftPressable` and `CraftTabBarButton`, `CraftTextField` owns the one
+controlled input, and `CraftInlineError` owns the one inline validation error
+line.
 
 A screen reading local data presents four labelled states, as the stitch
 dictionary does: a `progressbar` while the first read runs, the loaded content,
@@ -984,6 +985,25 @@ Four conventions introduced by the accessibility pass (issue #14):
   `alert`/live-region markup stays as Android's path. The hook only ever
   announces text the maker can already see; it never synthesizes wording or
   logs anything (NFR-12).
+
+  `useAnnouncement(message, attempt)` takes a second, optional **attempt**
+  argument (issue #66): an **unchanged** message whose attempt advanced is
+  announced again. `attempt` defaults to `0` and never moves for a caller that
+  omits it, so every other call site is unchanged, and it is bumped only by
+  whoever owns a submit handler — never on an input change, a mount, or in an
+  effect. It stands between two scenarios: it **serves** the maker who taps the
+  same failing control twice, where the rejection is already on screen so
+  nothing changes and nothing would otherwise be spoken; and it **must not
+  break** the re-render the maker did not cause (a keystroke in a neighbouring
+  field), which leaves both message and attempt untouched and stays silent.
+  `CraftInlineError` is the primitive for an **inline validation error**, as
+  distinct from `CraftAnnouncement`'s persistent status line: it renders `null`
+  while the field is valid, and keys its alert `Text` on the attempt so React
+  remounts it — Android's re-speak path — while the component itself stays
+  mounted and the hook's memory survives. Its `nativeID` carries the same value
+  because a `key` is invisible to the test harness. Every inline rejection goes
+  through it; `tests/inlineErrorPrimitive.test.tsx` walks `src/` and bans a
+  second hand-rolled `<Text>` that is both an `alert` and a live region.
 - **Essential text never clamps.** Step instructions, notes, the counter value
   and controls, and error/empty bodies carry no `numberOfLines`, and nothing in
   `src/` sets `allowFontScaling={false}` or `maxFontSizeMultiplier`, so a large
@@ -1215,12 +1235,13 @@ the ledger tombstone surviving a pattern delete, `repositories` extends its
 reopen/delete round trip, and `offlineColdStart` seeds both content sets and works
 a bundled pattern with `fetch` stubbed to throw.
 
-Four walk-based guards under `tests/` pin repository-wide contracts rather than
+Five walk-based guards under `tests/` pin repository-wide contracts rather than
 one file's behaviour, all defaulting every `src/` file to "included" so a new
 file cannot escape them: `offlineColdStart` (no network seam in the core),
 `loggingHygiene` (no `console.*`), `accessibilityContrast` (no bright accent
-under text, every token pairing legible), and `textScaling` (no clamp outside
-list previews). `.maestro/accessibility.yaml` (`npm run test:smoke:accessibility`)
+under text, every token pairing legible), `textScaling` (no clamp outside
+list previews), and `inlineErrorPrimitive` (no hand-rolled inline alert line
+outside `CraftInlineError`, issue #66). `.maestro/accessibility.yaml` (`npm run test:smoke:accessibility`)
 asserts the inputs a screen reader relies on — unique accessible names, status in
 words, and the spoken counter text — because Maestro cannot drive VoiceOver or
 TalkBack; the screen-reader pass itself is manual (iOS VoiceOver on a physical

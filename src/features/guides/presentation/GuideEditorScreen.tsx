@@ -22,6 +22,7 @@ import {
   type GuideEditor,
 } from '@/features/guides/presentation/useGuideEditor';
 import { CraftAnnouncement } from '@/ui/accessibility/CraftAnnouncement';
+import { CraftInlineError } from '@/ui/accessibility/CraftInlineError';
 import { useAnnouncement } from '@/ui/accessibility/useAnnouncement';
 import { CraftCard } from '@/ui/components/CraftCard';
 import { CraftConfirmDialog } from '@/ui/components/CraftConfirmDialog';
@@ -342,11 +343,13 @@ function AddGuideStepField({ onAdd }: AddGuideStepFieldProps) {
   const [timestampError, setTimestampError] = useState<string | undefined>(
     undefined,
   );
-  // The inline alerts below are Android's path; iOS hears the same text here.
-  useAnnouncement(instructionError);
-  useAnnouncement(timestampError);
+  // Bumped once per maker-initiated submit, whatever the outcome, so a repeat
+  // of the same rejection is spoken again (issue #66). Both errors come from
+  // the same submit and share the one counter.
+  const [attempt, setAttempt] = useState(0);
 
   function submit() {
+    setAttempt((n) => n + 1);
     const instructionResult = validateGuideStepInstruction(instruction);
     const timestampResult = parseStepTimestamp(timestamp);
     setInstructionError(
@@ -392,15 +395,7 @@ function AddGuideStepField({ onAdd }: AddGuideStepFieldProps) {
         testID="guide-step-field"
         value={instruction}
       />
-      {instructionError === undefined ? null : (
-        <Text
-          accessibilityLiveRegion="assertive"
-          accessibilityRole="alert"
-          className="text-label text-pinkStrong"
-        >
-          {instructionError}
-        </Text>
-      )}
+      <CraftInlineError attempt={attempt} message={instructionError} />
       <CraftTextField
         accessibilityHint="Optional, like 0:45 or 1:05:20"
         accessibilityLabel="New step timestamp"
@@ -412,15 +407,7 @@ function AddGuideStepField({ onAdd }: AddGuideStepFieldProps) {
         testID="guide-step-timestamp-field"
         value={timestamp}
       />
-      {timestampError === undefined ? null : (
-        <Text
-          accessibilityLiveRegion="assertive"
-          accessibilityRole="alert"
-          className="text-label text-pinkStrong"
-        >
-          {timestampError}
-        </Text>
-      )}
+      <CraftInlineError attempt={attempt} message={timestampError} />
       <CraftTextField
         accessibilityLabel="New step transcript excerpt"
         autoCapitalize="sentences"

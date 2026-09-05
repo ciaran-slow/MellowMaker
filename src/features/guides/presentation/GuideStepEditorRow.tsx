@@ -14,7 +14,7 @@ import {
   editorStepAccessibilityLabel,
   timestampBadgeLabel,
 } from '@/features/guides/presentation/guideStepLabels';
-import { useAnnouncement } from '@/ui/accessibility/useAnnouncement';
+import { CraftInlineError } from '@/ui/accessibility/CraftInlineError';
 import { CraftPressable } from '@/ui/components/CraftPressable';
 import { CraftTextField } from '@/ui/components/CraftTextField';
 import tokens from '@/ui/theme/tokens.json';
@@ -73,9 +73,10 @@ export function GuideStepEditorRow({
   const [timestampError, setTimestampError] = useState<string | undefined>(
     undefined,
   );
-  // The inline alerts below are Android's path; iOS hears the same text here.
-  useAnnouncement(instructionError);
-  useAnnouncement(timestampError);
+  // Bumped once per maker-initiated save, whatever the outcome, so a repeat of
+  // the same rejection is spoken again (issue #66). `beginEdit` never bumps —
+  // it clears both errors.
+  const [attempt, setAttempt] = useState(0);
 
   function beginEdit() {
     setDraftInstruction(instruction);
@@ -90,6 +91,7 @@ export function GuideStepEditorRow({
   }
 
   function saveEdit() {
+    setAttempt((n) => n + 1);
     const instructionResult = validateGuideStepInstruction(draftInstruction);
     const timestampResult = parseStepTimestamp(draftTimestamp);
     setInstructionError(
@@ -173,15 +175,7 @@ export function GuideStepEditorRow({
             returnKeyType="done"
             value={draftInstruction}
           />
-          {instructionError === undefined ? null : (
-            <Text
-              accessibilityLiveRegion="assertive"
-              accessibilityRole="alert"
-              className="text-label text-pinkStrong"
-            >
-              {instructionError}
-            </Text>
-          )}
+          <CraftInlineError attempt={attempt} message={instructionError} />
           <CraftTextField
             accessibilityHint="Optional, like 0:45 or 1:05:20"
             accessibilityLabel={`Edit step ${number} timestamp`}
@@ -192,15 +186,7 @@ export function GuideStepEditorRow({
             returnKeyType="done"
             value={draftTimestamp}
           />
-          {timestampError === undefined ? null : (
-            <Text
-              accessibilityLiveRegion="assertive"
-              accessibilityRole="alert"
-              className="text-label text-pinkStrong"
-            >
-              {timestampError}
-            </Text>
-          )}
+          <CraftInlineError attempt={attempt} message={timestampError} />
           <CraftTextField
             accessibilityLabel={`Edit step ${number} transcript excerpt`}
             autoCapitalize="sentences"
