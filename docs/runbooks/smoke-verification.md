@@ -45,7 +45,8 @@ installed at any time — but expect these:
   custom native code. A build stage cannot drive it, and cannot operate
   VoiceOver/Dynamic Type on it; those passes are **product-owner-run**, scripted
   as an issue comment (see #14's "iOS VoiceOver pass — product-owner run"), or
-  deferred to #16 by an explicit owner decision and logged in the table below.
+  deferred to #16 by an explicit owner decision and logged in the per-issue file
+  described in §2.1 and §3.
 - A flow needing a **new native module** additionally needs a fresh dev/EAS
   build, which the physical-device Expo Go surface cannot supply (see the #11
   row).
@@ -72,7 +73,44 @@ verify):
 > build in this environment (`xcrun simctl list devices booted` empty). Logic and
 > navigation covered by the Jest/router suites; criteria requiring on-device
 > behavior (list them) are provisionally verified pending an on-device smoke,
-> logged in `docs/runbooks/smoke-verification.md`.
+> logged in `docs/runbooks/deferred-smokes/NNN-issue-<n>.md`.
+
+Name the per-issue file, not this runbook: the ledger stopped being a table here
+in #57 (§3), and a disclosure that points at `smoke-verification.md` sends a
+reader to a file that no longer holds the entry.
+
+## 2.1 When a provisional acceptance criterion may merge
+
+"Provisionally met" is a real merge state in this repository, not a hedge, and it
+has been used deliberately — #14's iOS VoiceOver pass, #46's fps cascade,
+Reduce-Motion relaunch, and airplane-mode render. Because it lets an unmet half of
+an AC through a merge gate, the conditions are fixed. **All five must hold:**
+
+1. **The half that ran is named and green** — the specific Jest/router suites
+   accepted as the logic proxy, listed by name, not "the suite passes".
+2. **The half that did not run is logged** as a `Status: Open` per-issue file
+   under `docs/runbooks/deferred-smokes/` (§3), carrying the **exact steps and the
+   exact threshold** the device run must clear, so #16 can execute it without
+   reconstructing them from a merged PR.
+3. **The product owner has posted the deferral as a comment on the issue**, in
+   the form `docs/runbooks/decision-issues.md` §2 defines, before the stage that
+   relies on it acts. Neither the build nor the verify stage may grant itself the
+   deferral: the build must not assert it, and verify must not invent it. Verify
+   links that comment by URL in the AC row.
+4. **Nothing is upgraded in the wording.** The AC reads "provisionally met —
+   `<the deferred half>` deferred to #16 by owner decision `<link>`", in the PR
+   body, in the review, and in any doc that records the outcome. Never plain
+   "met". A recommendation resting on a deferred input is likewise **provisional**
+   and says what it is contingent on.
+5. **No number is invented for the deferred measurement.** An unmeasured
+   threshold is recorded as **UNMEASURED**, never "roughly met", "expected to
+   pass", or a figure carried over from a similar change.
+
+If any of the five is missing, the criterion is **unmet**, and the PR does not
+merge on it. Two things this state is explicitly *not*: it is not a way to defer a
+measurement the environment **could** have taken (§1 — measure it), and it is not
+a way to retire a criterion. Retiring one is an owner decision in its own right,
+posted on the issue with its reason, as #46's threshold (3) was.
 
 ## 3. Log the deferred smoke (mandatory)
 

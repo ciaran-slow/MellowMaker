@@ -26,6 +26,19 @@ const { execFileSync } = require('node:child_process');
 const REPO = 'ciaran-slow/MellowMaker';
 const STAGES = ['plan', 'build', 'verify'];
 
+/**
+ * Stages that may declare provenance but are not required to have posted an
+ * artifact. `retro` closes the cycle *after* the PR merges, and it sometimes has
+ * to post on the issue itself — #46's AC5 said the go/no-go had to be "posted on
+ * the issue", and the retro was the stage that put it there. Such a comment must
+ * be able to say which stage wrote it; without this the script would read
+ * `stage: retro` as an unrecognised stage and report the retro's own honesty as
+ * a problem. It is not added to STAGES because a cycle mid-flight has no retro
+ * yet, and a missing one is not an independence defect.
+ */
+const OPTIONAL_STAGES = ['retro'];
+const KNOWN_STAGES = [...STAGES, ...OPTIONAL_STAGES];
+
 /** The decision-issue names carry the same independence obligation, so they
  * resolve onto the canonical stage rather than getting a second script. */
 const STAGE_ALIASES = { frame: 'plan', record: 'build' };
@@ -113,7 +126,7 @@ function evaluate(blocks) {
   for (const block of blocks) {
     const declared = (block.fields.stage ?? '').toLowerCase();
     const stage = STAGE_ALIASES[declared] ?? declared;
-    if (!STAGES.includes(stage)) {
+    if (!KNOWN_STAGES.includes(stage)) {
       problems.push(
         `${block.source}: provenance block has no recognised \`stage\` (got "${block.fields.stage ?? ''}")`,
       );
@@ -193,4 +206,11 @@ if (require.main === module) {
   main();
 }
 
-module.exports = { parseBlocks, evaluate, STAGES, STAGE_ALIASES };
+module.exports = {
+  parseBlocks,
+  evaluate,
+  STAGES,
+  OPTIONAL_STAGES,
+  KNOWN_STAGES,
+  STAGE_ALIASES,
+};

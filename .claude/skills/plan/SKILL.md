@@ -357,6 +357,60 @@ occupy ("every string literal in the file"), or enumerate the carriers
 explicitly, and name a falsifier fixture **per carrier** rather than one for the
 attribute form.
 
+### 6.1 Pre-registering a spike's go/no-go thresholds
+
+A spike exists to produce numbers, and pre-registering its thresholds before any
+number exists is what stops the recommendation being fitted to the result. #46
+did pre-register all four, which is why the two defects below were visible at all
+rather than silently absorbed. Both are planning defects, and both are cheap to
+avoid.
+
+**A threshold must name its measurement, not only its number.** "The one-time
+`react-native-svg` bundle delta ≤ 150 KB" pins a budget and pins nothing else: it
+never said *raw or compressed*, and #46's measured delta was **180,981 B raw**
+(missed by ~31 kB) and **65,145 B gzip** (met at 43% of budget). The verdict
+flipped on a word the plan never wrote, so the reading had to be chosen with the
+answer already on screen — exactly the reverse-fitting the pre-registration
+existed to prevent. The build refused to pick and escalated, the owner chose gzip
+with a stated reason, and the record says plainly that the reading was post-hoc;
+that is the correct recovery, but the plan should never have needed it. Every
+registered threshold names, before any number exists:
+
+- the **quantity and its unit** — raw bytes or gzip bytes, minimum fps or mean
+  fps, wall-clock minutes or something else;
+- **exactly which artifact is measured** — which files, which directory, which
+  build output (`_expo/static/js/ios/*`, not "the bundle");
+- the **command that produces it**, runnable as written;
+- the **comparison direction** and what a miss routes to.
+
+If both readings are genuinely interesting, register **both with their own
+budgets**, or register one as the criterion and say the other is reported as
+context. What is not allowed is one number with two possible units.
+
+**Do not register a threshold nobody in the pipeline can honestly measure.**
+#46's threshold (3) was "median authoring time ≤ 30 minutes per step", and plan
+§6.8 asked the **build agent** to log wall-clock minutes per step. The build kept
+no clock, correctly declined to fabricate one, and argued that an agent's
+wall-clock does not predict a human's anyway; the owner then retired the
+threshold outright, on the grounds that paths are authored by agents in practice
+so a human authoring clock never described the real cost. The threshold was
+unmeasurable from the day it was written. Before registering one, name **which
+stage measures it with which command**:
+
+- a stage-run agent has **no human authoring clock**, no device frame counter, no
+  simulator, and no Maestro (`docs/runbooks/smoke-verification.md` §1);
+- a measurement whose only answer is "the owner, on the phone" is an **owner-run
+  measurement**: register it with its exact steps and threshold so it lands in
+  the deferred-smokes entry, not as a build deliverable;
+- if no stage and no owner run can produce it, **delete the threshold** rather
+  than shipping a criterion that can only be fabricated or retired.
+
+Self-effort estimates are the recurring case here. An agent asked to time its own
+work either invents a number or reports one that predicts nothing about the human
+cost the threshold was written to bound; neither is evidence. Estimate authoring
+or rollout cost from an artifact instead — bytes of authored source per stitch,
+count of distinct path strings, diff size — which a later stage can re-measure.
+
 ## 7. Post and confirm
 
 Write the plan to a temporary file, compare it once against every acceptance

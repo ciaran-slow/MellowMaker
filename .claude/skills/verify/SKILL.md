@@ -126,6 +126,16 @@ behavior (app restart/relaunch, hardware back, real gestures) as only
 `docs/runbooks/deferred-smokes/NNN-issue-<n>.md` entry for the flow. A deferral
 the build did not log is a finding.
 
+**"Provisionally met" is a gated merge state, so check its five conditions
+literally** — `docs/runbooks/smoke-verification.md` §2.1: the proxy half named and
+green; the deferred half logged with its exact steps and threshold; an
+**owner-decision comment posted on the issue** granting the deferral, which you
+link by URL in the AC row (you may not grant it yourself, and neither may the
+build); no wording upgraded to plain "met" anywhere; and no invented number for
+the unmeasured half. If any is missing, the criterion is **unmet** and the verdict
+is not ready to merge. Write the phrase the same way every time so the state stays
+searchable rather than being re-improvised per review.
+
 When a review derives a **platform-specific failure scenario it cannot run**
 (the #43 Android `removeClippedSubviews`/WebView case is the template: read off
 a framework default, plausible, never observed), do not prescribe a prop change

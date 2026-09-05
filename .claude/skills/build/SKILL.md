@@ -329,9 +329,60 @@ Derive the exact gates from `package.json`, the active package manager
 lockfile, repository docs, and `.github/workflows/`. Do not invent a fixed
 four-command gate from another repository.
 
+### 7.1 Dependencies under the shared-install convention
+
+**`node_modules` is a symlink, and `npm install` silently replaces it.** Every
+worktree's `node_modules` is a symlink to the primary checkout's single shared
+install. `npm install` and `npm ci` do not follow that symlink and do not error:
+they **delete it and write a private full install in its place** — ~624 MB, and
+#46's first build run did exactly this. Nothing fails, the gates go green, and
+the only visible trace is a `node_modules` that is a directory instead of a link.
+
+So the generic gate "install dependencies with the lockfile's package manager"
+does **not** apply in a worktree here. Instead:
+
+1. **Never run bare `npm install` / `npm ci` / `npx expo install` in a worktree**,
+   and never delete `node_modules`. Check with `ls -ld node_modules` — it must
+   print a symlink (`l` in the first column). If it is a real directory, the
+   install went to the wrong place: remove that directory (only inside your own
+   worktree) and restore the link with
+   `ln -s <primary-checkout>/node_modules node_modules`.
+2. **To add a dependency, write the manifests from the worktree without touching
+   `node_modules`:**
+
+   ```sh
+   npm install <pkg>@<exact-version> --save-exact --package-lock-only
+   ```
+
+   `--package-lock-only` updates `package.json` and `package-lock.json` and
+   installs nothing. Pin the exact version, with no `^`: for an Expo-bundled
+   native module read the version out of
+   `node_modules/expo/bundledNativeModules.json` rather than letting
+   `npx expo install` resolve it, which is the same answer without the install.
+3. **Populate the shared install once, from the primary checkout, with
+   `--no-save`:**
+
+   ```sh
+   npm install <pkg>@<exact-version> --no-save   # run in the primary checkout
+   ```
+
+   `--no-save` leaves the shared checkout's `package.json`/`package-lock.json`
+   untouched — the pin lives in your branch, not in someone else's working tree —
+   while making the package importable from every worktree that links to that
+   `node_modules`, so lint, typecheck, and Jest can run against it.
+4. **Commit only `package.json` and `package-lock.json`.** Confirm the lockfile
+   diff is additions-only (the package plus its transitives) and that
+   `npm ls <pkg>` reports the exact pinned version. Never commit `node_modules`.
+5. **Record the install route in the PR body's deviations** when the plan named
+   `npx expo install`, and state the resulting literal pin, as #46 did.
+
+If a dependency genuinely cannot be exercised without a full reinstall, stop and
+say so rather than reinstalling into a worktree: the shared install is used by
+every other checkout and every parallel stage on this machine.
+
 Run:
 
-1. dependency installation using the lockfile's package manager;
+1. dependency installation — **under §7.1 above**, not a bare `npm ci`;
 2. every CI-equivalent lint, formatting, typecheck, unit/integration, and
    coverage command;
 3. Expo config/health or EAS checks required by repository scripts/CI;
@@ -394,6 +445,17 @@ gh pr create --repo "$REPO" \
   --title "<issue title>" \
   --body-file <pr-body-file>
 ```
+
+**An acceptance criterion that names *where* an artifact goes is a location
+contract, and the PR body is not that location.** #46's AC5 read "spike numbers
+… **posted on the issue** with a go/no-go recommendation". The numbers were
+posted on #46, but the one-line recommendation existed only in the PR body and
+`docs/architecture.md` §16 — so whoever opens the follow-up rollout issue from
+#46 alone finds no recommendation, and verify had to raise it as a finding. When
+an AC says *posted on the issue*, *recorded in `<doc>`*, or *added to `<ledger>`*,
+put the artifact there literally, in that place, before calling the AC met; the
+PR body may repeat it, never substitute for it. Quote the artifact's own wording
+when you copy it across so the two records cannot drift.
 
 The PR body must include:
 
