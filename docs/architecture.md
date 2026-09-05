@@ -650,18 +650,78 @@ maker content and is never logged and never placed in an error message body
   presented as fetched or as "the transcript we retrieved". `GuideMetadata`
   structurally keeps no transcript field, so neither can be claimed.
 
-**No dependency and no migration.** Schema version 1 already carries
-`guide_step.video_offset_ms`, `transcript_excerpt`, `note`, `origin`, and
-`user_modified_at`; `LATEST_SCHEMA_VERSION` stays `1` and `package.json` gains
-nothing.
+**No dependency and no migration.** The `guide_step` table has carried
+`video_offset_ms`, `transcript_excerpt`, `note`, `origin`, and `user_modified_at`
+since schema version 1, so #50 added no migration and no dependency:
+`LATEST_SCHEMA_VERSION` is unchanged (it is `2` since #44's `pattern.origin`,
+which post-dates the wording this paragraph originally carried), `MIGRATIONS`
+gains no entry, and `dependencies`, `devDependencies`, and `package-lock.json`
+are byte-identical. The one `package.json` edit is the smoke script
+`test:smoke:guides:paste`, which the acceptance criteria themselves require.
 
-**Two contract gaps #50 must close**, carried onto that issue: `addGuideStep`
-hard-codes `origin: 'user'` and `saveImportedGuide` — the only path that can write
-`origin: 'import'` — is only ever called with `steps: []`, so appending parsed
-steps needs a new bulk repository method writing `origin: 'import'` in one
-transaction; and `normalizeYoutubeUrl` parses `startSeconds` from `t`/`start` and
-documents it as deliberately unconsumed, which `useGuideImport` drops on the
-floor — whether a pasted `?t=` seeds a first step is for #50's plan to settle.
+**How #50 implemented it.**
+
+- `src/domain/guides/pastedGuideSteps.ts` exposes one pure entry point,
+  `parsePastedGuideSteps(raw)`, returning either `{ ok: true, source, steps }` or
+  `{ ok: false, reason }` over the reason codes `empty`, `too-long`,
+  `no-timestamps`, `no-step-text`, `too-many-steps`. Presentation owns the copy
+  for each reason, and no message interpolates any of the maker's text (NFR-12).
+- **The classifier's discriminator is the ten-second gap, not YouTube's full
+  chapter rule.** `source = 'chapters'` iff there are at least **two** labelled
+  entries, strictly ascending, with every consecutive gap at least ten seconds;
+  otherwise `cues`. The other two halves of YouTube's rule — first timestamp
+  `00:00`, at least three timestamps — govern whether YouTube *renders* chapters,
+  not what text a maker may select, and the realistic phone gesture is a partial
+  selection of the description. Requiring `00:00` would push a clean chapter list
+  grabbed from the middle into the cue path, where its labels would come back
+  merged and duplicated into an excerpt.
+- **Four bounds, all module-private** so a test cannot derive its fixture from the
+  constant it pins: a 100 000-character input cap checked *before* any scanning, a
+  200-step output cap that **refuses rather than truncates**, the ten-second
+  chapter minimum, and a 30 000 ms cue merge window. A merged cue block carries
+  the **first** cue's offset, and a run breaks on a blank line, on a
+  non-ascending offset, or once the window is reached.
+- Only **colon-separated** time codes are recognized as a line-leading timestamp,
+  even though `parseStepTimestamp` also accepts bare seconds: `6 double crochets`
+  is prose, and reading it as 0:06 would fabricate a step out of a stitch count.
+  This narrows the *recognizer*, not the grammar — `parseStepTimestamp` stays the
+  one converter, so "no second time grammar" holds. A line whose time code will
+  not parse is skipped **whole**, so its text is never attributed to a neighbour,
+  and an all-malformed paste is rejected rather than silently succeeding.
+- `transcript_excerpt` is written on the **cue path only**, where it holds the
+  same joined text as the instruction so a maker can rewrite the instruction
+  without losing the words they pasted. A chapter label is an instruction, not a
+  transcript, and copying it into both columns would make the column meaningless.
+- The paste surface lives on the **guide editor**, not the import screen: every
+  criterion constraining it presupposes an existing guide with existing steps.
+  Import still writes `steps: []`.
+
+**Contract gap 1 — closed.** `addGuideStep` still hard-codes `origin: 'user'`
+(correct for hand-typed steps). Parsed steps go through
+`GuideRepository.appendImportedGuideSteps(guideId, steps)`, which writes them at
+`position = current count + index` with `origin = 'import'` and
+`completed_at`/`user_modified_at` `NULL`, then touches the guide, all in **one
+transaction** — so a throw part-way through leaves no partial step list and
+`UNIQUE (guide_id, position)` can never be straddled. It takes
+`GuideStepAuthoringInput[]`, **not** `GuideStepInput[]`: the authoring shape
+carries no `origin`, so the method owns it and a caller writing `'user'` for
+imported text is unrepresentable rather than merely untested. An empty list
+writes nothing and does not touch the guide. **The same paste applied twice
+appends a second copy** — it is neither refused nor deduplicated, because the
+repository has no notion of paste identity and text-equality dedup would wrongly
+suppress a legitimately repeated instruction; a duplicate is visible in the review
+list before the write and deletable after it, whereas a silently swallowed step is
+neither.
+
+**Contract gap 2 — settled: a pasted `?t=` seeds no step.** A `guide_step` needs a
+non-empty `instruction` and `?t=` carries no text, so seeding one would require the
+app to author words the maker never typed or pasted — against `docs/vision.md`
+§3C's "Maker-Supplied Sources" and this feature's own "keep only the text that
+becomes a step". `startSeconds` **stays** on `NormalizeYoutubeUrlResult` (removing
+it would churn #9's recorded contract for nothing) and is documented there as
+deliberately unconsumed for that reason. Both branches are pinned by test: the
+import writes `steps: []`, and the maker can still put a step at that time by hand
+or by paste.
 
 **Model-assisted (LLM) step cleanup is deferred, with no backend in this cycle.**
 Three shapes were assessed and none is adopted for PRD0:

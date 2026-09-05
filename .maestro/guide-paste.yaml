@@ -1,0 +1,81 @@
+appId: ${APP_ID}
+---
+# Maker-pasted YouTube chapters become guide steps (issue #50; FR-GU-09,
+# FR-GU-01/02/03/08, FR-YT-06/08, NFR-01/09/12/13). Reuses guide-authoring.yaml's
+# offline manual-import preamble verbatim so the guide is deterministically
+# "Amigurumi Basics" with no steps, then pastes a chapter block, discards it,
+# pastes again, confirms, seeks from the working view, and restarts.
+#
+# NEVER RUN: this machine has no JDK, no Android SDK, and no iOS simulator
+# runtime (docs/runbooks/smoke-verification.md §1), so every selector below was
+# written blind against the label helpers. See §4 there before editing one.
+- launchApp:
+    clearState: true
+- tapOn: "Guides"
+- assertVisible: "No guides yet"
+
+# Import a supported link manually while offline (metadata unavailable path).
+- tapOn: "Import from YouTube"
+- tapOn:
+    id: "guide-url-field"
+- inputText: "https://youtu.be/dQw4w9WgXcQ"
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - setAirplaneMode: enabled
+- tapOn: "Look up video"
+- assertVisible: "you can still create this guide"
+- tapOn:
+    id: "guide-title-field"
+- inputText: "Amigurumi Basics"
+- tapOn: "Create guide"
+- assertVisible: "Amigurumi Basics"
+
+# Reach the editor, where the paste surface sits between the step rows and the
+# hand-typed "Add a step" field.
+- tapOn: "Edit guide"
+- assertVisible: "Edit guide"
+
+# Leg 1 — review then DISCARD: reaching review writes nothing.
+- tapOn:
+    id: "guide-paste-field"
+- inputText: "0:00 Materials\n1:12 Magic ring\n2:40 Round 1\n5:03 Fasten off"
+- tapOn: "Review pasted steps"
+- assertVisible: "4 steps ready to review from your paste."
+- tapOn: "Discard pasted steps"
+# A POSITIVE assertion of the empty state, deliberately. `assertNotVisible:
+# "Materials"` would pass vacuously: a saved step row's accessible name is the
+# merged "Step 1 of 4 at 0:00: Materials", never the bare instruction, so a
+# whole-string selector for "Materials" could never match either way
+# (docs/runbooks/smoke-verification.md §4). This string is the editor's own
+# empty-state copy and is metacharacter-free.
+- assertVisible: "No steps yet. Add the first one below."
+
+# Leg 2 — paste again and CONFIRM: the four steps land on the guide.
+- tapOn:
+    id: "guide-paste-field"
+- inputText: "0:00 Materials\n1:12 Magic ring\n2:40 Round 1\n5:03 Fasten off"
+- tapOn: "Review pasted steps"
+- assertVisible: "4 steps ready to review from your paste."
+- tapOn: "Add 4 steps"
+# The exact editorStepAccessibilityLabel output, metacharacter-free.
+- assertVisible: "Step 1 of 4 at 0:00: Materials"
+- assertVisible: "Step 4 of 4 at 5:03: Fasten off"
+
+# Leg 3 — the working view shows the same steps and the badge is a seek button.
+- tapOn: "Back to guide"
+- assertVisible: "Step 1 of 4 at 0:00, to do: Materials"
+- tapOn: "Video timestamp 1:12"
+
+# Leg 4 — restart, still offline: the appended steps and offsets persist.
+- launchApp:
+    clearState: false
+- tapOn: "Guides"
+- tapOn: "Amigurumi Basics"
+- assertVisible: "Step 4 of 4 at 5:03, to do: Fasten off"
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - setAirplaneMode: disabled

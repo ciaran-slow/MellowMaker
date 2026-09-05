@@ -221,6 +221,194 @@ describe('GuideRepository additions', () => {
     });
   });
 
+  describe('appendImportedGuideSteps (issue #50)', () => {
+    function newGuide(videoId = 'dQw4w9WgXcQ') {
+      return guides.saveImportedGuide(baseGuide(videoId, 'Amigurumi Basics'))
+        .guide.id;
+    }
+
+    const PARSED = [
+      { instruction: 'Materials', videoOffsetMs: 0 },
+      {
+        instruction: 'Magic ring',
+        videoOffsetMs: 72000,
+        transcriptExcerpt: 'Magic ring',
+      },
+      { instruction: 'Round 1', videoOffsetMs: 160000 },
+    ] as const;
+
+    it('appends in order at position = count + index with origin import', () => {
+      const guideId = newGuide();
+
+      const returned = guides.appendImportedGuideSteps(guideId, PARSED);
+
+      const steps = returned.steps;
+      expect(steps.map((step) => step.instruction)).toStrictEqual([
+        'Materials',
+        'Magic ring',
+        'Round 1',
+      ]);
+      expect(steps.map((step) => step.position)).toStrictEqual([0, 1, 2]);
+      expect(steps.map((step) => step.origin)).toStrictEqual([
+        'import',
+        'import',
+        'import',
+      ]);
+      expect(steps.map((step) => step.videoOffsetMs)).toStrictEqual([
+        0, 72000, 160000,
+      ]);
+      expect(steps.map((step) => step.transcriptExcerpt)).toStrictEqual([
+        undefined,
+        'Magic ring',
+        undefined,
+      ]);
+      // Imported steps arrive untouched and uncompleted.
+      expect(steps.every((step) => step.completedAt === undefined)).toBe(true);
+      expect(steps.every((step) => step.userModifiedAt === undefined)).toBe(true);
+    });
+
+    it('appends after maker-typed steps without disturbing any of them', () => {
+      const guideId = newGuide();
+      const a = guides.addGuideStep(guideId, {
+        instruction: 'Typed A',
+        videoOffsetMs: 1000,
+      });
+      const b = guides.addGuideStep(guideId, { instruction: 'Typed B' });
+      guides.setGuideStepCompleted(a.id, true);
+      guides.updateGuideStep(b.id, { instruction: 'Typed B edited' });
+
+      const before = guides.getGuideWithSteps(guideId)?.steps ?? [];
+
+      guides.appendImportedGuideSteps(guideId, PARSED);
+
+      const after = guides.getGuideWithSteps(guideId)?.steps ?? [];
+      expect(after.map((step) => step.position)).toStrictEqual([0, 1, 2, 3, 4]);
+      // The two originals keep every field the maker owns.
+      for (const original of before) {
+        const kept = after.find((step) => step.id === original.id);
+        expect(kept?.instruction).toBe(original.instruction);
+        expect(kept?.origin).toBe('user');
+        expect(kept?.userModifiedAt).toBe(original.userModifiedAt);
+        expect(kept?.completedAt).toBe(original.completedAt);
+      }
+      expect(after.slice(0, 2).map((step) => step.instruction)).toStrictEqual([
+        'Typed A',
+        'Typed B edited',
+      ]);
+      expect(
+        after.slice(2).map((step) => [step.position, step.origin]),
+      ).toStrictEqual([
+        [2, 'import'],
+        [3, 'import'],
+        [4, 'import'],
+      ]);
+    });
+
+    it('appends a second copy when the same paste is applied twice', () => {
+      const guideId = newGuide();
+
+      guides.appendImportedGuideSteps(guideId, PARSED);
+      guides.appendImportedGuideSteps(guideId, PARSED);
+
+      const steps = guides.getGuideWithSteps(guideId)?.steps ?? [];
+      // An append, not an absolute set: the repeat duplicates rather than
+      // deduplicating (a repeated instruction is ordinary in a pattern) and the
+      // positions stay contiguous, so nothing is corrupted.
+      expect(steps.map((step) => step.instruction)).toStrictEqual([
+        'Materials',
+        'Magic ring',
+        'Round 1',
+        'Materials',
+        'Magic ring',
+        'Round 1',
+      ]);
+      expect(steps.map((step) => step.position)).toStrictEqual([
+        0, 1, 2, 3, 4, 5,
+      ]);
+      expect(steps.every((step) => step.origin === 'import')).toBe(true);
+    });
+
+    it('writes nothing and does not touch the guide for an empty list', () => {
+      const guideId = newGuide();
+      guides.addGuideStep(guideId, { instruction: 'Typed A' });
+      const before = guides.getGuideWithSteps(guideId)?.guide.updatedAt;
+
+      const returned = guides.appendImportedGuideSteps(guideId, []);
+
+      expect(returned.steps).toHaveLength(1);
+      expect(returned.guide.updatedAt).toBe(before);
+      expect(guides.getGuideWithSteps(guideId)?.guide.updatedAt).toBe(before);
+    });
+
+    it('touches the guide for a non-empty append', () => {
+      const guideId = newGuide();
+      const before = guides.getGuideWithSteps(guideId)?.guide.updatedAt;
+
+      guides.appendImportedGuideSteps(guideId, PARSED);
+
+      // Without this the empty-list case above would pass vacuously.
+      expect(guides.getGuideWithSteps(guideId)?.guide.updatedAt).not.toBe(before);
+    });
+
+    it('keeps origin import when the maker later edits an imported step', () => {
+      const guideId = newGuide();
+      const appended = guides.appendImportedGuideSteps(guideId, [
+        { instruction: 'Materials', videoOffsetMs: 0 },
+      ]);
+      const stepId = appended.steps[0]?.id ?? '';
+
+      guides.updateGuideStep(stepId, { instruction: 'Materials, my way' });
+
+      const edited = guides.getGuideWithSteps(guideId)?.steps[0];
+      expect(edited?.instruction).toBe('Materials, my way');
+      // Provenance survives the edit; the edit is stamped.
+      expect(edited?.origin).toBe('import');
+      expect(edited?.userModifiedAt).toEqual(expect.any(Number));
+    });
+
+    it('survives a reopen with order, offsets, excerpts, and origin intact', () => {
+      const guideId = newGuide();
+      guides.appendImportedGuideSteps(guideId, PARSED);
+
+      const reopened = createRepositories({
+        connection: database.connection,
+        now: database.now,
+        newId: database.newId,
+      });
+
+      const steps = reopened.guides.getGuideWithSteps(guideId)?.steps ?? [];
+      expect(
+        steps.map((step) => [
+          step.instruction,
+          step.videoOffsetMs,
+          step.transcriptExcerpt,
+          step.origin,
+        ]),
+      ).toStrictEqual([
+        ['Materials', 0, undefined, 'import'],
+        ['Magic ring', 72000, 'Magic ring', 'import'],
+        ['Round 1', 160000, undefined, 'import'],
+      ]);
+    });
+
+    it('rolls the whole batch back when one step violates a CHECK', () => {
+      const guideId = newGuide();
+      guides.addGuideStep(guideId, { instruction: 'Typed A' });
+
+      expect(() =>
+        guides.appendImportedGuideSteps(guideId, [
+          { instruction: 'Good' },
+          // The video_offset_ms CHECK forbids a negative offset.
+          { instruction: 'Bad', videoOffsetMs: -1 },
+        ]),
+      ).toThrow();
+
+      // No partial batch landed: the one maker-typed step is all that remains.
+      const steps = guides.getGuideWithSteps(guideId)?.steps ?? [];
+      expect(steps.map((step) => step.instruction)).toStrictEqual(['Typed A']);
+    });
+  });
+
   describe('updateGuideDetails', () => {
     it('rewrites the maker title and notes and can clear notes', () => {
       const saved = guides.saveImportedGuide({

@@ -207,4 +207,70 @@ describe('GuideImportScreen', () => {
       params: { guideId: existing.guide.id },
     });
   });
+
+  describe('a pasted ?t= start time seeds no step (issue #50, contract gap 2)', () => {
+    it('imports with steps: [] and never authors a step the maker did not write', async () => {
+      const gateway = fakeGateway(OK_RESULT);
+      const saveSpy = jest.spyOn(repositories.guides, 'saveImportedGuide');
+      await render(tree(repositories, gateway));
+
+      await fireEvent.changeText(
+        screen.getByLabelText('YouTube link'),
+        'https://youtu.be/dQw4w9WgXcQ?t=42',
+      );
+      await fireEvent.press(
+        screen.getByRole('button', { name: 'Look up video' }),
+      );
+      await screen.findByLabelText('Guide title');
+      await fireEvent.press(
+        screen.getByRole('button', { name: 'Create guide' }),
+      );
+
+      // `startSeconds` is parsed by `normalizeYoutubeUrl` and deliberately not
+      // consumed: a step needs a non-empty instruction, and `?t=` carries no
+      // text, so seeding one would make the app author words the maker never
+      // typed or pasted.
+      expect(saveSpy).toHaveBeenCalledTimes(1);
+      const argument = saveSpy.mock.calls[0]?.[0];
+      expect(argument?.steps).toStrictEqual([]);
+      expect(argument?.guide.videoId).toBe('dQw4w9WgXcQ');
+      // The timestamp is dropped from identity too.
+      expect(argument?.guide.sourceUrl).toBe(
+        'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
+      );
+
+      const saved = repositories.guides.findGuideByVideoId('dQw4w9WgXcQ');
+      expect(saved?.steps).toStrictEqual([]);
+    });
+
+    it('still lets the maker put a step at that time by hand or by paste', async () => {
+      // The scenario the settlement must not break: refusing to auto-seed takes
+      // nothing away — the maker reaches 0:42 by typing it, and a pasted
+      // chapter list still lands its own offsets.
+      const guideId = repositories.guides.saveImportedGuide({
+        guide: {
+          videoId: 'dQw4w9WgXcQ',
+          sourceUrl: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
+          title: 'Amigurumi Basics',
+        },
+        steps: [],
+      }).guide.id;
+
+      repositories.guides.addGuideStep(guideId, {
+        instruction: 'Start here',
+        videoOffsetMs: 42000,
+      });
+      repositories.guides.appendImportedGuideSteps(guideId, [
+        { instruction: 'Materials', videoOffsetMs: 0 },
+      ]);
+
+      const steps = repositories.guides.getGuideWithSteps(guideId)?.steps ?? [];
+      expect(
+        steps.map((step) => [step.videoOffsetMs, step.origin]),
+      ).toStrictEqual([
+        [42000, 'user'],
+        [0, 'import'],
+      ]);
+    });
+  });
 });

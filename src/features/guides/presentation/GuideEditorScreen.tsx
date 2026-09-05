@@ -15,6 +15,7 @@ import {
   parseStepTimestamp,
   validateGuideStepInstruction,
 } from '@/domain/guides/guideStepDraft';
+import { GuidePasteSection } from '@/features/guides/presentation/GuidePasteSection';
 import { GuideStepEditorRow } from '@/features/guides/presentation/GuideStepEditorRow';
 import {
   useGuideEditor,
@@ -320,6 +321,7 @@ function GuideStepsSection({ editor, steps }: GuideStepsSectionProps) {
           />
         ))
       )}
+      <GuidePasteSection onAppend={editor.appendImportedSteps} />
       <AddGuideStepField onAdd={editor.addStep} />
     </View>
   );

@@ -29,8 +29,14 @@ export type NormalizeYoutubeUrlResult =
       /** Always `https://www.youtube.com/watch?v=<videoId>`. */
       readonly canonicalUrl: string;
       /**
-       * Integer seconds parsed from `t`/`start`, when present. Not part of
-       * identity; #9 does not consume it (step seeding is #10).
+       * Integer seconds parsed from `t`/`start`, when present. Never part of
+       * identity, and **deliberately unconsumed**: issue #50 settled that a
+       * pasted `?t=` seeds no step. A `guide_step` needs a non-empty
+       * instruction and `?t=` carries no text, so seeding one would make the app
+       * author words the maker never typed or pasted — against `docs/vision.md`
+       * §3C's maker-supplied-sources stance. The field stays on the result
+       * because the parse is part of #9's recorded contract; a maker who wants a
+       * step at that time types or pastes one.
        */
       readonly startSeconds: number | undefined;
     }
