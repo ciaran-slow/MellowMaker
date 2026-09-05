@@ -160,6 +160,30 @@ describe('SaveGuideAsPatternScreen', () => {
     );
   });
 
+  it('reads the guide exactly once per focus', async () => {
+    // The re-read is bounded work: one focus, one read. Nothing in the change
+    // may turn returning to a still-mounted review into repeated reads.
+    const guideId = seedGuide(['Magic ring']);
+    const getGuideWithSteps = jest
+      .fn()
+      .mockImplementation((id: string) =>
+        repositories.guides.getGuideWithSteps(id),
+      );
+    const counted: Repositories = {
+      ...repositories,
+      guides: { ...repositories.guides, getGuideWithSteps },
+    };
+
+    await render(tree(counted, guideId));
+    await screen.findByText('1 step will be copied into your new pattern');
+    expect(getGuideWithSteps).toHaveBeenCalledTimes(1);
+
+    await refocus();
+
+    await screen.findByText('1 step will be copied into your new pattern');
+    expect(getGuideWithSteps).toHaveBeenCalledTimes(2);
+  });
+
   it('re-seeds the title from a guide retitled between visits', async () => {
     const guideId = seedGuide(['Magic ring', 'Chain 12']);
     await render(tree(repositories, guideId));
