@@ -826,8 +826,11 @@ instead of arithmetically unlikely. The pattern viewer **gave up** its
 header-aware: its header is 504pt tall inside the list, so a header-unaware
 offset would have landed a maker on step 3 at 264pt — inside the counter card,
 hiding the title and not reaching the step — and the estimate it used
-(`ESTIMATED_STEP_HEIGHT = 132` against real rows of 92 and 148) already drifted
-about three steps by step 25. FR-PV-05's restored position is durable state
+(`ESTIMATED_STEP_HEIGHT = 132` against real rows of 92 and 148) was already
+drifting badly on its own: laid out with `contentContainerStyle`'s 12pt gap a
+completed row occupies 104pt, so the estimate ran 28pt long per row and by step
+25 the jump **overshot by roughly 670pt — about six rows — past** the step it was
+aiming at. FR-PV-05's restored position is durable state
 (`activeStepId` plus completion in SQLite, rendered as the `selected` current
 step), never a persisted scroll offset, so only the approximate visual jump was
 lost. The `ListHeaderComponent` must be an element of a module-level component
@@ -836,8 +839,40 @@ and would remount the header — tearing down a WebView player mid-session. A li
 with a `ListHeaderComponent` also cannot keep `getItemLayout`/`initialScrollIndex`
 unless the offsets are made header-aware: `VirtualizedList` takes cell offsets
 from `getItemLayout` verbatim and tracks the header's height separately, so an
-otherwise-correct `initialScrollIndex` scrolls to the wrong place. A list-owning
-screen re-reads its first page on focus
+otherwise-correct `initialScrollIndex` scrolls to the wrong place.
+
+**The general rule, after the second application of the same fix (#43, then
+#56): a screen that owns a `FlatList` renders its chrome in
+`ListHeaderComponent`; no sibling chrome above a list — unless that chrome is
+*bounded*, meaning a fixed number of rows whose heights are derivable and do not
+grow with the maker's data.** The mechanism is flexbox, not virtualization: a
+`View` does not shrink (React Native's default is `flexShrink: 0`), while
+`ScrollView`'s base style already carries `flexGrow: 1, flexShrink: 1`
+(`react-native/Libraries/Components/ScrollView/ScrollView.js`,
+`styles.baseVertical`), so a sibling list's height is *always* `frame − chrome`
+and collapses to zero the instant chrome exceeds the frame. That is why `flex-1`
+on the list would not by itself have unfrozen the guide view: what makes the
+height independent of the chrome is moving the chrome **inside** the list, and
+`flex-1` (`flexBasis: 0`) is the pin that stops a future sibling claiming
+intrinsic space ahead of it. Bounded chrome is safe for the same reason — a
+short, fixed remainder is subtracted and the list keeps the rest.
+
+The three library screens keep chrome outside their lists and are measured safe
+under that test, on the same 390 × 844 fixture frame with a 47pt top inset:
+`PatternsScreen`, `GuidesScreen` and `DictionaryScreen` each stack a title
+(display lineHeight 40), one full-width control (48 — "New pattern" / "Import
+from YouTube" via `CraftPressable`'s touch minimum, or `CraftTextField`'s
+`minHeight`) and a one-line status summary (label lineHeight 20) inside a
+`gap-4 pb-4` wrapper under the 71pt content inset: **227pt, leaving 617pt of
+list**. Three fixed rows, none of which grows with what the maker stored —
+against the 332pt counter card and the 242pt video card that made the two
+working views unbounded. `DictionaryScreen` additionally *must* keep its field
+outside, under the search-field rule above. The residual on all three is line
+wrapping of those three labels at extreme accessibility text sizes; that is not
+derivable from the constants (it depends on glyph metrics), so it is a bound
+rather than a value and belongs to the #16 device pass, not to this rule.
+
+A list-owning screen re-reads its first page on focus
 (`useFocusEffect`) so a change made on a pushed editor is reflected on return,
 keeping SQLite authoritative without a global store.
 
