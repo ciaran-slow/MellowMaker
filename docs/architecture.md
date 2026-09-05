@@ -1336,6 +1336,13 @@ subset-of-JS-trim rule. `databaseInitialization` covers the populated v2 to v3
 upgrade, the four whitespace shapes of the repaired pre-existing row, the
 foreign-key re-enable on the *failure* path, `foreign_key_check` catching an
 orphaning rebuild, and the disable read-back refusing to rebuild at all.
+It also pins the **opting-out** half of `foreignKeys: 'off'`, which the plan did
+not name: a migration that does not declare it must keep enforcement on for its
+own statements and must not pay `foreign_key_check`'s full-database scan.
+Widening the runner's `migration.foreignKeys === 'off'` to a constant `true`
+leaves every other suite in the repository green, so two cases record which
+pragmas each kind of migration issues, and in what order relative to
+`BEGIN IMMEDIATE` and `COMMIT`.
 `guideRepository` and `repositories` pin the typed
 `DatabaseError('empty-step-instruction')` and the whole-batch rollback for
 `appendImportedGuideSteps` (the empty entry deliberately at index 1, so an

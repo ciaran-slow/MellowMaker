@@ -9,7 +9,10 @@ import {
   MIGRATIONS,
   type Migration,
 } from '@/data/sqlite/migrations';
-import type { SqliteConnection } from '@/data/sqlite/sqliteConnection';
+import type {
+  SqliteConnection,
+  SqlValue,
+} from '@/data/sqlite/sqliteConnection';
 
 import { BASELINE, insertPopulatedBaseline } from './support/populatedBaseline';
 import { createNodeSqliteConnection } from './support/sqliteHarness';
@@ -795,6 +798,101 @@ describe('database initialization', () => {
         )?.completed_at,
       ).toBe(1_699_000_200_000);
       expect(foreignKeysEnabled(connection)).toBe(1);
+    });
+
+    /**
+     * `foreignKeys: 'off'` is opt-in, and the opting-out half is a contract in
+     * its own right: a migration that does not declare it must keep enforcement
+     * **on** for its own statements, and must not pay `foreign_key_check`'s
+     * full-database scan. Widening the runner's `migration.foreignKeys === 'off'`
+     * to a constant `true` leaves every other suite in the repository green,
+     * because nothing else observes which pragmas were issued.
+     */
+    it('touches neither pragma for a migration that does not ask for it', () => {
+      initializeDatabase(connection);
+
+      const issued: string[] = [];
+      const recording: SqliteConnection = {
+        ...connection,
+        execute(sql) {
+          issued.push(sql);
+          connection.execute(sql);
+        },
+        all<Row>(sql: string, params?: readonly SqlValue[]) {
+          issued.push(sql);
+
+          return connection.all<Row>(sql, params);
+        },
+      };
+
+      initializeDatabase(recording, {
+        migrations: [...MIGRATIONS, ADD_COLUMN_MIGRATION],
+      });
+
+      expect(issued).not.toContain('PRAGMA foreign_keys = OFF');
+      expect(issued).not.toContain('PRAGMA foreign_key_check');
+      // The initializer's own enabling step still ran, as it does every launch.
+      expect(issued).toContain('PRAGMA foreign_keys = ON');
+    });
+
+    it('issues both pragmas for a migration that does ask for it', () => {
+      initializeDatabase(connection, {
+        migrations: MIGRATIONS.filter((migration) => migration.version <= 2),
+      });
+
+      const issued: string[] = [];
+      const recording: SqliteConnection = {
+        ...connection,
+        execute(sql) {
+          issued.push(sql);
+          connection.execute(sql);
+        },
+        all<Row>(sql: string, params?: readonly SqlValue[]) {
+          issued.push(sql);
+
+          return connection.all<Row>(sql, params);
+        },
+      };
+
+      initializeDatabase(recording);
+
+      expect(issued).toContain('PRAGMA foreign_keys = OFF');
+      expect(issued).toContain('PRAGMA foreign_key_check');
+      // Step 1 before BEGIN, step 12 after the commit.
+      expect(issued.indexOf('PRAGMA foreign_keys = OFF')).toBeLessThan(
+        issued.indexOf('BEGIN IMMEDIATE'),
+      );
+      expect(issued.lastIndexOf('PRAGMA foreign_keys = ON')).toBeGreaterThan(
+        issued.indexOf('COMMIT'),
+      );
+    });
+
+    it('reports an unrestorable connection rather than the migration failure', () => {
+      initializeDatabase(connection, {
+        migrations: MIGRATIONS.filter((migration) => migration.version <= 2),
+      });
+      insertPopulatedBaseline(connection);
+
+      // Step 12 cannot put enforcement back. A connection left unenforced is a
+      // worse condition than a failed migration, so it is what gets reported.
+      const failure = captureFailure(() => {
+        initializeDatabase(
+          {
+            ...connection,
+            execute(sql) {
+              if (sql === 'PRAGMA foreign_keys = ON') {
+                return;
+              }
+
+              connection.execute(sql);
+            },
+          },
+          { migrations: MIGRATIONS.filter((m) => m.version >= 3) },
+        );
+      });
+
+      expect(failure).toBeInstanceOf(DatabaseError);
+      expect((failure as DatabaseError).code).toBe('foreign-keys-unavailable');
     });
 
     it('applies nothing on the next launch after the rebuild', () => {
