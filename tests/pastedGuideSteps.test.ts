@@ -244,8 +244,13 @@ describe('parsePastedGuideSteps — negative branches', () => {
   });
 
   it('does not read a leading stitch count as a bare-seconds timestamp', () => {
-    // `6 double crochets` is prose. A bare-seconds line recognizer would
-    // fabricate a step at 0:06 out of a stitch count.
+    // The recognizer is line-LEADING, so these lines are the ones that reach the
+    // colon-only rule at all: a bare-seconds recognizer would turn them into
+    // steps at 0:06 and 0:12, fabricating steps out of stitch counts.
+    expect(
+      parsePastedGuideSteps('6 double crochets\n12 single crochets'),
+    ).toStrictEqual({ ok: false, reason: 'no-timestamps' });
+    // …and prose whose number sits mid-line never leads at all.
     expect(parsePastedGuideSteps('Chain 6 stitches\nThen turn')).toStrictEqual({
       ok: false,
       reason: 'no-timestamps',
