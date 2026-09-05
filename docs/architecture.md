@@ -925,13 +925,32 @@ completed row occupies 104pt, so the estimate ran 28pt long per row and by step
 aiming at. FR-PV-05's restored position is durable state
 (`activeStepId` plus completion in SQLite, rendered as the `selected` current
 step), never a persisted scroll offset, so only the approximate visual jump was
-lost. The `ListHeaderComponent` must be an element of a module-level component
+lost. **Issue #63 put that jump back in a form the header cannot break**: a
+mount-time `scrollToIndex({ animated: false, index, viewPosition: 0 })` driven by
+the list's `onContentSizeChange`, capped at five attempts, owned by
+`usePatternPositionRestore`. It is correct where `getItemLayout` was not because
+the two read offsets from different places — with no `getItemLayout` on the list,
+`scrollToIndex` can only reach a real scroll offset for a **measured** cell, and a
+measured offset comes from that cell's own `onLayout` relative to the *content
+container*, which contains the header cell, so the header is already in it
+(`@react-native/virtualized-lists/Lists/ListMetricsAggregator.js`). An unmeasured
+index cannot land anywhere wrong: `VirtualizedList` calls `onScrollToIndexFailed`
+and returns before scrolling. That handler therefore **must not scroll** — the
+payload it is given offers an average row length to multiply by the index, which
+is the same header-unaware arithmetic removed above; the attempt simply waits for
+the next content-size change, which the list itself provokes. The restore is
+**once per mount**: a completion tap or a counter tap can never move the list out
+from under a maker mid-read, and returning to a still-mounted viewer from the
+editor keeps the native scroll position rather than re-snapping. The
+`ListHeaderComponent` must be an element of a module-level component
 type, never an inline `() => (…)`, which is a new component type on every render
 and would remount the header — tearing down a WebView player mid-session. A list
-with a `ListHeaderComponent` also cannot keep `getItemLayout`/`initialScrollIndex`
+with a `ListHeaderComponent` cannot keep `getItemLayout`/`initialScrollIndex`
 unless the offsets are made header-aware: `VirtualizedList` takes cell offsets
 from `getItemLayout` verbatim and tracks the header's height separately, so an
-otherwise-correct `initialScrollIndex` scrolls to the wrong place.
+otherwise-correct `initialScrollIndex` scrolls to the wrong place. That bar is
+specific to those two props — it is **not** a bar on `scrollToIndex`, which is
+exactly why #63's replacement is available.
 
 **The general rule, after the second application of the same fix (#43, then
 #56): a screen that owns a `FlatList` renders its chrome in

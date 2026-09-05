@@ -11,6 +11,7 @@ import {
   useCounter,
   type CounterController,
 } from '@/features/patterns/presentation/useCounter';
+import { usePatternPositionRestore } from '@/features/patterns/presentation/usePatternPositionRestore';
 import { usePatternViewer } from '@/features/patterns/presentation/usePatternViewer';
 import { CraftAnnouncement } from '@/ui/accessibility/CraftAnnouncement';
 import { useAnnouncement } from '@/ui/accessibility/useAnnouncement';
@@ -35,7 +36,11 @@ type PatternViewerScreenProps = {
  * Like the library it owns its list directly rather than nesting a `FlatList` in
  * a `ScrollView` (NFR-09); the pattern's chrome scrolls *with* the list as its
  * `ListHeaderComponent` (issue #56, matching the guide working view since #43),
- * so only the bounded back control sits outside the scroll surface.
+ * so only the bounded back control sits outside the scroll surface. It opens
+ * **at** the maker's current step (issue #63): the jump is a post-layout
+ * `scrollToIndex` rather than the `initialScrollIndex` #56 removed, because a
+ * cell's measured offset is content-container-relative and so already includes
+ * the header, where `getItemLayout`'s estimated offsets never did.
  */
 export function PatternViewerScreen({ patternId }: PatternViewerScreenProps) {
   const router = useRouter();
@@ -78,6 +83,19 @@ export function PatternViewerScreen({ patternId }: PatternViewerScreenProps) {
   }, [router, patternId]);
 
   const { state } = viewer;
+
+  // Exactly one step is ever `current` (`resolvePatternProgressView`), and there
+  // is none at all when the pattern is empty or fully complete — `findIndex`
+  // returns -1 there, which the hook's `<= 0` guard treats as "nothing to do".
+  const currentStepIndex =
+    state.status === 'ready'
+      ? state.view.steps.findIndex((step) => step.status === 'current')
+      : undefined;
+  const {
+    onContentSizeChange: onStepsContentSizeChange,
+    onScrollToIndexFailed: onStepsScrollToIndexFailed,
+    registerList: registerStepList,
+  } = usePatternPositionRestore(currentStepIndex);
 
   // VoiceOver never reads a live region, so the failure titles are spoken
   // through the iOS announcement seam as well (A11Y-07); Android hears the
@@ -185,6 +203,19 @@ export function PatternViewerScreen({ patternId }: PatternViewerScreenProps) {
           }}
           data={state.view.steps}
           keyExtractor={(step) => step.id}
+          /*
+            Opening at the maker's current step (issue #63). `onContentSizeChange`
+            is the single trigger: it fires once the content container — the
+            header cell included — has been laid out, and re-fires on each fill
+            batch, so the retry and the convergence are the same mechanism.
+            `onScrollToIndexFailed` must be present (`VirtualizedList` asserts it
+            when there is no `getItemLayout`) and must scroll nothing: its
+            `averageItemLength × index` is the header-unaware arithmetic #56
+            removed. The policy lives in `usePatternPositionRestore`.
+          */
+          onContentSizeChange={onStepsContentSizeChange}
+          onScrollToIndexFailed={onStepsScrollToIndexFailed}
+          ref={registerStepList}
           /*
             The pattern's chrome scrolls WITH the steps (issue #56). It must be
             an element of a module-level component type, never an inline
