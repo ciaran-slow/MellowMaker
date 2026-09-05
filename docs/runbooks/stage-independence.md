@@ -127,6 +127,16 @@ issue shapes and still fails when a stage is missing entirely. Write the name th
 stage actually ran under; a decision issue whose record PR says `stage: build` is
 not a defect, but the alias is clearer.
 
+**A retro that posts on the issue writes `stage: retro`.** The retro normally
+lands a PR and posts nothing, but an acceptance criterion can name the issue as
+the place an artifact belongs — #46's AC5 required the spike's go/no-go
+"posted on the issue", and the retro was the stage that put it there. Such a
+comment declares its provenance like any other stage artifact.
+`scripts/check-stage-provenance.js` recognises `retro` and judges its context and
+model, but does **not** require it: a cycle still in flight has no retro yet, and
+a missing one is not an independence defect. Do not write `stage: retro` on a
+comment the retro did not author.
+
 **The owner-decision comment carries no block.** The comment required by
 `decision-issues.md` §2 records what the *product owner* decided; the agent that
 posts it is a courier, not a stage. Attaching a provenance block to it would claim

@@ -25,7 +25,11 @@ const domainRestrictions = [
 module.exports = defineConfig([
   expoConfig,
   {
-    ignores: ['.expo/**', 'coverage/**', 'dist/**'],
+    // `.claude/**` for the same reason Jest ignores it: flat-config ESLint does
+    // not skip dot-directories, so `eslint .` in the primary checkout lints
+    // every agent worktree left under `.claude/worktrees/` — another branch's
+    // half-finished `src/`, reported as this checkout's lint result.
+    ignores: ['.expo/**', 'coverage/**', 'dist/**', '.claude/**'],
   },
   {
     files: ['src/domain/**/*.{ts,tsx}'],

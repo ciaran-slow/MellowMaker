@@ -12,7 +12,16 @@ module.exports = {
     '\\.css$': '<rootDir>/tests/styleMock.js',
     '^@/(.*)$': '<rootDir>/src/$1',
   },
-  testPathIgnorePatterns: ['/node_modules/', '/.expo/'],
+  // `<rootDir>/.claude/` keeps agent worktrees out of the primary checkout's
+  // run. Every stage works in a worktree under `.claude/worktrees/`, which is
+  // gitignored but not invisible to Jest: it walks `rootDir` itself, so a
+  // leftover worktree's `tests/*.test.tsx` is collected here and a whole second
+  // copy of the suite — on someone else's branch, mid-edit — is swept into
+  // `npm test`. It must be anchored to `<rootDir>`: a bare `/.claude/` matches
+  // the *worktree's own* absolute path, so running the gates from inside a
+  // worktree would silently collect zero tests and exit green
+  // (issue #46 retro; `tests/jestConfig.test.ts` pins both halves).
+  testPathIgnorePatterns: ['/node_modules/', '/.expo/', '<rootDir>/.claude/'],
   collectCoverageFrom: [
     'src/**/*.{ts,tsx}',
     '!src/app/**/*.tsx',

@@ -15,7 +15,8 @@ import {
  * Issue #46: the decorative drawing itself. `react-native-svg` is stubbed for
  * every suite, so this proves the plumbing — path data, palette, dash geometry,
  * and the accessibility stance — never the native rendering. The on-device half
- * is the owner-run Expo Go pass logged in `docs/runbooks/smoke-verification.md`.
+ * is the owner-run Expo Go pass logged in
+ * `docs/runbooks/deferred-smokes/046-issue-46.md`.
  */
 
 function artFor(position: number) {

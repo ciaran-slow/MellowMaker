@@ -893,7 +893,8 @@ Two conventions introduced by the interactive pattern viewer (issue #6):
 
 Four conventions introduced by the accessibility pass (issue #14):
 
-- **Bright accents are decorative; text and indicators sit on a strong accent.**
+- **Bright accents are for large decorative areas; anything that must stay
+  legible — text, indicators, and fine graphic lines — sits on a strong accent.**
   Measured against the documented palette, ink on pink is 2.93:1, ink on blue
   2.01:1, ink on teal 4.21:1, white on blue 3.96:1, and the pink selected-tab
   bar 2.64:1 against the white tab surface — all below WCAG AA (A11Y-04). The
@@ -902,12 +903,27 @@ Four conventions introduced by the accessibility pass (issue #14):
   indicator. The bright hexes are unchanged and keep to `CraftCard` stripes,
   step accent bars, the tab bar's yellow divider, and decorative icons. The
   yellow accent already carries ink at 5.51:1 and has no companion.
+  **"Decorative" in the accessibility sense and "decorative" in the palette sense
+  are different tests, and the stitch step drawings (#46) are the case that
+  separates them.** The drawings are decorative to assistive technology — hidden
+  outright, the instruction sentence carrying the meaning — yet a 3px stroke is a
+  *non-text graphic* under A11Y-04 and must clear 3:1 against the card, which the
+  bright accents do not (pink 2.72:1, teal 1.89:1, yellow 1.44:1). So they are
+  stroked in `pinkStrong`/`blueStrong`/`ink`. The palette rule is therefore about
+  **area, not semantics**: bright accents fill large regions where nothing depends
+  on discriminating a shape; strong accents carry anything read as a form, whether
+  that form is a glyph or a line. `docs/vision.md` §4 states the same rule.
   `tests/accessibilityContrast.test.ts` is the **walk-based** guard: every
   `.tsx` under `src/` is scanned by default, a bright accent may never appear
   as `bg-*` or `text-*`, every string literal (a `className`, or a class map
   such as a status pill's) and every `CraftPressable` pairing a token
   background with a token text or icon colour must clear the threshold,
-  and the strong tokens are pinned to literal hexes.
+  and the strong tokens are pinned to literal hexes. For SVG the guard is
+  **value-based rather than hex-based**: every `stroke=`/`fill=` written anywhere
+  in `src/` must resolve to a `STROKE_COLOR` role, a `tokens.colors.*` reference,
+  or `"none"`. A hex ban alone is not enough — a colour imported from a sibling
+  module carries no hex into the file that strokes with it, so it escaped both
+  hex rules (#46 verify finding, closed by the #46 retro).
 - **Announcements have two platform paths behind one seam.** React Native's
   `accessibilityLiveRegion` is honoured on Android only; VoiceOver never reads
   it, so without more every counter change, step completion, error, and loading
@@ -1131,6 +1147,20 @@ Configured CI runs a clean npm install, lint, strict type checking, and the full
 Jest suite. Maestro runs against locally installed targets using a caller-supplied
 application identifier until the EAS issue provides dedicated artifacts.
 
+**The local gates exclude `.claude/`, because the workflow keeps whole
+repositories inside it.** Every plan/build/verify/retro stage runs in a git
+worktree at `.claude/worktrees/<agent>/`. `.gitignore` hides that from git and
+from nothing else: Jest walks `rootDir`, and flat-config ESLint does not skip
+dot-directories, so a worktree left on disk after a stage ends puts a second
+complete copy of the repository — another branch, possibly mid-edit — inside the
+primary checkout's `npm test` and `npm run lint`. `jest.config.js` therefore
+ignores `<rootDir>/.claude/` and `eslint.config.js` ignores `.claude/**`. The
+Jest pattern must be **anchored to `<rootDir>`**: a bare `/.claude/` matches the
+worktree's own absolute path, so a stage running its gates from inside a worktree
+would collect zero tests and exit green. `tsc` needs no rule — TypeScript's
+wildcard `include` already skips dot-directories. `tests/jestConfig.test.ts` pins
+all of this (issue #46 retro).
+
 Bundled content carries three suites per set. For patterns (issue #44):
 `tests/patternSeedContent.test.ts` pins the shipped bytes (the literal
 `[slug, title, stepCount]` identity table, the `mm` hook token in every note, the
@@ -1160,7 +1190,8 @@ asserts the inputs a screen reader relies on — unique accessible names, status
 words, and the spoken counter text — because Maestro cannot drive VoiceOver or
 TalkBack; the screen-reader pass itself is manual (iOS VoiceOver on a physical
 iPhone and Android TalkBack, both deferred from issue #14 and tracked in
-[`runbooks/smoke-verification.md`](./runbooks/smoke-verification.md) for #16).
+[`runbooks/deferred-smokes/014-issue-14.md`](./runbooks/deferred-smokes/014-issue-14.md)
+for #16).
 
 Every release candidate should exercise, on both platforms where applicable:
 

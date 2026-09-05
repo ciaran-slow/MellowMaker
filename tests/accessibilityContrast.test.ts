@@ -53,6 +53,30 @@ const RAW_STROKE_HEX = /(?:stroke|fill)=\s*[{"']?\s*['"]?#/;
  */
 const STROKES_OR_FILLS = /(?:stroke|fill)=/;
 const HEX_LITERAL = /#(?:[0-9A-Fa-f]{3,4}|[0-9A-Fa-f]{6}|[0-9A-Fa-f]{8})\b/;
+/**
+ * Both rules above are about a *hex*, and a hex is only the loudest carrier.
+ * A future component that strokes SVG art with a colour **imported from another
+ * module** escapes them completely: the file it lives in holds no hex at all, so
+ * the file-level rule never arms, and the literal-palette pin in
+ * `StitchStepAnimation.test.tsx` reads only that one component's output (verify
+ * finding on PR #55, issue #46). So the value itself is enumerated: every
+ * `stroke=`/`fill=` in `src/` must resolve through the measured palette or be
+ * `"none"`. A bare identifier — `stroke={brandColour}` — is red by construction,
+ * which is the point: it forces the colour back through `STROKE_COLOR`, where
+ * the 3:1 measurement below actually applies.
+ */
+const STROKE_OR_FILL_VALUE =
+  /(?<![A-Za-z])(?:stroke|fill)=(?:"([^"\n]*)"|'([^'\n]*)'|\{([^{}]*)\})/g;
+/** `"none"`, a `STROKE_COLOR` role lookup, or a `tokens.colors.*` reference. */
+const RESOLVED_STROKE_VALUE =
+  /^\s*(?:none|'none'|"none"|STROKE_COLOR\[[^\]]+\]|STROKE_COLOR\.[A-Za-z0-9_]+|tokens\.colors\.[A-Za-z0-9_]+)\s*$/;
+
+/** Every `stroke=`/`fill=` attribute written in one source file, as text. */
+function strokeAndFillValues(source: string): string[] {
+  return [...source.matchAll(STROKE_OR_FILL_VALUE)].map(
+    (match) => match[1] ?? match[2] ?? match[3] ?? '',
+  );
+}
 
 function walk(dir: string): string[] {
   return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
@@ -245,6 +269,52 @@ describe('accessibility contrast guard (A11Y-04)', () => {
       .map(rel);
 
     expect(offenders).toStrictEqual([]);
+  });
+
+  it('resolves every stroke and fill in src/ through the measured palette', () => {
+    // Closes the carrier the hex rules cannot see: a colour imported from
+    // another module carries no hex into the file that strokes with it.
+    const offenders = sourceFiles.flatMap((file) =>
+      strokeAndFillValues(readFileSync(file, 'utf8'))
+        .filter((value) => !RESOLVED_STROKE_VALUE.test(value))
+        .map((value) => `${rel(file)}: ${value}`),
+    );
+
+    expect(offenders).toStrictEqual([]);
+  });
+
+  it('non-tautology: the stroke-value rule sees the real attributes and rejects an import', () => {
+    // It actually finds the attributes that exist today, rather than passing
+    // over an empty set.
+    const found = sourceFiles.flatMap((file) =>
+      strokeAndFillValues(readFileSync(file, 'utf8')),
+    );
+
+    expect(found).toContain('none');
+    expect(found).toContain('STROKE_COLOR[stroke.role]');
+
+    // The forms that must pass.
+    expect(RESOLVED_STROKE_VALUE.test('none')).toBe(true);
+    expect(RESOLVED_STROKE_VALUE.test('STROKE_COLOR[art.draw.role]')).toBe(true);
+    expect(RESOLVED_STROKE_VALUE.test('tokens.colors.pinkStrong')).toBe(true);
+
+    // The carriers that must fail — an imported constant, a foreign map, a
+    // prop, and a ternary that never reaches the palette.
+    expect(RESOLVED_STROKE_VALUE.test('brandColour')).toBe(false);
+    expect(RESOLVED_STROKE_VALUE.test('PALETTE.hook')).toBe(false);
+    expect(RESOLVED_STROKE_VALUE.test('props.color')).toBe(false);
+    expect(RESOLVED_STROKE_VALUE.test("active ? accent : 'grey'")).toBe(false);
+
+    // And the extractor reads the value, not the whole attribute, on both the
+    // string and the expression form.
+    expect(strokeAndFillValues('<Path fill="none" stroke={x} />')).toStrictEqual([
+      'none',
+      'x',
+    ]);
+    // Neighbouring `stroke*` props are not stroke colours and must not be read.
+    expect(
+      strokeAndFillValues('<Path strokeWidth={3} strokeLinecap="round" />'),
+    ).toStrictEqual([]);
   });
 
   it('non-tautology: the stroke rules reject a raw hex and a bright accent', () => {

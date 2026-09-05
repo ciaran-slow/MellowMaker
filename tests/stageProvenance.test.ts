@@ -137,6 +137,59 @@ describe('stage-independence rules', () => {
     expect(result.warnings).toStrictEqual([]);
   });
 
+  it('accepts a retro block without requiring one, and still judges it', () => {
+    // #46's AC5 said the go/no-go had to be "posted on the issue", so the retro
+    // posted it — and that comment must be able to say which stage wrote it.
+    const withRetro = evaluate(
+      [
+        fresh('plan', 'model-a'),
+        fresh('build', 'model-b'),
+        fresh('verify', 'model-c'),
+        fresh('retro', 'model-d'),
+      ].flatMap((body, i) => parseBlocks(body, `source ${i}`)),
+    );
+
+    expect(withRetro.problems).toStrictEqual([]);
+
+    // Not required: a cycle mid-flight has no retro yet, and that is not a
+    // defect.
+    expect(
+      problemsFor([fresh('plan', 'model-a'), fresh('build', 'model-b'), fresh('verify', 'model-c')]),
+    ).toStrictEqual([]);
+
+    // But a retro block is held to the same context and model rules.
+    const sharedRetro = block({
+      stage: 'retro',
+      context: 'shared',
+      'prior-stages-in-this-context': 'verify',
+      model: 'unverifiable',
+      'model-switched-mid-session': 'no',
+    });
+
+    expect(
+      problemsFor([
+        fresh('plan', 'model-a'),
+        fresh('build', 'model-b'),
+        fresh('verify', 'model-c'),
+        sharedRetro,
+      ]),
+    ).toStrictEqual([
+      'retro: ran in a SHARED context (prior stages: verify) — not the independent pass the workflow intends',
+    ]);
+
+    // And an actually unknown stage is still reported.
+    expect(
+      problemsFor([
+        fresh('plan', 'model-a'),
+        fresh('build', 'model-b'),
+        fresh('verify', 'model-c'),
+        fresh('triage', 'model-e'),
+      ]),
+    ).toStrictEqual([
+      'source 3: provenance block has no recognised `stage` (got "triage")',
+    ]);
+  });
+
   it('names both spellings when a stage posted no block at all', () => {
     expect(problemsFor([fresh('record', 'model-b'), fresh('verify', 'model-c')])).toStrictEqual([
       'plan (or `frame`): no Stage-Provenance block found in any posted artifact',

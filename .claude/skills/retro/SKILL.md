@@ -68,6 +68,18 @@ commit (a doc or comment fix usually costs one line), file it as an issue, or sa
 in the retro why it needs neither. Silently inheriting the list is how a "noted
 only" finding survives ten cycles.
 
+**If an acceptance criterion named the issue as an artifact's home and the
+artifact is not there, put it there.** The retro is the last stage that can. #46's
+AC5 required the spike's numbers and go/no-go *"posted on the issue"*; the
+recommendation lived in the PR body and `docs/architecture.md` §16 only, and
+verify rated the gap non-blocking because §16 is the more durable home — which is
+true, and still leaves whoever opens the follow-up issue from #46 alone with no
+recommendation. Post it as a comment that **quotes the merged record verbatim**
+and adds no new judgement, say plainly that it supersedes nothing, and declare
+`stage: retro` in a `Stage-Provenance` block
+(`docs/runbooks/stage-independence.md` §4). Never invent the missing artifact: if
+the record does not exist anywhere, that is a finding, not something to author now.
+
 If the verify review recorded a **non-blocking coverage gap**, own its
 durable landing: either (a) confirm it was fixed in-cycle, or (b) commit the row
 to `docs/runbooks/test-debt.md` as part of the retro follow-up. The retro commit
