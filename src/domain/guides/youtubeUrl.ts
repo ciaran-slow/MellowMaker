@@ -64,6 +64,17 @@ const PATH_ID_SEGMENTS: ReadonlySet<string> = new Set([
 
 const VIDEO_ID_PATTERN = /^[A-Za-z0-9_-]{11}$/;
 
+/**
+ * The one definition of the canonical watch-URL grammar: a bare video id becomes
+ * `https://www.youtube.com/watch?v=<id>`. `normalizeYoutubeUrl` builds its
+ * `canonicalUrl` from this, and the guide→pattern snapshot derives the recorded
+ * source line from it, so the URL a maker sees is the same string in both places
+ * rather than a second, drifting copy of the same template.
+ */
+export function canonicalWatchUrl(videoId: string): string {
+  return `https://www.youtube.com/watch?v=${videoId}`;
+}
+
 /** First non-empty path segment, or undefined for a bare `/` path. */
 function firstSegment(pathname: string): string | undefined {
   return pathname.split('/').find((segment) => segment !== '');
@@ -147,7 +158,7 @@ export function normalizeYoutubeUrl(raw: string): NormalizeYoutubeUrlResult {
   return {
     ok: true,
     videoId: candidate,
-    canonicalUrl: `https://www.youtube.com/watch?v=${candidate}`,
+    canonicalUrl: canonicalWatchUrl(candidate),
     startSeconds,
   };
 }

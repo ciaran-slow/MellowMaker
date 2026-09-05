@@ -16,3 +16,18 @@ export function guideRowAccessibilityLabel(guide: GuideSummary): string {
 export function guideCountLabel(count: number): string {
   return count === 1 ? '1 guide' : `${count} guides`;
 }
+
+/**
+ * States, in words, how much of a guide the "Save as pattern" review will copy,
+ * so the count is spoken by the review screen's live region rather than left to
+ * a visual scan of the step list (issue #51).
+ */
+export function guideStepCopyLabel(count: number): string {
+  if (count === 0) {
+    return 'This guide has no steps to copy yet';
+  }
+
+  return count === 1
+    ? '1 step will be copied into your new pattern'
+    : `${count} steps will be copied into your new pattern`;
+}

@@ -26,6 +26,7 @@
     "test:smoke:guides:authoring": "maestro test -e APP_ID=$APP_ID .maestro/guide-authoring.yaml",
     "test:smoke:guides:paste": "maestro test -e APP_ID=$APP_ID .maestro/guide-paste.yaml",
     "test:smoke:guides:playback": "maestro test -e APP_ID=$APP_ID .maestro/guide-playback.yaml",
+    "test:smoke:guides:pattern": "maestro test -e APP_ID=$APP_ID .maestro/guide-to-pattern.yaml",
     "test:smoke:offline": "maestro test -e APP_ID=$APP_ID .maestro/offline-cold-start.yaml",
     "test:smoke:accessibility": "maestro test -e APP_ID=$APP_ID .maestro/accessibility.yaml"
   },

@@ -83,6 +83,15 @@ export function GuideWorkingViewScreen({
     });
   }, [router, guideId]);
 
+  // Defined here, not inline on the header element, so `GuideWorkingViewHeader`
+  // keeps a stable component type and the WebView below is never remounted.
+  const openSaveAsPattern = useCallback(() => {
+    router.push({
+      pathname: '/guides/[guideId]/save-as-pattern',
+      params: { guideId },
+    });
+  }, [router, guideId]);
+
   const { state } = viewer;
 
   // VoiceOver never reads a live region, so the failure title is spoken through
@@ -185,6 +194,7 @@ export function GuideWorkingViewScreen({
           guideId={guideId}
           onCompleteStep={viewer.completeStep}
           onOpenEditor={openEditor}
+          onOpenSaveAsPattern={openSaveAsPattern}
           onReopenStep={viewer.reopenStep}
           steps={state.steps}
           view={state.view}
@@ -202,6 +212,7 @@ type GuideWorkingViewReadyProps = {
   guideId: string;
   contentInsets: ScreenContentInsets;
   onOpenEditor(): void;
+  onOpenSaveAsPattern(): void;
   onCompleteStep(stepId: string): void;
   onReopenStep(stepId: string): void;
 };
@@ -221,6 +232,7 @@ function GuideWorkingViewReady({
   guideId,
   onCompleteStep,
   onOpenEditor,
+  onOpenSaveAsPattern,
   onReopenStep,
   steps,
   view,
@@ -280,6 +292,7 @@ function GuideWorkingViewReady({
           counter={counter}
           guide={guide}
           onOpenEditor={onOpenEditor}
+          onOpenSaveAsPattern={onOpenSaveAsPattern}
           player={player}
           view={view}
         />
@@ -341,6 +354,7 @@ type GuideWorkingViewHeaderProps = {
   player: GuidePlayer;
   counter: CounterController;
   onOpenEditor(): void;
+  onOpenSaveAsPattern(): void;
 };
 
 /**
@@ -362,6 +376,7 @@ function GuideWorkingViewHeader({
   counter,
   guide,
   onOpenEditor,
+  onOpenSaveAsPattern,
   player,
   view,
 }: GuideWorkingViewHeaderProps) {
@@ -370,15 +385,22 @@ function GuideWorkingViewHeader({
       <Text accessibilityRole="header" className="text-display text-ink">
         {guide.title}
       </Text>
-      <View className="flex-row items-center justify-between gap-3">
-        <CraftAnnouncement
-          className="flex-1 text-label text-ink"
-          message={progressSummaryLabel(view.completedCount, view.totalCount)}
-        />
+      <CraftAnnouncement
+        className="text-label text-ink"
+        message={progressSummaryLabel(view.completedCount, view.totalCount)}
+      />
+      {/*
+        The two guide actions are equal `flex-1` siblings on their own row rather
+        than a third element beside the progress line: at 390pt, two icon+text
+        buttons would push the progress string to three lines at large Dynamic
+        Type. The extra row cannot starve the step list — since #43 the list
+        carries `flex-1`, so its height never depends on this header's content.
+      */}
+      <View className="flex-row gap-3">
         <CraftPressable
           accessibilityHint="Change this guide's steps, title, or notes"
           accessibilityLabel="Edit guide"
-          className="flex-row items-center gap-2 bg-surface px-4 py-2"
+          className="flex-1 flex-row items-center justify-center gap-2 bg-surface px-4 py-2"
           onPress={onOpenEditor}
         >
           <MaterialCommunityIcons
@@ -388,6 +410,28 @@ function GuideWorkingViewHeader({
             size={tokens.typography.body.fontSize}
           />
           <Text className="text-label text-ink">Edit guide</Text>
+        </CraftPressable>
+        {/*
+          Disabled when the guide has nothing to copy: an imported guide starts
+          with zero steps, so an unconditional control would put an empty,
+          useless pattern in the library on the most common path. The review
+          screen applies the same rule, because that route is reachable by deep
+          link and the last step can be deleted elsewhere.
+        */}
+        <CraftPressable
+          accessibilityHint="Copy this guide's steps into a new pattern"
+          accessibilityLabel="Save as pattern"
+          className="flex-1 flex-row items-center justify-center gap-2 bg-tealStrong px-4 py-2"
+          disabled={view.totalCount === 0}
+          onPress={onOpenSaveAsPattern}
+        >
+          <MaterialCommunityIcons
+            accessibilityElementsHidden
+            color={tokens.colors.surface}
+            name="content-save-outline"
+            size={tokens.typography.body.fontSize}
+          />
+          <Text className="text-label text-surface">Save as pattern</Text>
         </CraftPressable>
       </View>
 

@@ -140,6 +140,198 @@ describe('guides navigation', () => {
     ).toBeUndefined();
   });
 
+  // Issue #51 — the guide→pattern conversion, on the real router. The entry
+  // control ("Save as pattern") and the confirm ("Save pattern") have distinct
+  // accessible names on purpose: hidden tab screens stay mounted, so identical
+  // names would make both queries below ambiguous.
+  it('opens the save-as-pattern review and writes nothing when cancelled', async () => {
+    const database = await createAppDatabase();
+    const created = database.repositories.guides.saveImportedGuide({
+      guide: {
+        videoId: 'dQw4w9WgXcQ',
+        sourceUrl: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
+        title: 'Amigurumi Basics',
+      },
+      steps: [
+        { instruction: 'Make a magic ring', origin: 'user' },
+        { instruction: 'Chain 12', origin: 'user' },
+      ],
+    });
+    // The bundled starters are already seeded, so the falsifier is a delta of
+    // zero rather than an empty library.
+    const before = database.repositories.patterns.listPatterns().length;
+
+    // Entered the way a maker does: library, then guide, then the review.
+    const result = renderRouter(routes, { initialUrl: '/guides' });
+    await result;
+
+    await fireEvent.press(await screen.findByLabelText('Amigurumi Basics'));
+    await waitFor(() => {
+      expect(result.getPathname()).toBe(`/guides/${created.guide.id}`);
+    });
+
+    await fireEvent.press(
+      await screen.findByRole('button', { name: 'Save as pattern' }),
+    );
+    await waitFor(() => {
+      expect(result.getPathname()).toBe(
+        `/guides/${created.guide.id}/save-as-pattern`,
+      );
+    });
+    expect(
+      await screen.findByText('2 steps will be copied into your new pattern'),
+    ).toBeOnTheScreen();
+
+    await fireEvent.press(screen.getByRole('button', { name: 'Cancel' }));
+
+    // Cancel leaves the review and writes nothing. The landing route is
+    // deliberately asserted only as "not the review": this navigator is a flat
+    // `Tabs`, whose react-navigation back behaviour is `firstRoute`, so every
+    // shipped back control — "Back to guides" and "Back to patterns" included —
+    // resolves to the first tab rather than the pushed-from screen. Cancel uses
+    // the same shipped `canGoBack() ? back() : replace(...)` form as those
+    // controls; the isolated screen suite pins both of its branches exactly.
+    await waitFor(() => {
+      expect(result.getPathname()).not.toBe(
+        `/guides/${created.guide.id}/save-as-pattern`,
+      );
+    });
+    expect(database.repositories.patterns.listPatterns()).toHaveLength(before);
+  });
+
+  it('converts a guide into a pattern and lands in the pattern viewer', async () => {
+    const database = await createAppDatabase();
+    const created = database.repositories.guides.saveImportedGuide({
+      guide: {
+        videoId: 'dQw4w9WgXcQ',
+        sourceUrl: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
+        title: 'Amigurumi Basics',
+      },
+      steps: [
+        { instruction: 'Make a magic ring', origin: 'user' },
+        { instruction: 'Chain 12', origin: 'import' },
+        { instruction: 'Fasten off', origin: 'import' },
+      ],
+    });
+    // One completed guide step, so "0 of 3 steps done" can only be the pattern's
+    // summary: the guide's own reads "1 of 3 steps done".
+    database.repositories.guides.setGuideStepCompleted(
+      created.steps[0]?.id ?? '',
+      true,
+    );
+    const before = database.repositories.patterns.listPatterns().length;
+
+    const result = renderRouter(routes, {
+      initialUrl: `/guides/${created.guide.id}`,
+    });
+    await result;
+
+    await fireEvent.press(
+      await screen.findByRole('button', { name: 'Save as pattern' }),
+    );
+    await screen.findByRole('button', { name: 'Save pattern' });
+    await fireEvent.press(screen.getByRole('button', { name: 'Save pattern' }));
+
+    const patterns = database.repositories.patterns.listPatterns();
+    expect(patterns).toHaveLength(before + 1);
+    const newest = patterns[0];
+    expect(newest?.notes).toContain(
+      'Saved from YouTube: https://www.youtube.com/watch?v=dQw4w9WgXcQ',
+    );
+
+    await waitFor(() => {
+      expect(result.getPathname()).toBe(`/patterns/${newest?.id}`);
+    });
+
+    const list = await screen.findByTestId('pattern-steps');
+    expect(
+      within(list).getByRole('header', { name: 'Amigurumi Basics' }),
+    ).toBeOnTheScreen();
+    // All three steps converted, and no completion came with them.
+    expect(within(list).getByText('0 of 3 steps done')).toBeOnTheScreen();
+
+    // The review route registered with `href: null`, not as a fourth tab.
+    expect(
+      screen.getAllByRole('tab').map((tab) => tab.props.accessibilityLabel),
+    ).toStrictEqual(['Stitches', 'Patterns', 'Guides']);
+  });
+
+  it('re-reads the guide on a second visit to the review, and converts what the guide now holds', async () => {
+    const database = await createAppDatabase();
+    const created = database.repositories.guides.saveImportedGuide({
+      guide: {
+        videoId: 'dQw4w9WgXcQ',
+        sourceUrl: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
+        title: 'Amigurumi Basics',
+      },
+      steps: [
+        { instruction: 'Make a magic ring', origin: 'user' },
+        { instruction: 'Chain 12', origin: 'user' },
+      ],
+    });
+    const before = database.repositories.patterns.listPatterns().length;
+
+    const result = renderRouter(routes, {
+      initialUrl: `/guides/${created.guide.id}`,
+    });
+    await result;
+
+    // First visit: two steps.
+    await fireEvent.press(
+      await screen.findByRole('button', { name: 'Save as pattern' }),
+    );
+    expect(
+      await screen.findByText('2 steps will be copied into your new pattern'),
+    ).toBeOnTheScreen();
+
+    await fireEvent.press(screen.getByRole('button', { name: 'Cancel' }));
+    await waitFor(() => {
+      expect(result.getPathname()).not.toBe(
+        `/guides/${created.guide.id}/save-as-pattern`,
+      );
+    });
+
+    // The maker adds a third step, exactly as the guide editor does.
+    database.repositories.guides.addGuideStep(created.guide.id, {
+      instruction: 'Fasten off',
+    });
+
+    // Back to the guide the way a maker returns — the Guides tab, then the row.
+    await fireEvent.press(screen.getByRole('tab', { name: 'Guides' }));
+    await fireEvent.press(await screen.findByLabelText('Amigurumi Basics'));
+    await waitFor(() => {
+      expect(result.getPathname()).toBe(`/guides/${created.guide.id}`);
+    });
+    // The working view re-reads on focus, so it already shows all three.
+    expect(await screen.findByText('0 of 3 steps done')).toBeOnTheScreen();
+
+    // The review route is a hidden `Tabs` screen and is still mounted from the
+    // first visit. Without a focus re-read it would keep showing the two-step
+    // draft and confirm would write a two-step pattern.
+    await fireEvent.press(
+      screen.getByRole('button', { name: 'Save as pattern' }),
+    );
+    await waitFor(() => {
+      expect(result.getPathname()).toBe(
+        `/guides/${created.guide.id}/save-as-pattern`,
+      );
+    });
+    expect(
+      await screen.findByText('3 steps will be copied into your new pattern'),
+    ).toBeOnTheScreen();
+
+    await fireEvent.press(screen.getByRole('button', { name: 'Save pattern' }));
+
+    const patterns = database.repositories.patterns.listPatterns();
+    expect(patterns).toHaveLength(before + 1);
+    const newest = patterns[0];
+    expect(
+      database.repositories.patterns
+        .getPatternWithSteps(newest?.id ?? '')
+        ?.steps.map((step) => step.instruction),
+    ).toStrictEqual(['Make a magic ring', 'Chain 12', 'Fasten off']);
+  });
+
   it('releases the WebView player on navigating away, even on the still-mounted replace fallback (NFR-10 / AC#4)', async () => {
     const database = await createAppDatabase();
     const created = database.repositories.guides.saveImportedGuide({

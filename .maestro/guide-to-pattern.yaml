@@ -1,0 +1,103 @@
+appId: ${APP_ID}
+---
+# Save a YouTube guide as a pattern — a notes-only snapshot (issue #51;
+# FR-PA-08/01/04/05, FR-GU-01, FR-DA-04, NFR-13). Reuses guides.yaml's offline
+# manual-import preamble verbatim so the guide is deterministically "Amigurumi
+# Basics", authors two steps, converts, reopens the pattern after a restart, and
+# finally deletes the GUIDE to prove the pattern and its steps survive it.
+#
+# NEVER RUN: this machine has no JDK, no Android SDK, and no iOS simulator
+# runtime (docs/runbooks/smoke-verification.md §1), so every selector below was
+# written blind against the label helpers. See §4 there before editing one.
+- launchApp:
+    clearState: true
+- tapOn: "Guides"
+- assertVisible: "No guides yet"
+
+# Import a supported link manually while offline (metadata unavailable path).
+- tapOn: "Import from YouTube"
+- tapOn:
+    id: "guide-url-field"
+- inputText: "https://youtu.be/dQw4w9WgXcQ"
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - setAirplaneMode: enabled
+- tapOn: "Look up video"
+- assertVisible: "you can still create this guide"
+- tapOn:
+    id: "guide-title-field"
+- inputText: "Amigurumi Basics"
+- tapOn: "Create guide"
+- assertVisible: "Amigurumi Basics"
+
+# Author two steps, so the guide has something worth converting. (A freshly
+# imported guide has none, and "Save as pattern" is deliberately disabled then.)
+- tapOn: "Edit guide"
+- assertVisible: "Edit guide"
+- tapOn:
+    id: "guide-step-field"
+- inputText: "Magic ring"
+- tapOn: "Add step"
+- tapOn:
+    id: "guide-step-field"
+- inputText: "Chain 12"
+- tapOn: "Add step"
+- tapOn: "Back to guide"
+- assertVisible: "0 of 2 steps done"
+
+# Convert. The review screen is seeded and writes nothing until "Save pattern".
+- tapOn: "Save as pattern"
+- assertVisible: "2 steps will be copied into your new pattern"
+# The step preview rows carry an accessibility label, so the label — not the bare
+# instruction — is the string on screen (smoke-verification.md §4). It is
+# metacharacter-free, so it is used whole.
+- assertVisible: "Step 1 of 2: Magic ring"
+- tapOn: "Save pattern"
+
+# Confirming lands in the pattern viewer on the new pattern, with every step
+# converted and no completion carried over.
+- assertVisible: "Amigurumi Basics"
+- assertVisible: "0 of 2 steps done"
+
+# The source URL is recorded once, in the pattern's notes. The bare URL carries
+# `?`, `.` and `=`, so the metacharacter-free prefix closed with `.*` is the only
+# selector that can match it.
+- tapOn: "Edit pattern"
+- assertVisible: "Saved from YouTube.*"
+- tapOn: "Back to patterns"
+
+# Restart, still offline: the pattern and its steps reopen like any other.
+- launchApp:
+    clearState: false
+- tapOn: "Patterns"
+# A library row is one accessible element whose label is "<title>. <notes>", and
+# those notes are the URL line — so the row is selected by its metacharacter-free
+# prefix, never by the full label.
+- assertVisible: "Amigurumi Basics.*"
+- tapOn: "Amigurumi Basics.*"
+- assertVisible: "0 of 2 steps done"
+
+# Snapshot, not link: deleting the GUIDE leaves the pattern and every step of it
+# intact. This is the on-device form of the "a cascade cannot reach the pattern"
+# acceptance criterion.
+- tapOn: "Guides"
+# The guide row's label is the bare title only while the offline metadata lookup
+# genuinely failed; on iOS, put the device in airplane mode before running this
+# flow, or the row reads "Amigurumi Basics. By <creator>" and this tap misses.
+- tapOn: "Amigurumi Basics"
+- tapOn: "Edit guide"
+- tapOn: "Delete guide"
+- tapOn: "Yes, delete guide"
+- assertVisible: "No guides yet"
+- tapOn: "Patterns"
+- assertVisible: "Amigurumi Basics.*"
+- tapOn: "Amigurumi Basics.*"
+- assertVisible: "0 of 2 steps done"
+- assertVisible: "Step 1 of 2, current step: Magic ring"
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - setAirplaneMode: disabled

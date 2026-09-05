@@ -773,7 +773,39 @@ this repository's first-ever migration (schema version 2) and a separate
 `ON DELETE SET NULL` vs `CASCADE` call, for no product gain. Consequently editing
 the guide after the conversion does not change the pattern, and `deleteGuide`
 leaves the pattern and every one of its steps intact — a cascade structurally
-cannot reach it. `LATEST_SCHEMA_VERSION` stays `1` and no dependency is added.
+cannot reach it.
+
+**No schema work ships with this feature, and no dependency.** #45 wrote this
+section before #44 shipped migration 2, so its original closing sentence said
+`LATEST_SCHEMA_VERSION` stays `1`; the constant is `2` today
+(`src/data/sqlite/migrations.ts`) and only a *down*-migration could restore `1`,
+which would contradict the "no migration ships" half of the same decision. The
+contract this feature is actually held to: **`MIGRATIONS` gains no entry,
+`LATEST_SCHEMA_VERSION` is unchanged, no column/table/CHECK change, and
+`package-lock.json` is byte-identical.**
+
+**Implemented in #51.** The entry control is a `bg-tealStrong` "Save as pattern"
+button beside "Edit guide" inside the guide working view's
+`ListHeaderComponent`, disabled when the guide has no steps — every guide starts
+with zero, so an unconditional control would put an empty pattern in the library
+on the most common path. It pushes the hidden route
+`/guides/[guideId]/save-as-pattern`, a review screen seeded from
+`getGuideWithSteps` through the pure `guidePatternSnapshot`
+(`src/domain/guides/guidePatternSnapshot.ts`), which owns the whole lossiness
+contract; the same disabled-when-empty rule is applied there too, because the
+route is reachable by deep link. Nothing is written until "Save pattern", which
+commits through `createPattern` and `router.replace`s onto the pattern viewer.
+The recorded notes are `Saved from YouTube: <canonical watch url>` — derived
+from `video_id`, the canonical identity, rather than copied from the stored
+`source_url`, which carries no canonical-form constraint — followed, when the
+guide has notes of its own, by a blank line and those notes verbatim. The
+converted pattern carries `origin: 'user'` with no code change at all:
+`createPattern`'s SQL names `'user'` and `CreatePatternInput` has no `origin`
+field, and a third CHECK value such as `'guide'` was rejected because it would be
+a schema-v3 migration buying nothing the notes line does not already carry.
+Converting the same guide twice is deliberately **not** idempotent: it produces
+two independent patterns, because a maker may fork a project and the only
+available dedupe key (the title or the notes URL) is editable afterwards.
 
 ## 10. UI and interaction architecture
 
