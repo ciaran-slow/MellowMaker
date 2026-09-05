@@ -2,7 +2,8 @@ export type DatabaseErrorCode =
   | 'open-failed'
   | 'foreign-keys-unavailable'
   | 'migration-failed'
-  | 'unsupported-schema-version';
+  | 'unsupported-schema-version'
+  | 'empty-step-instruction';
 
 export interface DatabaseErrorDetails {
   /** Schema version the database was at when the failure happened. */
@@ -25,11 +26,14 @@ function describe(
       return `Migration to schema version ${failedVersion ?? 'unknown'} failed; the database is still at version ${schemaVersion ?? 'unknown'}.`;
     case 'unsupported-schema-version':
       return `The database is at schema version ${schemaVersion ?? 'unknown'}, which is newer than this app supports.`;
+    case 'empty-step-instruction':
+      return 'A step must carry an instruction before it can be saved.';
   }
 }
 
 /**
- * The only error type the database lifecycle raises.
+ * The only error type the database lifecycle raises, and the one write-constraint
+ * state it reports (`empty-step-instruction`, from the version-3 schema floor).
  *
  * Messages carry codes and version numbers only. Pattern titles, notes,
  * transcript text, and any other maker-created content stay out of them.

@@ -10,6 +10,8 @@ import type {
 } from '../contracts/guideRepository';
 import { reorderPositions, type ReorderStatements } from './reorderPositions';
 import type { RepositoryContext } from './repositoryContext';
+import type { TransactionRunner } from './transaction';
+import { withStepInstructionGuard } from './writeErrors';
 
 interface GuideRow {
   readonly id: string;
@@ -139,6 +141,14 @@ export function createGuideRepository({
   now,
   newId,
 }: RepositoryContext): GuideRepository {
+  // Used by exactly the four methods that write an `instruction`. The guard sits
+  // *outside* the transaction runner, so a refusal rolls the whole write back
+  // before the typed `DatabaseError('empty-step-instruction')` escapes. Every
+  // other method here — completion, the reorders, the deletes, the metadata
+  // writes — keeps the plain runner because none of them touches `instruction`.
+  const guardedTransaction: TransactionRunner = (work) =>
+    withStepInstructionGuard(() => transaction(work));
+
   function read(id: string): GuideWithSteps | undefined {
     const guide = connection.first<GuideRow>(SELECT_GUIDE, [id]);
     if (guide === undefined) {
@@ -153,7 +163,7 @@ export function createGuideRepository({
 
   return {
     saveImportedGuide({ guide, steps }) {
-      return transaction(() => {
+      return guardedTransaction(() => {
         const writtenAt = now();
         const guideId = newId();
 
@@ -254,7 +264,7 @@ export function createGuideRepository({
     },
 
     addGuideStep(guideId, input): GuideStep {
-      return transaction(() => {
+      return guardedTransaction(() => {
         const writtenAt = now();
         const stepId = newId();
         // Positions stay contiguous from zero (see deleteGuideStep), so the count
@@ -299,7 +309,7 @@ export function createGuideRepository({
     },
 
     appendImportedGuideSteps(guideId, steps): GuideWithSteps {
-      return transaction(() => {
+      return guardedTransaction(() => {
         const writtenAt = now();
         // Read the count ONCE: positions are contiguous from zero, so the batch
         // lands at count..count+n-1 and cannot straddle UNIQUE (guide_id,
@@ -345,7 +355,7 @@ export function createGuideRepository({
     },
 
     updateGuideStep(stepId, input) {
-      transaction(() => {
+      guardedTransaction(() => {
         const writtenAt = now();
         connection.run(UPDATE_GUIDE_STEP, [
           input.instruction,

@@ -5,6 +5,7 @@ import {
   MAX_PAGE_LIMIT,
   resolvePage,
 } from '@/data/contracts/page';
+import { DatabaseError } from '@/data/contracts/databaseError';
 import { applyBundledPatternSeed } from '@/data/seed/patternSeed';
 import { guidePatternSnapshot } from '@/domain/guides/guidePatternSnapshot';
 import { applyBundledStitchSeed } from '@/data/seed/stitchSeed';
@@ -42,6 +43,16 @@ function failingAt(
       connection.run(sql, params);
     },
   };
+}
+
+function captureFailure(work: () => unknown): unknown {
+  try {
+    work();
+  } catch (error) {
+    return error;
+  }
+
+  throw new Error('Expected the repository call to fail.');
 }
 
 describe('SQLite repositories', () => {
@@ -654,6 +665,83 @@ describe('SQLite repositories', () => {
           ['granny-square'],
         )?.pattern_id,
       ).toBeNull();
+    });
+
+    describe('the schema instruction floor (issue #67)', () => {
+      it.each([
+        ['an empty string', ''],
+        ['spaces', '   '],
+        ['a tab', '\t'],
+        ['a non-breaking space', ' '],
+      ])(
+        'refuses createPattern with a step whose instruction is %s and writes no pattern at all',
+        (_label, empty) => {
+          const before = database.repositories.patterns.listPatterns({
+            limit: 200,
+            offset: 0,
+          });
+
+          const failure = captureFailure(() =>
+            database.repositories.patterns.createPattern({
+              title: 'Sunrise Blanket',
+              steps: ['Chain 41', empty],
+            }),
+          );
+
+          expect(failure).toBeInstanceOf(DatabaseError);
+          expect((failure as DatabaseError).code).toBe(
+            'empty-step-instruction',
+          );
+          // The whole aggregate rolled back: the `pattern` row went with it.
+          expect(
+            database.repositories.patterns.listPatterns({
+              limit: 200,
+              offset: 0,
+            }),
+          ).toStrictEqual(before);
+          expect(
+            database.connection.first<{ readonly total: number }>(
+              'SELECT COUNT(*) AS total FROM pattern WHERE title = ?',
+              ['Sunrise Blanket'],
+            )?.total,
+          ).toBe(0);
+        },
+      );
+
+      it('refuses addStep and editStep, leaving the stored steps untouched', () => {
+        const created = database.repositories.patterns.createPattern({
+          title: 'Tiny Hedgehog',
+          steps: ['Magic ring, 6 sc', 'Increase to 12 sc'],
+        });
+        const [first] = created.steps;
+
+        expect(
+          (
+            captureFailure(() =>
+              database.repositories.patterns.addStep(
+                created.pattern.id,
+                '   ',
+              ),
+            ) as DatabaseError
+          ).code,
+        ).toBe('empty-step-instruction');
+        expect(
+          (
+            captureFailure(() =>
+              database.repositories.patterns.editStep(first?.id ?? '', ''),
+            ) as DatabaseError
+          ).code,
+        ).toBe('empty-step-instruction');
+
+        expect(
+          database.repositories.patterns
+            .getPatternWithSteps(created.pattern.id)
+            ?.steps.map((step) => [step.position, step.instruction]),
+        ).toStrictEqual([
+          [0, 'Magic ring, 6 sc'],
+          [1, 'Increase to 12 sc'],
+        ]);
+      });
     });
   });
 

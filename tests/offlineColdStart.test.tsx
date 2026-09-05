@@ -228,6 +228,7 @@ describe('offline cold start — core reads and writes never touch the network',
     );
     expect(reread?.steps.map((step) => step.instruction)).toStrictEqual([
       'Make a magic ring and chain three',
+      'Chain three and work eleven double crochets into the ring',
     ]);
 
     expect(fetchSpy).not.toHaveBeenCalled();

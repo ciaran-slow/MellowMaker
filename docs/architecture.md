@@ -139,9 +139,10 @@ narrow interfaces where practical.
 
 ## 6. Data model
 
-Schema version 1 is the whole PRD0 schema and version 2 adds bundled-pattern
-provenance and the pattern seed ledger (issue #44), both defined in
-`src/data/sqlite/migrations.ts`. That module is the single source of schema truth
+Schema version 1 is the whole PRD0 schema, version 2 adds bundled-pattern
+provenance and the pattern seed ledger (issue #44), and version 3 rebuilds
+`pattern_step` and `guide_step` so each carries a named non-empty `CHECK` on
+`instruction` (issue #67) — all defined in `src/data/sqlite/migrations.ts`. That module is the single source of schema truth
 for the Expo adapter and for the `node:sqlite` integration tests, and it imports
 nothing.
 
@@ -151,11 +152,11 @@ nothing.
 | `stitch_instruction` | Ordered instruction text and local image asset key | `stitch_id` → `stitch`, cascade |
 | `pattern` | Project metadata, notes, and `origin` provenance (`bundled`/`user`) | parent of steps, progress, counters |
 | `pattern_seed_state` | Durable slug-to-pattern seed ledger: which slugs the pattern seed has already inserted. `seed_version` is re-stamped on every apply, so it records the **highest release applied**, not the release that first inserted the slug | `pattern_id` -> `pattern` **set null** |
-| `pattern_step` | Ordered row/instruction text for one pattern | `pattern_id` → `pattern`, cascade |
+| `pattern_step` | Ordered row/instruction text for one pattern; `instruction` carries `pattern_step_instruction_not_empty` (version 3) | `pattern_id` → `pattern`, cascade |
 | `pattern_progress` | One row per pattern holding the active position | `pattern_id` → `pattern` cascade; `active_step_id` → `pattern_step` **set null** |
 | `pattern_step_progress` | One row per step holding its `completed_at` instant | `step_id`/`pattern_id` cascade |
 | `imported_guide` | Canonical YouTube identity (`video_id` unique), URL, title, creator, thumbnail, notes, metadata sync instant | parent of guide steps and counters |
-| `guide_step` | Ordered instruction, optional `video_offset_ms`, transcript excerpt, note, completion, and `origin` | `guide_id` → `imported_guide`, cascade |
+| `guide_step` | Ordered instruction, optional `video_offset_ms`, transcript excerpt, note, completion, and `origin`; `instruction` carries `guide_step_instruction_not_empty` (version 3) | `guide_id` → `imported_guide`, cascade |
 | `counter` | Durable count, kind, maker label, and position for exactly one owner | `pattern_id` or `guide_id`, cascade |
 
 **PRD0 decision 3 is resolved: one maker-labelled counter per project** (issue
@@ -237,7 +238,7 @@ Conventions every table follows:
 | Search | `stitch.search_text` is a stored generated column, `lower(trim(name)) \|\| ' ' \|\| lower(trim(abbreviation))`, indexed, so case- and whitespace-insensitive lookup cannot drift from its source columns. `StitchRepository.searchStitches` matches it with two token-prefix `LIKE ? ESCAPE '\'` clauses — `q%` and `% q%` — so an abbreviation matches as a whole token (`dc` never returns *Half double crochet* through `hdc`), a multi-word name still matches across its space, and the first clause stays index-eligible. `%`, `_`, and `\` a maker typed are escaped at that boundary rather than stripped during normalization, and results are ordered `search_text ASC, id ASC` like browse. No FTS table, no dependency, no migration. |
 | Exclusive owners | `counter.owner_kind` plus paired `CHECK`s guarantee exactly one pattern or one guide owner. `UNIQUE (pattern_id, position)` and `UNIQUE (guide_id, position)` order each owner independently because SQLite treats `NULL`s in a unique index as distinct. |
 | Cross-parent references | A reference that must stay inside one aggregate derives its parent in SQL rather than trusting the caller. `pattern_progress.active_step_id` and `pattern_step_progress.pattern_id` are both written by `INSERT ... SELECT ... FROM pattern_step WHERE id = ?`, so a step from another pattern — or no step at all — writes nothing instead of pointing a pattern at a position it does not own. |
-| Text | Trimmed by the caller before insert; the schema never trims silently except in the generated search column. |
+| Text | Trimmed by the caller before insert; the schema never trims silently except in the generated search column. From version 3 the two step-instruction columns carry a **floor** as well: `CHECK (trim(instruction, char(9,10,11,12,13,32,160,65279)) <> '')`, named `<table>_instruction_not_empty`. It never trims or rewrites — a stored `' Chain 41 '` stays byte-identical — it only refuses text that is *entirely* whitespace, so no writer can persist a nameless step (issue #67). SQLite's one-argument `trim(X)` strips only U+0020, which is why the character set is spelled out; that set is a strict **subset** of `String.prototype.trim()`'s, so the schema can never refuse a value the domain validators accept. The validators stay the primary defence and keep owning the maker-facing message. |
 
 ### 6.1 Seed content
 
@@ -334,12 +335,37 @@ stitches, sections 8-11 patterns).
    Re-running initialization after a failure is safe and resumes from the last
    good version.
 6. **Error taxonomy.** `DatabaseError` (in `src/data/contracts`) carries exactly
-   `open-failed`, `foreign-keys-unavailable`, `migration-failed`, and
-   `unsupported-schema-version`. Its messages carry codes and version numbers
-   only, never maker content.
+   `open-failed`, `foreign-keys-unavailable`, `migration-failed`,
+   `unsupported-schema-version`, and `empty-step-instruction`. The first four are
+   lifecycle states; the fifth (issue #67) is the one **write-constraint** state,
+   raised when a step-instruction `CHECK` refuses a write. Its messages carry
+   codes and version numbers only, never maker content.
+   `src/data/sqlite/writeErrors.ts` owns the mapping: it matches the constraint
+   name inside SQLite's own `CHECK constraint failed: <name>` message with
+   `includes` (so `expo-sqlite`'s native-call prefix is tolerated) and re-throws
+   anything else untouched. It sits **outside** the transaction runner, so a
+   refusal rolls the whole write back before the typed error escapes. There is
+   deliberately **no** JavaScript pre-check in `src/data`: one would re-create
+   the "every caller remembers" pattern #67 removes and would make the `CHECK`
+   unreachable in production, so a regression in it would be invisible.
 7. **Upgrade coverage.** Every future schema change appends a migration and ships
    its own populated fixture case that asserts literal maker rows survive.
-   `LATEST_SCHEMA_VERSION` is **2**. Migration 2 (issue #44) adds
+   `LATEST_SCHEMA_VERSION` is **3**. Migration 3 (issue #67) rebuilds
+   `pattern_step` and `guide_step` through SQLite's 12-step table-rebuild
+   procedure so each carries a named non-empty `CHECK` on `instruction`, and is
+   declared `foreignKeys: 'off'` (rule 9). Its populated upgrade fixture is the
+   "upgrades a populated version-2 database without losing a row, an instant, or
+   a pointer" case in `tests/databaseInitialization.test.ts`, which starts from
+   `MIGRATIONS.filter(m => m.version <= 2)` plus `insertPopulatedBaseline` and
+   asserts literal step ids and instructions in position order, both guide steps'
+   `origin`, offsets and transcript excerpts, both counters, the completion
+   instant, the active pointer, an unchanged table and index list, no `%_new`
+   table left behind, and `PRAGMA foreign_keys` reading back `1`. A pre-existing
+   empty-instruction row is **repaired**, not deleted and not fatal: the copy
+   `SELECT` rewrites it to the frozen literal `'Add an instruction for this
+   step'`, keeping its id, position, timestamps, `origin`, completion instant and
+   active pointer, so a maker gets a visible editable row instead of a nameless
+   one — and an app that could never migrate. Migration 2 (issue #44) adds
    `pattern.origin TEXT NOT NULL DEFAULT 'user' CHECK (origin IN ('bundled','user'))`
    - the default is what backfills every pattern an installed version-1 database
    already holds - and creates `pattern_seed_state`. Its populated upgrade
@@ -377,6 +403,39 @@ stitches, sections 8-11 patterns).
      own output.
    - **Synthetic migration cases derive from `LATEST_SCHEMA_VERSION + 1`**, so
      bumping the version does not require editing them.
+9. **What migration 3 established for migration 4.** #67 was the first migration
+   to *rebuild* a table rather than add to one. Six of its choices are
+   conventions to reuse:
+   - **A `DROP` of a referenced table requires `foreignKeys: 'off'`.** With
+     enforcement on, `DROP TABLE` performs an implicit `DELETE` of every row
+     first, and that fires `ON DELETE` actions. Measured on a populated database:
+     rebuilding `pattern_step` with foreign keys **on** empties
+     `pattern_step_progress` and nulls `pattern_progress.active_step_id`, and the
+     migration then **commits and reports success**. It raises nothing. That is
+     the worst failure mode this repository can have and it is one missing pragma
+     away. `PRAGMA defer_foreign_keys = ON` does **not** substitute — it defers
+     violation *checking*, not the *actions*, and the rows still vanish.
+   - **The read-back after disabling is mandatory.** `PRAGMA foreign_keys` is a
+     silent no-op inside a transaction (measured both directions), so the toggle
+     lives in the runner rather than in `statements` — and a swallowed disable
+     produces exactly the silent loss above, so the runner reads the pragma back
+     and refuses to begin unless it reports `0`.
+   - **`PRAGMA foreign_key_check` is the runner's job**, because it returns rows
+     rather than throwing and `statements` go through `connection.execute`, which
+     discards results. Placed in the statement list it would be a silent no-op —
+     the same class of defect as an unmatched Maestro `assertNotVisible`.
+   - **Step 6 strictly precedes step 7**: drop the old table, *then* rename the
+     new one into its place. Renaming the old one out of the way first is the
+     documented way to get other tables' `REFERENCES` clauses silently rewritten.
+   - **A repair belongs in the copy `SELECT`, never in a follow-up `UPDATE`** —
+     migration 2's "backfill in the DDL" convention restated for a rebuild. One
+     expression inside a statement that has to run anyway is one failure point
+     instead of two, and the new table's `CHECK` is what proves the repair
+     worked.
+   - **A migration's literals are frozen and never imported from the domain.** A
+     migration is a historical record: a copy change in a validator's message
+     must not retroactively alter what a device already wrote. The tests write
+     the same literal out independently rather than importing it.
 
 Repositories are built by `createRepositories` over one `RepositoryContext`
 (connection, transaction runner, injected clock, injected identifier generator),
@@ -1266,6 +1325,25 @@ the ledger tombstone surviving a pattern delete, `repositories` extends its
 `patterns` describe with an end-to-end bundled-pattern edit/progress/counter/
 reopen/delete round trip, and `offlineColdStart` seeds both content sets and works
 a bundled pattern with `fetch` stubbed to throw.
+
+The version-3 step-instruction floor (issue #67) is covered at three layers.
+`databaseSchema` asserts it **at the connection**, with no repository method
+involved: `''`, spaces, tab, newline, NBSP, and BOM are refused on both tables by
+name for `INSERT` and for `UPDATE` alike, while `'Chain 41'`, `' Chain 41 '`,
+`'0'`, `'-'`, and a zero-width space are accepted and stored byte-identically —
+the arms that keep the predicate from being a reject-all and pin the
+subset-of-JS-trim rule. `databaseInitialization` covers the populated v2 to v3
+upgrade, the four whitespace shapes of the repaired pre-existing row, the
+foreign-key re-enable on the *failure* path, `foreign_key_check` catching an
+orphaning rebuild, and the disable read-back refusing to rebuild at all.
+`guideRepository` and `repositories` pin the typed
+`DatabaseError('empty-step-instruction')` and the whole-batch rollback for
+`appendImportedGuideSteps` (the empty entry deliberately at index 1, so an
+`INSERT` has already run), for `saveImportedGuide`, `addGuideStep`,
+`updateGuideStep`, `createPattern`, `addStep`, and `editStep` — plus the mapper's
+negative branch, where a different constraint failure must **not** be reported as
+an empty instruction. `expoSqliteAdapter` proves the constraint name survives the
+`expo-sqlite` seam, which is what justifies matching it with `includes`.
 
 Five walk-based guards under `tests/` pin repository-wide contracts rather than
 one file's behaviour, all defaulting every `src/` file to "included" so a new
