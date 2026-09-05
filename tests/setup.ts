@@ -4,6 +4,7 @@ import {
   createExpoSqliteModuleMock,
   resetExpoSqliteMock,
 } from './support/expoSqliteMock';
+import { reactNativeSvgMockModule } from './support/reactNativeSvgMock';
 import {
   resetYoutubeIframeMock,
   youtubeIframeMockModule,
@@ -14,6 +15,7 @@ import {
 // test first requires the mocked module.
 const mockExpoSqliteModule = createExpoSqliteModuleMock;
 const mockRandomUUID = randomUUID;
+const mockReactNativeSvgModule = reactNativeSvgMockModule;
 const mockYoutubeIframeModule = youtubeIframeMockModule;
 
 // Component and router tests run the real migrations and repositories against an
@@ -31,6 +33,12 @@ jest.mock('expo-crypto', () => ({
 // suites import its handles to drive readiness/errors and assert the seek unit.
 jest.mock('react-native-youtube-iframe', () => mockYoutubeIframeModule);
 
+// `react-native-svg` renders native views that cannot mount in Jest. Every suite
+// gets the shared stub, which spreads props through plain `View`s so the stitch
+// step art's path data and animated props stay inspectable, and throws on any
+// export the spike did not stub.
+jest.mock('react-native-svg', () => mockReactNativeSvgModule);
+
 afterEach(() => {
   resetExpoSqliteMock();
   resetYoutubeIframeMock();
@@ -44,6 +52,7 @@ jest.mock('react-native-reanimated', () => {
       createAnimatedComponent: <Component,>(component: Component) => component,
     },
     setUpTests: jest.fn(),
+    useAnimatedProps: (updater: () => unknown) => updater(),
     useAnimatedStyle: (updater: () => unknown) => updater(),
     useReducedMotion,
     useSharedValue: <Value,>(value: Value) => ({
@@ -51,6 +60,7 @@ jest.mock('react-native-reanimated', () => {
       get: () => value,
       set: jest.fn(),
     }),
+    withDelay: <Value,>(_delay: number, animation: Value) => animation,
     withSpring: <Value,>(value: Value) => value,
     withTiming: <Value,>(value: Value) => value,
   };
@@ -64,6 +74,7 @@ jest.mock('react-native-reanimated/mock', () => {
       createAnimatedComponent: <Component,>(component: Component) => component,
     },
     setUpTests: jest.fn(),
+    useAnimatedProps: (updater: () => unknown) => updater(),
     useAnimatedStyle: (updater: () => unknown) => updater(),
     useReducedMotion,
     useSharedValue: <Value,>(value: Value) => ({
@@ -71,6 +82,7 @@ jest.mock('react-native-reanimated/mock', () => {
       get: () => value,
       set: jest.fn(),
     }),
+    withDelay: <Value,>(_delay: number, animation: Value) => animation,
     withSpring: <Value,>(value: Value) => value,
     withTiming: <Value,>(value: Value) => value,
   };

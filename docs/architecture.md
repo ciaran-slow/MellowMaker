@@ -46,6 +46,7 @@ SQLite is the source of truth for core application state. Network services enric
 | Video | YouTube plays through the **YouTube IFrame Player API in a WebView** (`react-native-youtube-iframe` `2.4.1` over `react-native-webview` `13.16.1`), added by issue #11 (see §9.1). `expo-video` stays in the stack only for possible future non-YouTube media. |
 | Styling | NativeWind v4 |
 | Motion | React Native Reanimated |
+| Vector drawing | `react-native-svg` `15.15.4` — the version Expo SDK 57 bundles, so it autolinks and runs in Expo Go with no config plugin and no prebuild. Added by issue #46 for the stitch step drawings (see §10); `tests/reactNativeSvgPin.test.ts` holds the pin. |
 | Platforms | iOS and Android |
 | Navigation | Expo Router typed routes with Stitches, Patterns, and Guides bottom tabs |
 | Transient state and forms | React hooks/context and controlled inputs with pure domain validation; no global store or form dependency |
@@ -895,6 +896,32 @@ One convention introduced by the field-alignment fix (issue #42):
   `className` as well as the style — a class-expressed minimum would otherwise
   be unassertable and unfalsifiable.
 
+One convention introduced by the stitch step animation spike (issue #46):
+
+- **Stitch step motion is decorative, token-stroked, and reduced-motion
+  final-frame.** Reanimated drives `strokeDashoffset` on
+  `Animated.createAnimatedComponent(Path)` from `react-native-svg`, so motion
+  stays on the one engine the codebase standardises on rather than adding a
+  second player. `useStrokeDraw` owns the gate beside `usePressScale`: under
+  reduced motion the shared value is *initialised* to the finished drawing and
+  neither `withTiming` nor `withDelay` is ever called, so the first painted
+  frame is the final frame and nothing is scheduled. The drawing is decorative —
+  `accessibilityElementsHidden` plus `importantForAccessibility="no-hide-descendants"`,
+  no `accessibilityRole="image"`, no text — because the step sentence above it
+  already says everything it shows; it renders in the same pass as that
+  sentence and sits **below** it, so neither a screen reader nor a large system
+  text size is affected by it. Stroke colours come only from `STROKE_COLOR`
+  (`ink`, `pinkStrong`, `blueStrong`), each measured at or above 3:1 against
+  both the white card and the off-white backdrop, and `accessibilityContrast`
+  additionally bans a raw hex reaching any `stroke`/`fill` in `src/` — the
+  class-based rules cannot see an SVG stroke, so the palette lookup is the only
+  way in. Path data is project-authored inline TypeScript in dictionary
+  presentation (`stitchStepArt.ts`): never an `assets/` file, which would enter
+  the bundled-imagery gate, and never seed content, which feature code may not
+  import at all. Being in that directory also puts it inside the
+  `offlineColdStart` walk by default, so the drawings can never become
+  network-dependent.
+
 ## 11. State, forms, and concurrency
 
 - SQLite owns durable state and is the only authoritative copy of persisted entities.
@@ -1157,6 +1184,45 @@ The analytics/crash-reporting/telemetry question is resolved: issue #13 confirme
 leaves the device (NFR-13). The stance and its enforcing guards are recorded in
 §12. Adopting any such SDK could only reopen this as a deliberate post-PRD0
 decision carrying its own privacy disclosure.
+
+The stitch step **rendering** decision is resolved: issue #46 confirmed
+`react-native-svg` `15.15.4` over `lottie-react-native`. Both are bundled in
+Expo Go for SDK 57, so packaging drove nothing: neither needs a dev build. svg
+won on the grounds this repository already holds. Its motion is the Reanimated
+the codebase standardises on, driving `strokeDashoffset` on the UI thread,
+rather than a second player with its own timeline; reduced motion is therefore
+expressed in the same `useReducedMotion` gate as `usePressScale`, with one
+convention and one falsifier shape, instead of a separate progress/frame API to
+freeze a final frame. Its content is plain path strings in a reviewable,
+diffable `.ts` file — trivially project-authored and auditable line by line
+(`content-provenance.md` §3) — where a Lottie document is an opaque artifact
+exported from a third-party authoring tool whose provenance is a review burden
+and whose templates risk third-party derivation. It also adds no file under
+`assets/`, so the bundled-imagery gate stays green untouched, and it is one
+package rather than a package plus an authoring tool in the loop.
+
+The **spike itself is merged**; what #46 deliberately leaves open is **whether
+the approach scales to the remaining eleven stitches**. That rollout question is
+answered against the thresholds pre-registered in the plan before any number
+existed, and its state as of the product owner's decision of **2026-09-04**
+([issue comment](https://github.com/ciaran-slow/MellowMaker/issues/46#issuecomment-5534448327))
+is:
+
+| Pre-registered threshold | State |
+|---|---|
+| (1) minimum UI fps ≥ 55 across three list→detail cascade runs on the physical iPhone | **Deferred to #16, unmeasured.** No JDK, no Android SDK, no iOS simulator runtime on the build machine, and `react-native-svg` is mocked in every Jest suite, so nothing in this repository bears on it |
+| (2) per-stitch art ≤ 4 KB gzipped **and** a one-time `react-native-svg` bundle delta ≤ 150 KB | **Met.** Art 2,459 B gzipped (61% of budget); library delta 65,145 B gzipped (43% of budget). The owner decided the delta is read as **gzip** — compressed bytes are what cross the network and land on install. Read as raw Hermes bytecode the same delta is 180,981 B and would have **missed** by ~31 kB; both readings and the fact that the reading was chosen after the number existed are recorded in PR #55's go/no-go rather than hidden |
+| (3) median authoring time ≤ 30 minutes per step | **Retired by owner decision.** Paths are authored by agents in practice, so a human authoring clock does not describe the real cost. The rollout is judged on fps and size only |
+| (4) no regression in reduced motion, contrast, offline, or imagery | **Met**, each pinned by a suite; `offlineColdStart` and the imagery gate pass unedited |
+
+The resulting recommendation is a **provisional GO for the eleven-stitch
+rollout, contingent on #16's fps measurement clearing ≥ 55**. If it does not, the
+plan's pre-registered fallback applies: re-scope to **one animation per stitch
+instead of per step** and re-measure, rather than proceeding with the per-step
+cascade. The remaining device measurements #16 must clear are listed in
+[`runbooks/deferred-smokes/046-issue-46.md`](./runbooks/deferred-smokes/046-issue-46.md).
+A no-go names which threshold failed and by how much; the whole spike is one
+revert.
 
 The only remaining PRD0 decision is the minimum supported iOS/Android versions
 for the first EAS release (PRD0 decision 8), which belongs to the EAS/release

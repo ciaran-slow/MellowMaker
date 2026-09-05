@@ -1,6 +1,7 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 
+import { STROKE_COLOR } from '@/features/dictionary/presentation/stitchStepArt';
 import tokens from '@/ui/theme/tokens.json';
 
 import { contrastRatio } from './support/contrast';
@@ -36,6 +37,22 @@ const BRIGHT_TEXT = /\btext-(pink|teal|blue|yellow)\b/;
  */
 const STRING_LITERAL = /'([^'\n]*)'|"([^"\n]*)"|`([^`]*)`/g;
 const PRESSABLE_SPAN = /<CraftPressable\b[\s\S]*?<\/CraftPressable>/g;
+/**
+ * An SVG stroke or fill sits on a card, not on a token background, so none of
+ * the class-based rules above can see it. A raw hex is the way one would escape
+ * the palette entirely, so it is banned outright: every stroke colour must come
+ * from `STROKE_COLOR`, which is measured below (issue #46).
+ */
+const RAW_STROKE_HEX = /(?:stroke|fill)=\s*[{"']?\s*['"]?#/;
+/**
+ * The adjacent form above only catches a hex written *at* the attribute. A hex
+ * behind a local constant, a role→hex map, or a ternary reaches the same stroke
+ * and slips straight past it. So any file that strokes or fills at all is
+ * additionally forbidden a raw colour anywhere in it: the palette lookup has to
+ * come from a token module, which is measured separately.
+ */
+const STROKES_OR_FILLS = /(?:stroke|fill)=/;
+const HEX_LITERAL = /#(?:[0-9A-Fa-f]{3,4}|[0-9A-Fa-f]{6}|[0-9A-Fa-f]{8})\b/;
 
 function walk(dir: string): string[] {
   return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
@@ -185,6 +202,74 @@ describe('accessibility contrast guard (A11Y-04)', () => {
     expect(colors.teal).toBe('#06D6A0');
     expect(colors.blue).toBe('#118AB2');
     expect(colors.yellow).toBe('#FFD166');
+  });
+
+  it('every stitch-art stroke colour clears 3:1 on both the card and the backdrop', () => {
+    // Non-text graphics, so the 3:1 threshold applies rather than 4.5:1. The
+    // drawings sit on white cards, which themselves sit on the off-white
+    // backdrop, so both surfaces are asserted with literal hexes.
+    const offenders: string[] = [];
+
+    for (const [role, value] of Object.entries(STROKE_COLOR)) {
+      for (const surface of ['#FFFFFF', '#F9F8F6']) {
+        const ratio = contrastRatio(value, surface);
+        if (ratio < NON_TEXT_AA) {
+          offenders.push(`${role} ${value} on ${surface} = ${ratio.toFixed(2)}:1`);
+        }
+      }
+
+      // A raw colour cannot be smuggled into the palette map either.
+      if (!Object.values(colors).includes(value)) {
+        offenders.push(`${role} ${value} is not a documented token colour`);
+      }
+    }
+
+    expect(offenders).toStrictEqual([]);
+  });
+
+  it('never writes a raw colour into a stroke or fill anywhere in src/', () => {
+    const offenders = sourceFiles
+      .filter((file) => RAW_STROKE_HEX.test(readFileSync(file, 'utf8')))
+      .map(rel);
+
+    expect(offenders).toStrictEqual([]);
+  });
+
+  it('holds no raw colour at all in any file that strokes or fills', () => {
+    const offenders = sourceFiles
+      .filter((file) => {
+        const source = readFileSync(file, 'utf8');
+
+        return STROKES_OR_FILLS.test(source) && HEX_LITERAL.test(source);
+      })
+      .map(rel);
+
+    expect(offenders).toStrictEqual([]);
+  });
+
+  it('non-tautology: the stroke rules reject a raw hex and a bright accent', () => {
+    // The matcher catches the hex form and lets the palette lookup through.
+    expect(RAW_STROKE_HEX.test('stroke="#FF6B8B"')).toBe(true);
+    expect(RAW_STROKE_HEX.test('fill={"#FFD166"}')).toBe(true);
+    expect(RAW_STROKE_HEX.test('stroke={STROKE_COLOR[stroke.role]}')).toBe(false);
+    expect(RAW_STROKE_HEX.test('fill="none"')).toBe(false);
+    expect(RAW_STROKE_HEX.test('strokeWidth={3}')).toBe(false);
+
+    // The file-level rule arms on the palette-correct form too — that is the
+    // point: it is what closes the constant / map / ternary carriers the
+    // adjacent matcher above cannot see.
+    expect(STROKES_OR_FILLS.test('stroke={STROKE_COLOR[stroke.role]}')).toBe(true);
+    expect(HEX_LITERAL.test("const RAW = '#FFD166';")).toBe(true);
+    expect(HEX_LITERAL.test("{ base: '#FFD166' }")).toBe(true);
+    expect(HEX_LITERAL.test("role === 'base' ? '#FFD166' : palette")).toBe(true);
+    expect(HEX_LITERAL.test('importantForAccessibility="no-hide-descendants"')).toBe(
+      false,
+    );
+
+    // And the 3:1 threshold is a real constraint: the bright teal and yellow
+    // would fail it, so passing it is not automatic for any palette colour.
+    expect(contrastRatio('#06D6A0', '#FFFFFF')).toBeLessThan(NON_TEXT_AA);
+    expect(contrastRatio('#FFD166', '#FFFFFF')).toBeLessThan(NON_TEXT_AA);
   });
 
   it('non-tautology: a bright accent under ink text would fail the pairing rule', () => {

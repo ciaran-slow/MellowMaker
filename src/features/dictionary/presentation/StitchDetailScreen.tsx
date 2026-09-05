@@ -3,6 +3,8 @@ import { useRouter } from 'expo-router';
 import { ActivityIndicator, Text, View } from 'react-native';
 
 import { DIFFICULTY_LABEL } from '@/features/dictionary/presentation/stitchLabels';
+import { StitchStepAnimation } from '@/features/dictionary/presentation/StitchStepAnimation';
+import { stitchStepArt } from '@/features/dictionary/presentation/stitchStepArt';
 import { useStitchDetail } from '@/features/dictionary/presentation/useStitchDetail';
 import { useAnnouncement } from '@/ui/accessibility/useAnnouncement';
 import { CraftCard } from '@/ui/components/CraftCard';
@@ -124,21 +126,34 @@ export function StitchDetailScreen({ stitchId }: StitchDetailScreenProps) {
             Steps
           </Text>
           <View className="gap-3">
-            {state.stitch.instructions.map((instruction, index) => (
-              <View
-                accessible
-                accessibilityLabel={`Step ${index + 1} of ${state.stitch.instructions.length}: ${instruction.instruction}`}
-                className="flex-row items-start gap-3 rounded-large bg-surface p-4"
-                key={instruction.id}
-              >
-                <Text className="rounded-pill bg-yellow px-3 py-1 text-label text-ink">
-                  {index + 1}
-                </Text>
-                <Text className="flex-1 text-body text-ink">
-                  {instruction.instruction}
-                </Text>
-              </View>
-            ))}
+            {state.stitch.instructions.map((instruction, index) => {
+              // Absent for every stitch without authored art, and for a
+              // maker-owned stitch, which carries no slug at all.
+              const art = stitchStepArt(state.stitch.slug, index);
+
+              return (
+                <View
+                  accessible
+                  accessibilityLabel={`Step ${index + 1} of ${state.stitch.instructions.length}: ${instruction.instruction}`}
+                  className="gap-3 rounded-large bg-surface p-4"
+                  key={instruction.id}
+                >
+                  <View className="flex-row items-start gap-3">
+                    <Text className="rounded-pill bg-yellow px-3 py-1 text-label text-ink">
+                      {index + 1}
+                    </Text>
+                    <Text className="flex-1 text-body text-ink">
+                      {instruction.instruction}
+                    </Text>
+                  </View>
+                  {/* Below the sentence, so a large system text size never
+                      squeezes the instruction column. */}
+                  {art === undefined ? null : (
+                    <StitchStepAnimation art={art} stepIndex={index} />
+                  )}
+                </View>
+              );
+            })}
           </View>
         </>
       ) : null}

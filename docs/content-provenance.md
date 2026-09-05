@@ -107,6 +107,20 @@ Adding an image set requires, in the same change:
 - updating the imagery gate in `tests/stitchSeedContent.test.ts`, which currently
   fails on the first `imageAssetKey` and on any bundled stitch artwork.
 
+**Motion geometry is not imagery (issue #46).** The stitch step animation spike
+bundles **no** imagery and sets `imageAssetKey` on zero records — both unchanged.
+Its project-authored vector *motion geometry* for single crochet lives as inline
+path data in `src/features/dictionary/presentation/stitchStepArt.ts`. It is
+presentation, not content: drawn for this repository from the authored
+instruction sentences, with no tracing of third-party diagrams, photographs, or
+video frames, so it carries no third-party derivation, needs no attribution
+surface, and adds no file under `assets/` — which is why the imagery gate above
+stays green **untouched**, and is the spike's own evidence that it bundled none.
+`imageAssetKey` is deliberately not used for it: that field means an available
+local *visual reference* in content, with its own licence and attribution
+obligations. No field of `stitchSeed.json` changed, so the §7 content-change
+checklist is untriggered and `seedVersion` stays 1.
+
 ## 5. Attribution and redistribution
 
 The project authored and owns the bundled text, so redistributing it inside the
