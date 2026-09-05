@@ -722,6 +722,39 @@ describe('PatternViewerScreen', () => {
       expect(scrollToIndex).toHaveBeenCalledTimes(5);
     });
 
+    // Added by the build stage's mutation self-check, not in the plan's list of
+    // seven. Deleting the hook's `if (settledRef.current) return;` left every
+    // planned case green: the cap covers the count, the `<= 0` guard is
+    // idempotent, and a throw planted on that guard showed only the cap case and
+    // the first-row case ever reach it. The one contract `settledRef` decides
+    // alone — a NON-FAILING attempt settles the restore for this mount — was
+    // named by no test, because with the spy calling through every index above 0
+    // is unmeasured in Jest and the landing branch is unreachable. On device
+    // that is the difference between one snap and a list that keeps re-snapping
+    // for the rest of the session.
+    it('settles for the mount as soon as an attempt does not fail', async () => {
+      // A `mockImplementation` no-op stands in for the landing: `scrollToIndex`
+      // records the call and does NOT invoke `onScrollToIndexFailed`, which is
+      // exactly what a measured cell looks like to this hook.
+      const scrollToIndex = jest
+        .spyOn(FlatList.prototype, 'scrollToIndex')
+        .mockImplementation(() => {});
+      const long = createLongPattern({ activeStepIndex: 19 });
+
+      const list = await openLongBlanket(long.id, 'restore-settles');
+
+      await fireContentSizeChange(list);
+      expect(scrollToIndex).toHaveBeenCalledTimes(1);
+
+      // `onContentSizeChange` fires for the whole life of the list — a row whose
+      // height changes on completion fires it again. Once the maker has landed,
+      // none of those may move the list, and the cap cannot be what stops them:
+      // only two of five attempts have been spent.
+      await fireContentSizeChange(list);
+      await fireContentSizeChange(list);
+      expect(scrollToIndex).toHaveBeenCalledTimes(1);
+    });
+
     it('does not scroll when the current step is already the first row', async () => {
       const scrollToIndex = jest.spyOn(FlatList.prototype, 'scrollToIndex');
       const long = createLongPattern();
