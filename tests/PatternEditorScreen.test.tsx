@@ -1,5 +1,5 @@
 import { fireEvent, render, screen } from '@testing-library/react-native';
-import { PixelRatio } from 'react-native';
+import { AccessibilityInfo, PixelRatio, Platform } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import type { Repositories } from '@/data/contracts/appDatabase';
@@ -251,5 +251,69 @@ describe('PatternEditorScreen', () => {
       screen.getByRole('button', { name: 'Create pattern' }),
     ).toBeOnTheScreen();
     expect(screen.getByRole('button', { name: 'Add step' })).toBeOnTheScreen();
+  });
+
+  describe('a repeated identical rejection on Add step (issue #66)', () => {
+    // Verify's M-K deleted `AddStepField`'s `setAttempt` bump and the whole
+    // suite stayed green: the contract was migrated to six surfaces and pinned
+    // at two. Closed by the #66 retro.
+    const BLANK_INSTRUCTION = 'Write what this step does before adding it.';
+    let announce: jest.SpyInstance;
+
+    beforeEach(() => {
+      announce = jest
+        .spyOn(AccessibilityInfo, 'announceForAccessibility')
+        .mockImplementation(() => {});
+      announce.mockClear();
+    });
+
+    async function addStep() {
+      await fireEvent.press(screen.getByRole('button', { name: 'Add step' }));
+    }
+
+    it('falsifier: pressing Add step twice on a blank instruction announces twice', async () => {
+      jest.replaceProperty(Platform, 'OS', 'ios');
+      await render(tree(repositories));
+
+      await addStep();
+      expect(screen.getByRole('alert')).toHaveTextContent(BLANK_INSTRUCTION);
+      expect(announce).toHaveBeenCalledTimes(1);
+
+      await addStep();
+
+      expect(announce.mock.calls.map(([text]) => text)).toStrictEqual([
+        BLANK_INSTRUCTION,
+        BLANK_INSTRUCTION,
+      ]);
+    });
+
+    it('negative branch: typing the title the failed validation did not read stays silent', async () => {
+      jest.replaceProperty(Platform, 'OS', 'ios');
+      await render(tree(repositories));
+
+      await addStep();
+      expect(announce).toHaveBeenCalledTimes(1);
+
+      await fireEvent.changeText(
+        screen.getByLabelText('Pattern title'),
+        'Sunrise Blanket',
+      );
+
+      expect(announce).toHaveBeenCalledTimes(1);
+      expect(screen.getByRole('alert')).toHaveTextContent(BLANK_INSTRUCTION);
+    });
+
+    it('Android: the announcer never fires, and the alert identity advances', async () => {
+      jest.replaceProperty(Platform, 'OS', 'android');
+      await render(tree(repositories));
+
+      await addStep();
+      const first = screen.getByRole('alert').props.nativeID;
+
+      await addStep();
+
+      expect(announce).not.toHaveBeenCalled();
+      expect(screen.getByRole('alert').props.nativeID).not.toBe(first);
+    });
   });
 });

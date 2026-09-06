@@ -373,6 +373,32 @@ green, widen the guard before opening the PR; if widening is genuinely out of
 scope, record the uncovered carrier as a coverage gap in the PR body so verify
 and the retro can carry it to `docs/runbooks/test-debt.md`.
 
+**A contract migrated to N surfaces needs its falsifier at every surface, not at
+a representative one.** The rule above is about the carriers *inside* one guard;
+this is its sibling for a change that converts several call sites to one new
+primitive. The primitive gets a suite, that suite proves the **mechanism**, and
+it is easy to read the per-surface work as too trivial to test — one `useState`
+and one element swap each. It is not, because the mechanism and the **wiring**
+are different contracts and only the mechanism is covered. #66 moved the
+repeated-rejection contract onto `CraftInlineError` at six surfaces and shipped
+per-surface tests at the two the acceptance criteria named. Verify then deleted
+`setAttempt((n) => n + 1)` from each of the other four handlers in turn —
+`GuideStepEditorRow.saveEdit`, `PatternStepEditorRow.saveEdit`,
+`AddStepField.submit`, `UrlEntryForm.submit` — and all 646 tests stayed green
+each time. Four of six surfaces could have been reverted to the exact bug the
+issue existed to fix with nothing red.
+
+So, when a diff converts N call sites to a shared primitive: after the mutation
+pass on the primitive, **delete the per-site wiring at each site in turn** — the
+counter bump, the prop that carries the new argument, the import swap — and
+confirm a test named for *that surface* goes red. Cheap in practice: the case is
+usually a three-line repeat of the same scenario against that screen's own
+labels, in a suite that already exists. Where the ACs name only some of the
+surfaces, the others are still yours: the ACs bound what the *product* owes, not
+what the diff can silently lose. If a surface genuinely cannot be driven in this
+harness, say which one and why in the PR body as a coverage gap, so it lands in
+`docs/runbooks/test-debt.md` rather than being discovered by the next revert.
+
 When a test guards a **set** of modules/files against a contract (an
 enumeration/boundary guard — e.g. "no core module imports the network seam"),
 discover that set by **walking** its source-of-truth directory with an explicit,
@@ -542,12 +568,29 @@ put the artifact there literally, in that place, before calling the AC met; the
 PR body may repeat it, never substitute for it. Quote the artifact's own wording
 when you copy it across so the two records cannot drift.
 
+**A provisional acceptance criterion has one fixed phrase; quote it, do not
+paraphrase.** `docs/runbooks/smoke-verification.md` §2.1 condition 4 fixes the
+wording so nothing gets quietly upgraded on the way through three documents:
+
+> `provisionally met — <the deferred half> deferred to #16 by owner decision <link>`
+
+Write exactly that, in the AC list and in the smoke-deferral paragraph, filling
+in only the two placeholders. #66's PR body wrote "provisionally verified pending
+an on-device smoke" instead. Nothing was upgraded — the link was there and no AC
+read plain "met" — but verify had to spend a finding establishing that, because a
+reworded provisional cannot be checked by reading it; it has to be re-derived
+against the five conditions. The deferred-smokes entry and the review both used
+the canonical phrase, so the PR body was the only one of the three records a
+later reader could not match against the rule. A fixed phrase is cheap for the
+writer and free for every reader after.
+
 The PR body must include:
 
 - `Closes #<n>`;
 - user-visible behavior delivered;
 - implementation and persistence notes;
 - tests, gates, simulators/devices, and platforms actually run;
+- for any criterion merging provisionally, §2.1 condition 4's exact phrase;
 - the base-branch classification of **every** new test — the falsifiers (red on
   base) and the regression guards (green on base, each with the mutation that
   reddens it), accounting for the whole new block (§6);

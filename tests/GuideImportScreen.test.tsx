@@ -1,4 +1,5 @@
 import { fireEvent, render, screen } from '@testing-library/react-native';
+import { AccessibilityInfo, Platform } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import type { Repositories } from '@/data/contracts/appDatabase';
@@ -271,6 +272,92 @@ describe('GuideImportScreen', () => {
         [42000, 'user'],
         [0, 'import'],
       ]);
+    });
+  });
+
+  describe('a repeated identical rejection on the link field (issue #66)', () => {
+    // Two gaps PR #69's verify found and rated non-blocking, closed together
+    // by the #66 retro. M-G deleted `UrlEntryForm`'s `setAttempt` bump and the
+    // suite stayed green; M-J re-added the parent screen's deleted `urlError`
+    // announcement — the exact iOS double-speak the PR body warns about — and
+    // the suite stayed green too, because nothing here counted utterances.
+    let announce: jest.SpyInstance;
+
+    beforeEach(() => {
+      announce = jest
+        .spyOn(AccessibilityInfo, 'announceForAccessibility')
+        .mockImplementation(() => {});
+      announce.mockClear();
+    });
+
+    async function lookUp(link: string) {
+      await fireEvent.changeText(screen.getByLabelText('YouTube link'), link);
+      await fireEvent.press(
+        screen.getByRole('button', { name: 'Look up video' }),
+      );
+    }
+
+    it('speaks a rejected link exactly once, from the field and not the screen', async () => {
+      jest.replaceProperty(Platform, 'OS', 'ios');
+      await render(tree(repositories, fakeGateway(OK_RESULT)));
+
+      await lookUp('not a link');
+
+      // One utterance, not two: `UrlEntryForm` owns the rejection through
+      // `CraftInlineError`, and the screen no longer announces it as well.
+      expect(announce).toHaveBeenCalledTimes(1);
+      expect(announce).toHaveBeenCalledWith(
+        screen.getByRole('alert').props.children,
+      );
+    });
+
+    it('falsifier: looking up the same bad link twice announces twice', async () => {
+      jest.replaceProperty(Platform, 'OS', 'ios');
+      await render(tree(repositories, fakeGateway(OK_RESULT)));
+
+      await lookUp('not a link');
+      const message = screen.getByRole('alert').props.children;
+
+      // Nothing edited in between: the rejection is already on screen, so the
+      // attempt is the only thing that can make the app answer again.
+      await fireEvent.press(
+        screen.getByRole('button', { name: 'Look up video' }),
+      );
+
+      expect(announce.mock.calls.map(([text]) => text)).toStrictEqual([
+        message,
+        message,
+      ]);
+    });
+
+    it('negative branch: editing the link without submitting stays silent', async () => {
+      jest.replaceProperty(Platform, 'OS', 'ios');
+      await render(tree(repositories, fakeGateway(OK_RESULT)));
+
+      await lookUp('not a link');
+      expect(announce).toHaveBeenCalledTimes(1);
+
+      await fireEvent.changeText(
+        screen.getByLabelText('YouTube link'),
+        'still not a link',
+      );
+
+      expect(announce).toHaveBeenCalledTimes(1);
+    });
+
+    it('Android: the announcer never fires, and the alert identity advances', async () => {
+      jest.replaceProperty(Platform, 'OS', 'android');
+      await render(tree(repositories, fakeGateway(OK_RESULT)));
+
+      await lookUp('not a link');
+      const first = screen.getByRole('alert').props.nativeID;
+
+      await fireEvent.press(
+        screen.getByRole('button', { name: 'Look up video' }),
+      );
+
+      expect(announce).not.toHaveBeenCalled();
+      expect(screen.getByRole('alert').props.nativeID).not.toBe(first);
     });
   });
 });

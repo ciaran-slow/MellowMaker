@@ -714,4 +714,84 @@ describe('GuideEditorScreen', () => {
       expect(screen.getByRole('alert').props.nativeID).not.toBe(first);
     });
   });
+
+  describe('a repeated identical rejection on a saved step row (issue #66)', () => {
+    // PR #69 migrated one contract to six surfaces and tested it at two of
+    // them. Verify's M-H deleted this row's `setAttempt` bump and the whole
+    // suite stayed green, so a partial revert here would restore the dead tap
+    // with nothing red. Closed by the #66 retro.
+    const BLANK_INSTRUCTION = 'Add an instruction for this step.';
+    let announce: jest.SpyInstance;
+
+    beforeEach(() => {
+      announce = jest
+        .spyOn(AccessibilityInfo, 'announceForAccessibility')
+        .mockImplementation(() => {});
+      announce.mockClear();
+    });
+
+    async function openEditorOnABlankedStep() {
+      const guide = seedBareGuide(repositories);
+      repositories.guides.addGuideStep(guide.guide.id, {
+        instruction: 'Chain twenty',
+      });
+      await render(tree(repositories, offlineGateway(), guide.guide.id));
+      await screen.findByRole('header', { name: 'Edit guide' });
+
+      await fireEvent.press(screen.getByRole('button', { name: 'Edit step 1' }));
+      await fireEvent.changeText(
+        screen.getByLabelText('Edit step 1 instruction'),
+        '   ',
+      );
+    }
+
+    async function save() {
+      await fireEvent.press(screen.getByRole('button', { name: 'Save step 1' }));
+    }
+
+    it('falsifier: saving the same blank instruction twice announces twice', async () => {
+      jest.replaceProperty(Platform, 'OS', 'ios');
+      await openEditorOnABlankedStep();
+
+      await save();
+      expect(screen.getByRole('alert')).toHaveTextContent(BLANK_INSTRUCTION);
+      expect(announce).toHaveBeenCalledTimes(1);
+
+      await save();
+
+      expect(announce.mock.calls.map(([text]) => text)).toStrictEqual([
+        BLANK_INSTRUCTION,
+        BLANK_INSTRUCTION,
+      ]);
+    });
+
+    it('negative branch: typing in a field the failed validation did not read stays silent', async () => {
+      jest.replaceProperty(Platform, 'OS', 'ios');
+      await openEditorOnABlankedStep();
+
+      await save();
+      expect(announce).toHaveBeenCalledTimes(1);
+
+      await fireEvent.changeText(
+        screen.getByLabelText('Edit step 1 note'),
+        'Remember to count',
+      );
+
+      expect(announce).toHaveBeenCalledTimes(1);
+      expect(screen.getByRole('alert')).toHaveTextContent(BLANK_INSTRUCTION);
+    });
+
+    it('Android: the announcer never fires, and the alert identity advances', async () => {
+      jest.replaceProperty(Platform, 'OS', 'android');
+      await openEditorOnABlankedStep();
+
+      await save();
+      const first = screen.getByRole('alert').props.nativeID;
+
+      await save();
+
+      expect(announce).not.toHaveBeenCalled();
+      expect(screen.getByRole('alert').props.nativeID).not.toBe(first);
+    });
+  });
 });

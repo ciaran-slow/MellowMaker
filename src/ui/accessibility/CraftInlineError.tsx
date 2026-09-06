@@ -1,3 +1,4 @@
+import { useId } from 'react';
 import { Text } from 'react-native';
 
 import { useAnnouncement } from '@/ui/accessibility/useAnnouncement';
@@ -27,7 +28,11 @@ type CraftInlineErrorProps = {
  * 2. **`nativeID` carries the same value, because `key` is invisible to the
  *    test harness.** RNTL renders an identical tree either side of a key
  *    change; `nativeID` is a plain view prop, never spoken and never drawn, and
- *    is the assertable carrier of the identity the remount is derived from.
+ *    is the assertable carrier of the identity the remount is derived from. It
+ *    is scoped by `useId` as well as by the attempt, because two of these share
+ *    one counter wherever a submit validates two fields at once
+ *    (`AddGuideStepField`, `GuideStepEditorRow`) and would otherwise render the
+ *    same id twice (PR #69 verify finding 5).
  * 3. **It renders `null`, not an empty `Text`.** An always-mounted empty alert
  *    would occupy a `gap-3` slot in every one of these column layouts and would
  *    expose an empty `alert` element to both screen readers.
@@ -37,6 +42,9 @@ type CraftInlineErrorProps = {
  * over the one shared seam, `useAnnouncement`.
  */
 export function CraftInlineError({ attempt, message }: CraftInlineErrorProps) {
+  // Unique per mounted instance, so two error lines driven by one attempt
+  // counter never render the same `nativeID`.
+  const instance = useId();
   // Unconditional: the hook's memory has to survive the message clearing, so a
   // caller renders this element unconditionally too.
   useAnnouncement(message, attempt);
@@ -51,7 +59,7 @@ export function CraftInlineError({ attempt, message }: CraftInlineErrorProps) {
       accessibilityRole="alert"
       className="text-label text-pinkStrong"
       key={`attempt-${attempt}`}
-      nativeID={`craft-inline-error-${attempt}`}
+      nativeID={`craft-inline-error-${instance}-${attempt}`}
     >
       {message}
     </Text>
