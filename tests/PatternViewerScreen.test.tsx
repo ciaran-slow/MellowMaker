@@ -6,9 +6,15 @@ import {
   fireEvent,
   render,
   screen,
+  waitFor,
   within,
 } from '@testing-library/react-native';
-import { AccessibilityInfo, FlatList, Platform } from 'react-native';
+import {
+  AccessibilityInfo,
+  FlatList,
+  Platform,
+  VirtualizedList,
+} from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import type { Repositories } from '@/data/contracts/appDatabase';
@@ -656,10 +662,134 @@ describe('PatternViewerScreen', () => {
       return screen.getByTestId('pattern-steps');
     };
 
+    /** Just past `VirtualizedList`'s 50ms `updateCellsBatchingPeriod`. */
+    const FILL_BATCH_PERIOD_MS = 80;
+    /** The header cell's height in the fixtures below — see `measureCells`. */
+    const HEADER_HEIGHT = 200;
+    const ROW_HEIGHT = 80;
+
+    const flushDeferredAttempt = async (waitMs: number): Promise<void> => {
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, waitMs));
+      });
+    };
+
     const fireContentSizeChange = async (
       list: ReturnType<typeof screen.getByTestId>,
     ): Promise<void> => {
       await fireEvent(list, 'contentSizeChange', 390, 3000);
+      await flushDeferredAttempt(0);
+    };
+
+    /**
+     * Every rendered cell's `onLayout`, in index order, with a content-container
+     * relative `y` that already contains the header — which is what a real cell
+     * layout carries (`ListMetricsAggregator.flowRelativeOffset` records
+     * `layout.y` as-is, and the content container's children are the header cell
+     * then the rows). Feeding a non-zero `HEADER_HEIGHT` is the point: the offset
+     * `scrollToOffset` is then asked for can only be header-aware.
+     *
+     * Cells are found by the signature `VirtualizedListCellRenderer` gives them —
+     * a `View` carrying both `onLayout` and `onFocusCapture` — which the header
+     * cell and the content container do not share, and the render window here
+     * always starts at index 0, so document order is index order.
+     */
+    const findCells = (): ReturnType<typeof screen.getByTestId>[] => {
+      const cells: ReturnType<typeof screen.getByTestId>[] = [];
+      const collect = (node: ReturnType<typeof screen.getByTestId>): void => {
+        if (
+          node.type === 'View' &&
+          typeof node.props.onLayout === 'function' &&
+          typeof node.props.onFocusCapture === 'function'
+        ) {
+          cells.push(node);
+        }
+        for (const child of node.children) {
+          if (typeof child !== 'string') {
+            collect(child);
+          }
+        }
+      };
+      collect(screen.getByTestId('pattern-steps'));
+
+      return cells;
+    };
+
+    const measureCells = async (): Promise<number> => {
+      const listNow = screen.getByTestId('pattern-steps');
+      const cells = findCells();
+
+      // Every handler is invoked directly, inside ONE `act`, rather than through
+      // a `fireEvent` each: awaiting between them would let the queued macrotask
+      // run half way through this batch's measurement, and the ordering these
+      // cases exist to pin would be untestable. One `act` measures the whole
+      // batch before anything can observe it — which is what one commit does.
+      await act(() => {
+        // The list's own `onLayout` gives `VirtualizedList` a viewport length;
+        // it renders no batch beyond the initial one until it has one.
+        listNow.props.onLayout({
+          nativeEvent: { layout: { x: 0, y: 0, width: 390, height: 844 } },
+        });
+        for (const [index, cell] of cells.entries()) {
+          cell.props.onLayout({
+            nativeEvent: {
+              layout: {
+                x: 0,
+                y: HEADER_HEIGHT + index * ROW_HEIGHT,
+                width: 390,
+                height: ROW_HEIGHT,
+              },
+            },
+          });
+        }
+      });
+
+      return cells.length;
+    };
+
+    /**
+     * One real fill batch, in the order the platform produces it: the content
+     * container's own `onLayout` (which is what `onContentSizeChange` is), THEN
+     * the `onLayout` of the cells that same commit laid out — Fabric emits
+     * parent before child — and only then the macrotask the hook defers its
+     * attempt to. Firing these in this order is the whole point of the two cases
+     * below; an implementation that attempts inline sees the metrics of the
+     * PREVIOUS batch and never lands on the last one.
+     */
+    const fireFillBatch = async (
+      list: ReturnType<typeof screen.getByTestId>,
+    ): Promise<number> => {
+      await fireEvent(list, 'contentSizeChange', 390, 3000);
+      const measured = await measureCells();
+      await flushDeferredAttempt(FILL_BATCH_PERIOD_MS);
+
+      return measured;
+    };
+
+    /**
+     * Wait for `VirtualizedList` to widen its render window to `count` rows. It
+     * does that from a `Batchinator` on its own clock, so polling for it keeps
+     * the fill-batch cases off a fixed sleep.
+     */
+    const waitForRenderedCells = async (count: number): Promise<void> => {
+      await waitFor(() => {
+        expect(findCells()).toHaveLength(count);
+      });
+    };
+
+    const createPatternOfLength = (
+      length: number,
+      completeThrough: number,
+    ): string => {
+      const created = repositories.patterns.createPattern({
+        title: 'Long Blanket',
+        steps: Array.from({ length }, (_, index) => `Row ${index + 1}`),
+      });
+      for (const step of created.steps.slice(0, completeThrough)) {
+        repositories.progress.setStepCompleted(step.id, true);
+      }
+
+      return created.pattern.id;
     };
 
     it('scrolls to the current step on the first content-size change', async () => {
@@ -875,6 +1005,112 @@ describe('PatternViewerScreen', () => {
       // The handler really is parameterless, so the payload is not even in
       // scope to be used.
       expect(source).toContain('onScrollToIndexFailed = useCallback((): void');
+    });
+
+    // The three cases below feed real cell layouts, so they reach the branch the
+    // whole feature depends on — `VirtualizedList.scrollToIndex`'s LANDING half,
+    // where a measured index skips `onScrollToIndexFailed` and computes an
+    // offset from `getCellMetricsApprox`. The eight cases above can only reach
+    // its failure half, because nothing in them measures a cell.
+    //
+    // They also pin the ordering fact the mechanism now turns on:
+    // `onContentSizeChange` IS the content container's `onLayout`, Fabric emits
+    // a parent's `onLayout` before its children's, so the cells a commit lays
+    // out are measured only AFTER the content-size handler has returned. Every
+    // fill batch below is therefore fired in that order — content size, then the
+    // cells, then the macrotask.
+
+    it('lands on the measured current step of a short pattern, at the row own offset', async () => {
+      const scrollToIndex = jest.spyOn(FlatList.prototype, 'scrollToIndex');
+      // Left as a recording no-op: letting it through would drive the mocked
+      // native scroll commands, and the offset it is ASKED for is the assertion.
+      const scrollToOffset = jest
+        .spyOn(VirtualizedList.prototype, 'scrollToOffset')
+        .mockImplementation(() => {});
+
+      // Six steps with four complete: step 5 is current, at index 4. This is the
+      // shape of every bundled starter pattern (6-7 steps), and it produces
+      // exactly ONE content-size change — the whole list fits in the initial
+      // render batch, so no later fire ever arrives to retry on. An attempt made
+      // inline in that single fire reads zero measured cells and the maker never
+      // moves.
+      const short = createPatternOfLength(6, 4);
+      const list = await openLongBlanket(short, 'restore-short');
+
+      const measured = await fireFillBatch(list);
+      expect(measured).toBe(6);
+
+      expect(scrollToIndex).toHaveBeenCalledTimes(1);
+      expect(scrollToIndex).toHaveBeenCalledWith(SCROLL_TO_CURRENT(4));
+      // The landing offset is the target row's OWN content-container-relative
+      // `y`, which already contains the 200pt header the fixture laid out above
+      // it — never `averageItemLength × index`, which would be 320 here and land
+      // inside the counter card. This is the arithmetic half of AC2; the device
+      // check is what proves the real layout produces such a `y`.
+      expect(scrollToOffset).toHaveBeenCalledTimes(1);
+      expect(scrollToOffset).toHaveBeenCalledWith({
+        animated: false,
+        offset: HEADER_HEIGHT + 4 * ROW_HEIGHT,
+      });
+    });
+
+    it('restores a current step that sits in the final fill batch', async () => {
+      const scrollToIndex = jest.spyOn(FlatList.prototype, 'scrollToIndex');
+      const scrollToOffset = jest
+        .spyOn(VirtualizedList.prototype, 'scrollToOffset')
+        .mockImplementation(() => {});
+
+      // Twenty steps with fourteen complete: step 15 is current, at index 14 —
+      // inside the SECOND and last fill batch (`initialNumToRender` 10 +
+      // `maxToRenderPerBatch` 10). There is no third batch and so no third
+      // content-size change, so an attempt that reads the previous batch's
+      // metrics has no later fire to be rescued by: the maker opens at the title
+      // and stays there.
+      const long = createPatternOfLength(20, 14);
+      const list = await openLongBlanket(long, 'restore-final-batch');
+
+      // Batch one: rows 0-9. Index 14 is genuinely unmeasured, so this attempt
+      // must fail and must not settle.
+      expect(await fireFillBatch(list)).toBe(10);
+      expect(scrollToOffset).not.toHaveBeenCalled();
+      expect(scrollToIndex).toHaveBeenCalledTimes(1);
+
+      // Batch two: rows 10-19, the last one.
+      await waitForRenderedCells(20);
+      expect(await fireFillBatch(list)).toBe(20);
+
+      expect(scrollToIndex).toHaveBeenCalledTimes(2);
+      expect(scrollToIndex).toHaveBeenLastCalledWith(SCROLL_TO_CURRENT(14));
+      expect(scrollToOffset).toHaveBeenCalledTimes(1);
+      expect(scrollToOffset).toHaveBeenCalledWith({
+        animated: false,
+        offset: HEADER_HEIGHT + 14 * ROW_HEIGHT,
+      });
+    });
+
+    it('spends one attempt on a burst of content-size changes, not one each', async () => {
+      const scrollToIndex = jest.spyOn(FlatList.prototype, 'scrollToIndex');
+      const long = createLongPattern({ activeStepIndex: 19 });
+
+      const list = await openLongBlanket(long.id, 'restore-burst');
+
+      // Three commits before the runtime gets back to the task queue. Each fire
+      // replaces the pending attempt rather than adding one; without that, a
+      // burst of commits during the initial fill would spend the whole
+      // five-attempt cap before the list had rendered far enough to land.
+      await fireEvent(list, 'contentSizeChange', 390, 1000);
+      await fireEvent(list, 'contentSizeChange', 390, 2000);
+      await fireEvent(list, 'contentSizeChange', 390, 3000);
+      await flushDeferredAttempt(0);
+
+      expect(scrollToIndex).toHaveBeenCalledTimes(1);
+      expect(scrollToIndex).toHaveBeenCalledWith(SCROLL_TO_CURRENT(19));
+
+      // …and the cap is otherwise untouched: four attempts are still available.
+      for (let fire = 0; fire < 5; fire += 1) {
+        await fireContentSizeChange(list);
+      }
+      expect(scrollToIndex).toHaveBeenCalledTimes(5);
     });
   });
 });

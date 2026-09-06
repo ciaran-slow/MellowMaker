@@ -207,7 +207,11 @@ export function PatternViewerScreen({ patternId }: PatternViewerScreenProps) {
             Opening at the maker's current step (issue #63). `onContentSizeChange`
             is the single trigger: it fires once the content container — the
             header cell included — has been laid out, and re-fires on each fill
-            batch, so the retry and the convergence are the same mechanism.
+            batch, so the retry and the convergence are the same mechanism. It is
+            the content container's own `onLayout`, which Fabric emits BEFORE the
+            `onLayout` of the cells that same commit laid out, so the hook defers
+            each attempt by one task; attempting inline would read the previous
+            batch's metrics and a short pattern would never restore at all.
             `onScrollToIndexFailed` must be present (`VirtualizedList` asserts it
             when there is no `getItemLayout`) and must scroll nothing: its
             `averageItemLength × index` is the header-unaware arithmetic #56

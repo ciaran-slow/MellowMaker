@@ -1,4 +1,4 @@
-import { useCallback, useRef } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import type { FlatList } from 'react-native';
 
 import type { StepView } from '@/domain/patterns/patternProgress';
@@ -22,7 +22,10 @@ export interface PatternPositionRestore {
    * reading one there, and the object would be dead weight in JSX besides).
    */
   registerList(instance: FlatList<StepView> | null): void;
-  /** Wire to the step list's `onContentSizeChange`. */
+  /**
+   * Wire to the step list's `onContentSizeChange`. It schedules the attempt one
+   * task later rather than making it inline — see the pre-order note below.
+   */
   onContentSizeChange(): void;
   /** Wire to the step list's `onScrollToIndexFailed`. Scrolls nothing, ever. */
   onScrollToIndexFailed(): void;
@@ -53,6 +56,29 @@ export interface PatternPositionRestore {
  * in `PatternViewerScreen.test.tsx` pins that none of the payload's field names
  * nor an offset-scroll call appears in this file at all; keep it that way.)
  *
+ * **Each attempt is deferred by one task, and that is load-bearing.**
+ * `onContentSizeChange` is not a native content-size event: it is the JS
+ * `onLayout` of the ScrollView's *content container*
+ * (`ScrollView.js` `_handleContentOnLayout`), and Fabric emits `onLayout` in
+ * **pre-order** — `YogaLayoutableShadowNode::layout` pushes a child onto
+ * `affectedNodes` *before* recursing into that child, `ShadowTree::emitLayoutEvents`
+ * emits in that vector's order, and `BaseViewEventEmitter` preserves ordering.
+ * The content container is the parent of every cell, so in any commit its
+ * `onLayout` reaches JS **before** the `onLayout` of the cells that commit laid
+ * out. Attempting inline would therefore always read the *previous* batch's
+ * metrics: a pattern of ten steps or fewer (every bundled starter) would produce
+ * one fire, before any cell was measured, and never restore at all, and a current
+ * step in the final fill batch would never restore either, because no later
+ * content-size change arrives to retry on. Deferring to a macrotask fixes both
+ * without a second trigger: the whole commit's layout events are moved off the
+ * event queue and dispatched in a single JS entry
+ * (`EventQueue::flushEvents`), JavaScript is single-threaded, so a task scheduled
+ * from the first of them cannot run until the last of them has returned — by
+ * which time this batch's cells are measured.
+ *
+ * The pending task is cleared on unmount, and a fresh fire replaces a still
+ * pending one, so at most one attempt is ever in flight.
+ *
  * The restore is **once per mount**: as soon as an attempt does not fail, or the
  * cap is reached, or there is nothing to restore to, it settles. A completion tap
  * or a counter tap can therefore never yank a maker away from what they are
@@ -70,6 +96,10 @@ export function usePatternPositionRestore(
   const settledRef = useRef(false);
   const attemptsRef = useRef(0);
   const lastAttemptFailedRef = useRef(false);
+  /** The one deferred attempt in flight, if any; cleared on unmount. */
+  const pendingAttemptRef = useRef<ReturnType<typeof setTimeout> | undefined>(
+    undefined,
+  );
 
   const registerList = useCallback(
     (instance: FlatList<StepView> | null): void => {
@@ -84,7 +114,7 @@ export function usePatternPositionRestore(
     lastAttemptFailedRef.current = true;
   }, []);
 
-  const onContentSizeChange = useCallback((): void => {
+  const attemptRestore = useCallback((): void => {
     if (settledRef.current) {
       return;
     }
@@ -117,6 +147,34 @@ export function usePatternPositionRestore(
       settledRef.current = true;
     }
   }, [currentStepIndex]);
+
+  const onContentSizeChange = useCallback((): void => {
+    if (settledRef.current) {
+      return;
+    }
+
+    // The cells this commit laid out are measured only AFTER this handler
+    // returns (see the pre-order note above), so the attempt waits one task.
+    // A fire while one is still pending replaces it rather than queueing a
+    // second, so a burst of commits still costs one attempt.
+    if (pendingAttemptRef.current !== undefined) {
+      clearTimeout(pendingAttemptRef.current);
+    }
+    pendingAttemptRef.current = setTimeout(() => {
+      pendingAttemptRef.current = undefined;
+      attemptRestore();
+    }, 0);
+  }, [attemptRestore]);
+
+  useEffect(
+    () => (): void => {
+      if (pendingAttemptRef.current !== undefined) {
+        clearTimeout(pendingAttemptRef.current);
+        pendingAttemptRef.current = undefined;
+      }
+    },
+    [],
+  );
 
   return { onContentSizeChange, onScrollToIndexFailed, registerList };
 }

@@ -938,7 +938,23 @@ index cannot land anywhere wrong: `VirtualizedList` calls `onScrollToIndexFailed
 and returns before scrolling. That handler therefore **must not scroll** — the
 payload it is given offers an average row length to multiply by the index, which
 is the same header-unaware arithmetic removed above; the attempt simply waits for
-the next content-size change, which the list itself provokes. The restore is
+the next content-size change, which the list itself provokes. **Each attempt is
+deferred by one task, and that deferral is what makes the mechanism work at all.**
+`onContentSizeChange` is not a native content-size event: it is the JS `onLayout`
+of the ScrollView's *content container*
+(`ScrollView.js` `_handleContentOnLayout`), and Fabric emits `onLayout` in
+pre-order — `YogaLayoutableShadowNode::layout` pushes a child onto `affectedNodes`
+*before* recursing into it, `ShadowTree::emitLayoutEvents` emits in that order,
+and `BaseViewEventEmitter` preserves it. The content container is the parent of
+every cell, so its `onLayout` reaches JS **before** the `onLayout` of the cells the
+same commit laid out, and an attempt made inline would read the *previous* fill
+batch's metrics: a pattern of ten steps or fewer (every bundled starter) fires
+once, before any cell is measured, and would never restore at all, while a current
+step in the final fill batch would have no later fire to be rescued by. Deferring
+to a macrotask is enough because the whole commit's layout events are flushed to
+JS in a single entry (`EventQueue::flushEvents`) and JavaScript is
+single-threaded, so a task queued from the first of them cannot run until the last
+has returned. The restore is
 **once per mount**: a completion tap or a counter tap can never move the list out
 from under a maker mid-read, and returning to a still-mounted viewer from the
 editor keeps the native scroll position rather than re-snapping. The
