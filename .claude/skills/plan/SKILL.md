@@ -229,6 +229,44 @@ incidental implementation details. Keep the issue to one reviewable PR; if
 the acceptance criteria cannot fit, propose an explicit issue split instead
 of silently dropping scope.
 
+### 5.1 Any new screen on a persisted-data route: the mounted-tab checklist
+
+**Every route in this app is a flat, hidden (`href: null`) bottom-tab screen with
+no nested Stack and no `unmountOnBlur`, so a screen the maker has visited once
+stays mounted for the rest of the session.** A mount-time read therefore runs
+*once, ever*. This repository has now learned that three times — #11 (the guide
+WebView stayed alive after blur), #43 (the working view needed a `useFocusEffect`
+reload), and #51 (the save-as-pattern review showed the previous visit's draft and
+would have written it) — and each time it was found after the build, twice by
+verify. It is cheaper to write into the plan.
+
+So when a plan adds **any** screen that shows, or derives anything from,
+persisted data — a list, a single aggregate, or a draft seeded from a row — state
+all three of these explicitly, each with the file that will carry it:
+
+1. **Re-read on focus.** `useFocusEffect` paired with the hook's **stable**
+   `refresh`/`reload`, exactly as `GuidesScreen`, `PatternsScreen`,
+   `GuideWorkingViewScreen`, `PatternViewerScreen`, and
+   `SaveGuideAsPatternScreen` do. The dependency array is `[refresh]` and nothing
+   else: it must not carry the state or the view model, or each read re-arms the
+   effect and the screen reads in a loop (`docs/architecture.md` §10).
+2. **Reset local drafts on the loaded data's identity, not on the focus event.**
+   The re-read resolves a microtask *after* focus, so a focus-time reset re-seeds
+   from the stale value. Say which way the product call goes for each seeded
+   field — reset to what the data now says, or preserve the maker's in-progress
+   edit — and name the falsifier for **both** directions, because the identity
+   comparison decides both.
+3. **Prove the revisit on the real router.** Name a `renderRouter` case that
+   visits the screen, leaves, changes the underlying row, returns, and asserts
+   the screen shows the **new** value — and, where the screen writes, that
+   confirming writes the new value. An isolated screen suite cannot discharge
+   this: it mounts once and mocks `useFocusEffect` as a capture, so the staleness
+   is invisible there by construction.
+
+Skipping any of the three is a plan defect, not a build detail: none of them is
+reachable by inspecting the diff, and no mutation of the shipped code finds them
+(see the build skill's note on missing mechanisms).
+
 When the plan names a specific display value or directs reuse of an existing
 component, confirm the cited data contract/query and the component's props
 actually supply it — especially when the same plan freezes that contract as

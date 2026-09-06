@@ -306,6 +306,18 @@ gh pr view <pr> --repo "$REPO" \
 
 Do not treat the pass as complete until the posted body matches the report.
 
+**Name every scratch file uniquely per issue and stage — the scratchpad is
+shared.** Worktrees are isolated; the session scratchpad directory is not, so a
+generic `pr-body.md` / `review.md` is the same path for every agent running on
+this machine. #51's build lost that race: another agent overwrote its `pr-body.md`
+between the write and `gh` reading it, and PR #64 was briefly published carrying
+an unrelated retro for #56. Write `<issue>-<stage>-<what>.md`
+(`64-verify-review.md`), and treat the read-back above as the check that the race
+did not happen — it is the reason that step exists. The same rule covers scratch
+**test** files inside the worktree: name a probe for the issue
+(`tests/reverify51Probe.test.tsx`) so a leftover is attributable, and remove it
+with `git clean` scoped to its path before reporting.
+
 ## 7. Fix only after reporting
 
 Review first. Only fix findings after the user asks. After a fix, rerun every

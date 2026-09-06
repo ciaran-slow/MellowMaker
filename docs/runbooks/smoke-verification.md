@@ -106,6 +106,40 @@ an AC through a merge gate, the conditions are fixed. **All five must hold:**
    threshold is recorded as **UNMEASURED**, never "roughly met", "expected to
    pass", or a figure carried over from a similar change.
 
+### Condition 3 stays per-issue, even when the owner's reason is standing
+
+**Resolved by the #51 retro.** The owner's deferral on #51 said it "extended this
+same deferral to the remaining issues in the current loop", which raises the
+obvious question: could one standing comment on the tracking issue (#16) cover
+every issue in a loop and save the owner from repeating themselves? **No.**
+Condition 3 requires a comment **on the issue being merged**, and a blanket
+comment posted somewhere else does not satisfy it. Three reasons, in order of
+weight:
+
+1. **The deferral is a judgement about *this* issue's unverified behaviour, not
+   about the machine.** The environment (no JDK, no Android SDK, no simulator
+   runtime — §1) is constant and needs no per-issue decision. What is decided per
+   issue is whether *these particular* device-only behaviours may ship unproven:
+   #14's VoiceOver utterance, #46's fps cascade, #51's relaunch and cross-tab
+   navigation legs. A standing comment approves a list nobody has read.
+2. **It is the only evidence a stage actually checks.** Every verify runs
+   `gh issue view <n> --comments`. Evidence living on another issue is not in that
+   output, so accepting it would turn a checked condition into an unverifiable
+   claim, and the runbook would be back to "verify must invent it".
+3. **The stage must not author the evidence that authorizes it.**
+   (`docs/runbooks/decision-issues.md` §2.) If a standing deferral were allowed,
+   the practical effect would be a stage quoting the blanket comment onto the
+   issue itself — which is the build granting itself the deferral with an extra
+   step.
+
+A standing decision is still a perfectly good **reason**; it just has to arrive
+on the issue. The owner may restate it in one line that links the standing
+comment, and that restatement is what satisfies condition 3. A stage that finds
+only an off-issue standing deferral does what #51's build did: record the
+criterion as **unmet**, say so in the PR body and the deferred-smokes entry, and
+ask the owner to post it — then update the wording once it exists. That cost one
+follow-up commit on #51 and is the whole mechanism working.
+
 If any of the five is missing, the criterion is **unmet**, and the PR does not
 merge on it. Two things this state is explicitly *not*: it is not a way to defer a
 measurement the environment **could** have taken (§1 — measure it), and it is not
