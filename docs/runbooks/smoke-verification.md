@@ -101,7 +101,12 @@ an AC through a merge gate, the conditions are fixed. **All five must hold:**
    `<the deferred half>` deferred to #16 by owner decision `<link>`", in the PR
    body, in the review, and in any doc that records the outcome. Never plain
    "met". A recommendation resting on a deferred input is likewise **provisional**
-   and says what it is contingent on.
+   and says what it is contingent on. **Quote the phrase; a paraphrase is a
+   finding even when it is honest.** #66's PR body wrote "provisionally verified
+   pending an on-device smoke" — accurate, linked, nothing upgraded — and verify
+   still had to re-derive the whole condition against the other five records to
+   establish that, because a reworded provisional cannot be checked by reading
+   it. Fill in the two placeholders and change nothing else.
 5. **No number is invented for the deferred measurement.** An unmeasured
    threshold is recorded as **UNMEASURED**, never "roughly met", "expected to
    pass", or a figure carried over from a similar change.

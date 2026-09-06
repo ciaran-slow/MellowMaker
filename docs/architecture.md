@@ -1126,9 +1126,19 @@ Four conventions introduced by the accessibility pass (issue #14):
   while the field is valid, and keys its alert `Text` on the attempt so React
   remounts it — Android's re-speak path — while the component itself stays
   mounted and the hook's memory survives. Its `nativeID` carries the same value
-  because a `key` is invisible to the test harness. Every inline rejection goes
-  through it; `tests/inlineErrorPrimitive.test.tsx` walks `src/` and bans a
-  second hand-rolled `<Text>` that is both an `alert` and a live region.
+  because a `key` is invisible to the test harness (§14), scoped by a `useId`
+  as well as by the attempt so the two lines that share one counter — an
+  instruction and a timestamp validated by the same submit — cannot render the
+  same id. Every inline rejection goes through it;
+  `tests/inlineErrorPrimitive.test.tsx` walks `src/` and bans a second
+  hand-rolled `<Text>` that is both an `alert` and a live region, **and** the
+  two indirect routes to that shape: a props spread on a live-region `Text`,
+  and a non-literal `accessibilityRole` on one. `CraftAnnouncement` is a status
+  line and no longer accepts an `accessibilityRole` at all — it spread one onto
+  its live region until the #66 retro, which made
+  `<CraftAnnouncement accessibilityRole="alert" politeness="assertive">` a
+  runtime copy of the banned shape with no `attempt` behind it and no literal
+  for the walk to see.
 - **Essential text never clamps.** Step instructions, notes, the counter value
   and controls, and error/empty bodies carry no `numberOfLines`, and nothing in
   `src/` sets `allowFontScaling={false}` or `maxFontSizeMultiplier`, so a large
@@ -1307,6 +1317,23 @@ explicit `className` string match, and the test should say which of the two it
 is doing. A plan that specifies `toHaveStyle` against a NativeWind class is not
 buildable as written; issue #42 moved the load-bearing values to inline token
 styles for exactly this reason.
+
+**A React `key` is invisible to this harness, in the same way and with the same
+consequence.** RNTL renders an identical tree either side of a key change: the
+key is React's reconciliation input, never a prop on the rendered element, so no
+query and no matcher can reach it. A test therefore cannot see a **remount** —
+which matters here because a remounted `accessibilityLiveRegion` is Android's
+whole re-speak path (§10). Issue #66 deleted the attempt-derived `key` on
+`CraftInlineError`'s alert `Text` as a mutation and every one of the
+repository's 646 tests stayed green, while a `throw` on the same line reddened
+seventeen, so the
+line is reached and the mutation is genuinely unassertable rather than
+inert-by-fixture. The convention that follows is the NativeWind one again: give
+the value a second, **assertable** carrier derived from the same source — there,
+a `nativeID` built from the same attempt — assert that, and say in the test that
+it is a **structural proxy** for the remount and not the utterance. What proves
+the utterance is the on-device pass, deferred in
+[`runbooks/deferred-smokes/066-issue-66.md`](./runbooks/deferred-smokes/066-issue-66.md).
 
 Node SQLite and that mock prove SQLite schema, query, transaction, foreign-key,
 and migration behavior plus adapter JS wiring. Neither proves the `expo-sqlite`

@@ -1,5 +1,5 @@
 import { render, screen } from '@testing-library/react-native';
-import { AccessibilityInfo, Platform } from 'react-native';
+import { AccessibilityInfo, Platform, View } from 'react-native';
 
 import { CraftInlineError } from '@/ui/accessibility/CraftInlineError';
 
@@ -74,6 +74,36 @@ describe('CraftInlineError', () => {
     await rerender(<CraftInlineError attempt={2} message="Nope." />);
 
     expect(screen.getByRole('alert').props.nativeID).toBe(second);
+  });
+
+  it('gives two lines driven by one counter distinct identities', async () => {
+    // `AddGuideStepField` and `GuideStepEditorRow` validate an instruction and
+    // a timestamp from one submit and share one `attempt`, so the id cannot be
+    // the attempt alone (PR #69 verify finding 5). Inert today — nothing
+    // resolves by `nativeID` or `accessibilityLabelledBy` — but a duplicate id
+    // is the kind of thing a later consumer assumes away.
+    const { rerender } = await render(
+      <View>
+        <CraftInlineError attempt={1} message="Add an instruction." />
+        <CraftInlineError attempt={1} message="That timestamp is not valid." />
+      </View>,
+    );
+    const [instruction, timestamp] = screen.getAllByRole('alert');
+
+    expect(instruction?.props.nativeID).not.toBe(timestamp?.props.nativeID);
+
+    // And each still advances with the shared counter, so both remount.
+    await rerender(
+      <View>
+        <CraftInlineError attempt={2} message="Add an instruction." />
+        <CraftInlineError attempt={2} message="That timestamp is not valid." />
+      </View>,
+    );
+    const [nextInstruction, nextTimestamp] = screen.getAllByRole('alert');
+
+    expect(nextInstruction?.props.nativeID).not.toBe(instruction?.props.nativeID);
+    expect(nextTimestamp?.props.nativeID).not.toBe(timestamp?.props.nativeID);
+    expect(nextInstruction?.props.nativeID).not.toBe(nextTimestamp?.props.nativeID);
   });
 
   it('keeps the hook alive across the alert remount, so iOS speaks every repeat', async () => {

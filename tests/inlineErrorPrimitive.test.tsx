@@ -48,6 +48,28 @@ function hasHandRolledAlertText(source: string): boolean {
   );
 }
 
+/**
+ * The same shape reached indirectly. PR #69's verify found the literal matcher
+ * above evadable: `CraftAnnouncement` spread `accessibilityRole` onto its
+ * live-region `Text`, so `<CraftAnnouncement accessibilityRole="alert"
+ * politeness="assertive">` rendered the banned element at runtime — with no
+ * `attempt`, so the repeat was silent again — while this file saw only
+ * `{...(accessibilityRole === undefined ? {} : { accessibilityRole })}`.
+ *
+ * A live-region `<Text>` outside the primitive may therefore not *become* an
+ * alert either: no props spread, and no non-literal `accessibilityRole`. Both
+ * carriers are cheap to state and neither is used anywhere in `src/` today
+ * (the prop that motivated it was deleted with this guard), so the rule costs
+ * nothing and closes the route.
+ */
+function hidesAlertBehindIndirection(source: string): boolean {
+  return (source.match(TEXT_OPENING_TAG) ?? []).some(
+    (tag) =>
+      tag.includes('accessibilityLiveRegion') &&
+      (tag.includes('{...') || tag.includes('accessibilityRole={')),
+  );
+}
+
 const sourceFiles = walk(srcDir);
 
 describe('inline validation errors: one primitive owns the alert line', () => {
@@ -62,6 +84,49 @@ describe('inline validation errors: one primitive owns the alert line', () => {
       .map((file) => path.relative(repoRoot, file));
 
     expect(offenders).toStrictEqual([]);
+  });
+
+  it('finds no live-region Text that could become an alert indirectly', () => {
+    // The spread/dynamic-role carriers, banned everywhere including the
+    // primitive: `CraftInlineError` writes both props as literals.
+    const offenders = sourceFiles
+      .filter((file) => hidesAlertBehindIndirection(readFileSync(file, 'utf8')))
+      .map((file) => path.relative(repoRoot, file));
+
+    expect(offenders).toStrictEqual([]);
+  });
+
+  it('non-tautology: the indirection matcher trips on a spread and on a dynamic role', () => {
+    // The exact shape `CraftAnnouncement` carried before PR #69's verify
+    // finding 3, in both of its forms.
+    expect(
+      hidesAlertBehindIndirection(
+        [
+          '<Text',
+          '  accessibilityLiveRegion={politeness}',
+          '  className={className}',
+          '  {...(accessibilityRole === undefined ? {} : { accessibilityRole })}',
+          '>',
+          '  {message}',
+          '</Text>',
+        ].join('\n'),
+      ),
+    ).toBe(true);
+    expect(
+      hidesAlertBehindIndirection(
+        '<Text accessibilityLiveRegion="assertive" accessibilityRole={role}>{m}</Text>',
+      ),
+    ).toBe(true);
+    // Negative branches: a spread on a Text that is not a live region is none
+    // of this guard's business, and a literal role is the other matcher's job.
+    expect(
+      hidesAlertBehindIndirection('<Text {...rest} className={c}>{m}</Text>'),
+    ).toBe(false);
+    expect(
+      hidesAlertBehindIndirection(
+        '<Text accessibilityLiveRegion="assertive" accessibilityRole="alert">{m}</Text>',
+      ),
+    ).toBe(false);
   });
 
   it('positive arm: the primitive itself matches, so the exemption is live', () => {
