@@ -11,6 +11,8 @@ import type {
 } from '../contracts/patternRepository';
 import { reorderPositions, type ReorderStatements } from './reorderPositions';
 import type { RepositoryContext } from './repositoryContext';
+import type { TransactionRunner } from './transaction';
+import { withStepInstructionGuard } from './writeErrors';
 
 interface PatternRow {
   readonly id: string;
@@ -106,6 +108,14 @@ export function createPatternRepository({
   now,
   newId,
 }: RepositoryContext): PatternRepository {
+  // Used by exactly the four methods that write an `instruction`. The guard sits
+  // *outside* the transaction runner, so a refusal rolls the whole write back
+  // before the typed `DatabaseError('empty-step-instruction')` escapes. The
+  // reorders and the deletes keep the plain runner because none of them touches
+  // `instruction`.
+  const guardedTransaction: TransactionRunner = (work) =>
+    withStepInstructionGuard(() => transaction(work));
+
   function read(id: string): PatternWithSteps | undefined {
     const pattern = connection.first<PatternRow>(SELECT_PATTERN, [id]);
     if (pattern === undefined) {
@@ -120,7 +130,7 @@ export function createPatternRepository({
 
   return {
     createPattern(input: CreatePatternInput): PatternWithSteps {
-      return transaction(() => {
+      return guardedTransaction(() => {
         const writtenAt = now();
         const patternId = newId();
 
@@ -182,7 +192,7 @@ export function createPatternRepository({
     },
 
     addStep(patternId, instruction): PatternStep {
-      return transaction(() => {
+      return guardedTransaction(() => {
         const writtenAt = now();
         const stepId = newId();
         // Positions stay contiguous from zero (see deleteStep), so the count is
@@ -215,7 +225,7 @@ export function createPatternRepository({
     },
 
     editStep(stepId, instruction) {
-      transaction(() => {
+      guardedTransaction(() => {
         const writtenAt = now();
         connection.run(UPDATE_STEP_INSTRUCTION, [
           instruction,
@@ -304,7 +314,7 @@ export function createPatternRepository({
     },
 
     insertSeededPatterns(seedVersion, records): SeedPatternResult {
-      return transaction(() => {
+      return guardedTransaction(() => {
         // Read once, before the loop. The library orders by `updated_at DESC`,
         // so anchoring below the oldest pattern already present puts the
         // starters underneath a maker's in-progress work, and deriving each

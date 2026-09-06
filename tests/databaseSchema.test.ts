@@ -433,6 +433,127 @@ describe('PRD0 schema behaviour', () => {
       ).toBe(0);
     });
 
+    /**
+     * Everything in this describe is asserted at the connection, with no
+     * repository method involved, because the whole point of issue #67 is that
+     * the refusal lives in the schema rather than in whoever happened to write.
+     */
+    describe('the non-empty step-instruction floor (issue #67)', () => {
+      const EMPTY_SHAPES: readonly (readonly [string, string])[] = [
+        ['an empty string', ''],
+        ['spaces', '   '],
+        ['a tab', '\t'],
+        ['a newline', '\n'],
+        ['a non-breaking space', ' '],
+        ['a byte-order mark', '﻿'],
+      ];
+
+      it('runs these cases against the rebuilt version-3 tables', () => {
+        expect(database.schemaVersion).toBe(3);
+      });
+
+      it.each(EMPTY_SHAPES)(
+        'refuses a pattern step whose instruction is %s',
+        (_label, instruction) => {
+          expect(() =>
+            connection.run(INSERT_STEP, [
+              'step-empty',
+              'pattern-a',
+              9,
+              instruction,
+            ]),
+          ).toThrow(/pattern_step_instruction_not_empty/);
+        },
+      );
+
+      it.each(EMPTY_SHAPES)(
+        'refuses a guide step whose instruction is %s',
+        (_label, instruction) => {
+          expect(() =>
+            connection.run(INSERT_GUIDE_STEP, [
+              'guide-step-empty',
+              'guide-a',
+              9,
+              instruction,
+              'import',
+            ]),
+          ).toThrow(/guide_step_instruction_not_empty/);
+        },
+      );
+
+      // The floor must not be "reject everything". `'​'` is the arm that
+      // pins the subset rule: the schema's character set is a strict subset of
+      // `String.prototype.trim()`'s, so it can never refuse a value the domain
+      // layer accepts, and a zero-width space is trimmed by neither.
+      it.each([
+        ['real content', 'Chain 41'],
+        ['content with surrounding spaces', ' Chain 41 '],
+        ['a single digit', '0'],
+        ['a single dash', '-'],
+        ['a zero-width space', '​'],
+      ])('accepts a step instruction that is %s', (_label, instruction) => {
+        connection.run(INSERT_STEP, ['step-ok', 'pattern-a', 9, instruction]);
+        connection.run(INSERT_GUIDE_STEP, [
+          'guide-step-ok',
+          'guide-a',
+          9,
+          instruction,
+          'import',
+        ]);
+
+        expect(
+          connection.first<{ readonly instruction: string }>(
+            'SELECT instruction FROM pattern_step WHERE id = ?',
+            ['step-ok'],
+          )?.instruction,
+          // Stored verbatim: the CHECK is a floor, not a trimmer.
+        ).toBe(instruction);
+        expect(
+          connection.first<{ readonly instruction: string }>(
+            'SELECT instruction FROM guide_step WHERE id = ?',
+            ['guide-step-ok'],
+          )?.instruction,
+        ).toBe(instruction);
+      });
+
+      // A column CHECK applies to UPDATE as well as INSERT. A BEFORE INSERT
+      // trigger — the rejected alternative — would pass the cases above and fail
+      // this one.
+      it('refuses an update that empties an existing instruction', () => {
+        expect(() =>
+          connection.run('UPDATE pattern_step SET instruction = ? WHERE id = ?', [
+            '  ',
+            'step-a0',
+          ]),
+        ).toThrow(/pattern_step_instruction_not_empty/);
+        expect(() =>
+          connection.run('UPDATE guide_step SET instruction = ? WHERE id = ?', [
+            '\t',
+            'guide-step-a0',
+          ]),
+        ).toThrow(/guide_step_instruction_not_empty/);
+
+        expect(
+          connection.first<{ readonly instruction: string }>(
+            'SELECT instruction FROM pattern_step WHERE id = ?',
+            ['step-a0'],
+          )?.instruction,
+        ).toBe('Chain 41');
+        expect(
+          connection.first<{ readonly instruction: string }>(
+            'SELECT instruction FROM guide_step WHERE id = ?',
+            ['guide-step-a0'],
+          )?.instruction,
+        ).toBe('Make a magic ring');
+      });
+
+      it('still refuses a NULL instruction, which NOT NULL owns', () => {
+        expect(() =>
+          connection.run(INSERT_STEP, ['step-null', 'pattern-a', 9, null]),
+        ).toThrow(/NOT NULL/);
+      });
+    });
+
     it('rejects an unknown difficulty, ownership, counter kind, or step origin', () => {
       expect(() =>
         connection.run(

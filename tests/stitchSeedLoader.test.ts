@@ -338,6 +338,10 @@ describe('bundled stitch seed loader', () => {
         .map((row) => [row.instruction, row.video_offset_ms]),
     ).toStrictEqual([
       [BASELINE.guide.step.instruction, BASELINE.guide.step.videoOffsetMs],
+      [
+        BASELINE.guide.secondStep.instruction,
+        BASELINE.guide.secondStep.videoOffsetMs,
+      ],
     ]);
     expect(
       database.connection
@@ -346,7 +350,10 @@ describe('bundled stitch seed loader', () => {
           readonly updated_at: number;
         }>('SELECT value, updated_at FROM counter')
         .map((row) => [row.value, row.updated_at]),
-    ).toStrictEqual([[BASELINE.counter.value, BASELINE.counter.updatedAt]]);
+    ).toStrictEqual([
+      [BASELINE.guideCounter.value, BASELINE.guideCounter.updatedAt],
+      [BASELINE.counter.value, BASELINE.counter.updatedAt],
+    ]);
 
     expect(database.repositories.stitches.appliedSeedVersion()).toBe(2);
     expect(

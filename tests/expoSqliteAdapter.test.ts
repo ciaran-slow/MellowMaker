@@ -13,7 +13,7 @@ describe('Expo SQLite adapter', () => {
   it('opens the application database, migrates it, and serves repositories', async () => {
     const database = await createAppDatabase();
 
-    expect(database.schemaVersion).toBe(2);
+    expect(database.schemaVersion).toBe(3);
 
     const created = database.repositories.patterns.createPattern({
       title: 'Sunrise Blanket',
@@ -32,12 +32,49 @@ describe('Expo SQLite adapter', () => {
     // Reopening the same database applies no migration and reads the row back.
     const reopened = await createAppDatabase();
 
-    expect(reopened.schemaVersion).toBe(2);
+    expect(reopened.schemaVersion).toBe(3);
     expect(
       reopened.repositories.patterns
         .getPatternWithSteps(created.pattern.id)
         ?.steps.map((step) => step.instruction),
     ).toStrictEqual(['Chain 41', 'Single crochet across']);
+  });
+
+  it('carries the named CHECK through to a typed empty-instruction refusal', async () => {
+    const database = await createAppDatabase();
+
+    // Through the `expo-sqlite` seam rather than the raw harness connection.
+    // The constraint name reaches the mapper inside the engine's message, which
+    // is why the mapper matches with `includes` rather than equality: a native
+    // build may prefix it.
+    await expect(
+      (async () =>
+        database.repositories.patterns.createPattern({
+          title: 'Sunrise Blanket',
+          steps: ['Chain 41', '   '],
+        }))(),
+    ).rejects.toMatchObject({ code: 'empty-step-instruction' });
+
+    const raw = (() => {
+      try {
+        openExpoSqliteConnection().run(
+          "INSERT INTO pattern_step (id, pattern_id, position, instruction, created_at, updated_at) VALUES ('s', 'p', 0, '', 1, 1)",
+        );
+      } catch (error) {
+        return error as Error;
+      }
+
+      throw new Error('Expected the direct insert to fail.');
+    })();
+
+    expect(raw.message).toContain('pattern_step_instruction_not_empty');
+    // Nothing partial survived the refused create: only the six bundled
+    // starters the composition seeds are in the library.
+    expect(
+      database.repositories.patterns
+        .listPatterns({ limit: 200, offset: 0 })
+        .map((pattern) => pattern.origin),
+    ).toStrictEqual(Array<string>(6).fill('bundled'));
   });
 
   it('reports an absent row as undefined rather than null', async () => {

@@ -3,10 +3,15 @@ import type { SqliteConnection } from '@/data/sqlite/sqliteConnection';
 /**
  * A schema-version-1 database holding realistic maker data: two patterns with
  * ordered steps and notes, one completed step, an active-step pointer, an
- * imported guide with a timestamped step and a note, and a counter at seven.
+ * imported guide with two timestamped `origin: 'import'` steps and a note, a
+ * guide-owned counter, and a pattern counter at seven.
  *
  * Every expected value below is a literal so migration assertions cannot be
  * satisfied by re-deriving them from the schema under test.
+ *
+ * Every insert names its columns, so this helper is valid unchanged against
+ * versions 1, 2, and 3 — extend it rather than forking it per version
+ * (architecture §7 rule 8).
  */
 export const BASELINE = {
   patterns: [
@@ -71,6 +76,29 @@ export const BASELINE = {
       transcriptExcerpt: 'start with a magic ring, then chain three',
       note: 'Keep the ring loose so it can be pulled tight later',
     },
+    /**
+     * A second parsed step, so a migration that rebuilds `guide_step` has to
+     * carry order, `origin`, offsets, and transcript text across for more than
+     * one row (issue #67).
+     */
+    secondStep: {
+      id: 'guide-step-first-round',
+      position: 1,
+      instruction: 'Chain three and work eleven double crochets into the ring',
+      videoOffsetMs: 96_000,
+      transcriptExcerpt: 'now chain three, that counts as your first double',
+      note: null,
+    },
+  },
+  guideCounter: {
+    id: 'counter-granny-rounds',
+    guideId: 'guide-granny-square',
+    label: 'Rounds',
+    kind: 'row',
+    value: 3,
+    position: 0,
+    createdAt: 1_699_000_850_000,
+    updatedAt: 1_699_000_950_000,
   },
   counter: {
     id: 'counter-sunrise-rows',
@@ -164,6 +192,42 @@ export function insertPopulatedBaseline(connection: SqliteConnection): void {
       null,
       BASELINE.guide.createdAt,
       BASELINE.guide.updatedAt,
+    ],
+  );
+
+  connection.run(
+    `INSERT INTO guide_step (id, guide_id, position, instruction, video_offset_ms, transcript_excerpt, note, completed_at, origin, user_modified_at, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      BASELINE.guide.secondStep.id,
+      BASELINE.guide.id,
+      BASELINE.guide.secondStep.position,
+      BASELINE.guide.secondStep.instruction,
+      BASELINE.guide.secondStep.videoOffsetMs,
+      BASELINE.guide.secondStep.transcriptExcerpt,
+      BASELINE.guide.secondStep.note,
+      null,
+      'import',
+      null,
+      BASELINE.guide.createdAt,
+      BASELINE.guide.updatedAt,
+    ],
+  );
+
+  connection.run(
+    `INSERT INTO counter (id, owner_kind, pattern_id, guide_id, label, kind, value, position, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      BASELINE.guideCounter.id,
+      'guide',
+      null,
+      BASELINE.guideCounter.guideId,
+      BASELINE.guideCounter.label,
+      BASELINE.guideCounter.kind,
+      BASELINE.guideCounter.value,
+      BASELINE.guideCounter.position,
+      BASELINE.guideCounter.createdAt,
+      BASELINE.guideCounter.updatedAt,
     ],
   );
 

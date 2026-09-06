@@ -1,7 +1,18 @@
 import { createRepositories } from '@/data/sqlite/createRepositories';
+import { DatabaseError } from '@/data/contracts/databaseError';
 import type { GuideRepository } from '@/data/contracts/guideRepository';
 
 import { createTestDatabase, type TestDatabase } from './support/sqliteHarness';
+
+function captureFailure(work: () => unknown): unknown {
+  try {
+    work();
+  } catch (error) {
+    return error;
+  }
+
+  throw new Error('Expected the repository call to fail.');
+}
 
 function baseGuide(videoId: string, title: string) {
   return {
@@ -406,6 +417,137 @@ describe('GuideRepository additions', () => {
       // No partial batch landed: the one maker-typed step is all that remains.
       const steps = guides.getGuideWithSteps(guideId)?.steps ?? [];
       expect(steps.map((step) => step.instruction)).toStrictEqual(['Typed A']);
+    });
+
+    describe('the schema instruction floor (issue #67)', () => {
+      it.each([
+        ['an empty string', ''],
+        ['spaces', '   '],
+        ['a tab', '\t'],
+        ['a non-breaking space', ' '],
+      ])(
+        'throws empty-step-instruction and rolls the whole batch back when one entry is %s',
+        (_label, empty) => {
+          const guideId = newGuide();
+          guides.appendImportedGuideSteps(guideId, [
+            { instruction: 'Materials', videoOffsetMs: 0 },
+            { instruction: 'Magic ring', videoOffsetMs: 72_000 },
+          ]);
+          const before = guides.getGuideWithSteps(guideId)?.guide.updatedAt;
+
+          const failure = captureFailure(() =>
+            // The empty entry sits at index 1, so the first INSERT has already
+            // executed when the CHECK fires: this proves a rollback, not a
+            // pre-check.
+            guides.appendImportedGuideSteps(guideId, [
+              { instruction: 'Round 1', videoOffsetMs: 160_000 },
+              { instruction: empty, videoOffsetMs: 200_000 },
+              { instruction: 'Round 2', videoOffsetMs: 240_000 },
+            ]),
+          );
+
+          expect(failure).toBeInstanceOf(DatabaseError);
+          expect((failure as DatabaseError).code).toBe(
+            'empty-step-instruction',
+          );
+
+          const after = guides.getGuideWithSteps(guideId);
+          expect(
+            after?.steps.map((step) => [step.position, step.instruction]),
+          ).toStrictEqual([
+            [0, 'Materials'],
+            [1, 'Magic ring'],
+          ]);
+          // The TOUCH_GUIDE inside the same transaction rolled back too.
+          expect(after?.guide.updatedAt).toBe(before);
+        },
+      );
+
+      it('carries no maker content in the refusal', () => {
+        const guideId = newGuide();
+        guides.updateGuideDetails({
+          id: guideId,
+          title: 'Sunrise Blanket Along',
+          notes: 'Hook 5.0 mm',
+        });
+
+        const failure = captureFailure(() =>
+          guides.appendImportedGuideSteps(guideId, [
+            { instruction: 'A secret transcript excerpt' },
+            { instruction: '   ' },
+          ]),
+        ) as DatabaseError;
+
+        expect(failure.message).toBe(
+          'A step must carry an instruction before it can be saved.',
+        );
+        expect(failure.message).not.toContain('Sunrise Blanket Along');
+        expect(failure.message).not.toContain('secret transcript excerpt');
+      });
+
+      it('refuses the other single-step writers too', () => {
+        const guideId = newGuide();
+        const step = guides.addGuideStep(guideId, { instruction: 'Typed A' });
+
+        expect(
+          (
+            captureFailure(() =>
+              guides.addGuideStep(guideId, { instruction: '\n' }),
+            ) as DatabaseError
+          ).code,
+        ).toBe('empty-step-instruction');
+        expect(
+          (
+            captureFailure(() =>
+              guides.updateGuideStep(step.id, { instruction: '  ' }),
+            ) as DatabaseError
+          ).code,
+        ).toBe('empty-step-instruction');
+        expect(
+          (
+            captureFailure(() =>
+              guides.saveImportedGuide({
+                guide: {
+                  videoId: 'emptyStepVid',
+                  sourceUrl:
+                    'https://www.youtube.com/watch?v=emptyStepVid',
+                  title: 'Empty step import',
+                },
+                steps: [{ instruction: '', origin: 'import' }],
+              }),
+            ) as DatabaseError
+          ).code,
+        ).toBe('empty-step-instruction');
+
+        // Nothing partial survived any of the three.
+        expect(
+          guides.getGuideWithSteps(guideId)?.steps.map((s) => s.instruction),
+        ).toStrictEqual(['Typed A']);
+        expect(guides.findGuideByVideoId('emptyStepVid')).toBeUndefined();
+      });
+
+      // The mapper's negative branch: a *different* constraint failure must not
+      // be reported to the maker as an empty instruction.
+      it('leaves an unrelated constraint failure unmapped', () => {
+        const guideId = newGuide();
+
+        const failure = captureFailure(() =>
+          guides.appendImportedGuideSteps(guideId, [
+            { instruction: 'Good' },
+            { instruction: 'Bad offset', videoOffsetMs: -1 },
+          ]),
+        );
+
+        // Re-thrown untouched: the raw engine error, not a DatabaseError.
+        expect(failure).not.toBeInstanceOf(DatabaseError);
+        expect((failure as { code?: unknown }).code).not.toBe(
+          'empty-step-instruction',
+        );
+        expect((failure as Error).message).toContain('CHECK constraint failed');
+        expect((failure as Error).message).not.toContain(
+          'instruction_not_empty',
+        );
+      });
     });
   });
 
