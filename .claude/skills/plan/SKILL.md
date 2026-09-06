@@ -79,6 +79,30 @@ owner answers you in this same session, post their answers as an owner-decision
 comment on the issue before handing off**, because the record stage is required to
 refuse to start without one. Write `stage: frame` in the provenance block.
 
+### An owner gate in the issue body stops the plan — on the issue, not in chat
+
+Some issues carry their own gate. #63's body had an **Owner gate** section
+reading "This is not yet approved for build", naming the device evidence that
+would open it. The first plan attempt read that section and refused to plan past
+it. **That judgement is right and must not be softened**: a plan written past a
+gate hands the owner a fait accompli, and #63's gate was in the end opened on a
+*different* basis than the one the issue had named.
+
+What went wrong is where the refusal landed. It was reported in the orchestrating
+chat session, so the issue recorded nothing — no trace that a plan stage had
+started, what it read, or what the gate was waiting on. A later reader sees an
+unplanned issue and cannot tell it from one nobody has picked up.
+
+**Post the stop as a comment on the issue before you stop.** One short comment:
+the gate's own wording quoted, the plain statement that **no plan was written**,
+what must happen for the gate to open (who decides, on what evidence, and where
+that evidence lands), and the `Stage-Provenance` block with `stage: plan`. Do not
+write a partial plan, a recommendation, or an argument for opening the gate —
+that is the escalation the gate exists to compel and it belongs to the owner.
+`docs/runbooks/decision-issues.md` §2's rule applies here in the same shape: a
+stage must never author the evidence that authorizes it. Then tell the user the
+gate is closed and stop.
+
 ## 2. Check feasibility before prescribing
 
 Ground every planned API and command in the installed versions and repository
@@ -256,6 +280,46 @@ including values that must stay **accepted**, so the plan shows the predicate is
 not a reject-all. If a probe cannot be run at all, say so and mark the claim
 unverified — the same honesty §4.1 demands of an un-reproduced diagnosis.
 
+### 4.3 A mechanism that depends on one event seeing another's result
+
+#63 restored the pattern viewer's open-at-current-step with a `scrollToIndex`
+driven by the step list's `onContentSizeChange`. The plan read the JS consumer
+properly — `VirtualizedList.js` and `ListMetricsAggregator.js`, quoted by line —
+and derived that an unmeasured index fails softly and "waits for the next
+content-size change, which the list itself provokes". Every line of that was
+true. What none of those files states is **when `onContentSizeChange` fires
+relative to the cell layouts it is being asked to read**, and the answer inverted
+the design: `onContentSizeChange` is the JS `onLayout` of the ScrollView's
+*content container* (`ScrollView.js` `_handleContentOnLayout`), Fabric emits
+`onLayout` in **pre-order**
+(`node_modules/react-native/ReactCommon/react/renderer/components/view/YogaLayoutableShadowNode.cpp`,
+`ShadowTree.cpp`'s `emitLayoutEvents`, `BaseViewEventEmitter.cpp`), and the
+content container is the parent of every cell — so the handler always read the
+*previous* fill batch. A pattern of ten steps or fewer, which is every bundled
+starter, never restored at all. Verify derived it from those same files; the fix
+was one line and cost a whole review cycle.
+
+Four rules make that cheap next time:
+
+- **The JS consumer proves the seam exists; only the emitter proves when it
+  fires.** Whenever a planned mechanism reads state that a *different* event
+  writes, cite the **emitter's** source, not only the consumer's. For layout and
+  touch in this app the emitter is native Fabric under
+  `node_modules/react-native/ReactCommon/**` — installed, greppable, and readable
+  by the plan stage exactly as the JS is.
+- **Write the ordering claim as one falsifiable sentence** — "the content
+  container's `onLayout` reaches JS before its cells', because …" — so a reviewer
+  checks it against the file instead of re-deriving the whole design. A mechanism
+  whose ordering sentence cannot be written is not yet planned.
+- **Name a test that fires the events in the emitter's order**, per §6. A harness
+  lets a test choose any order it likes, so a case that fires only the seam the
+  mechanism listens to encodes the assumption rather than checking it.
+- **Say which properties depend on the ordering and which do not.** #63's safety
+  half — an unmeasured index cannot land anywhere wrong — came through the finding
+  untouched, because it rests on `VirtualizedList`'s own branch and on no ordering
+  at all. That separation is what made a wrong ordering a degradation instead of a
+  defect, and it is worth stating deliberately rather than discovering afterwards.
+
 ## 5. Write a buildable one-PR plan
 
 Use this structure:
@@ -382,6 +446,20 @@ change rather than specifying an assertion that can never fail. #42's plan
 proved this by rendering the component during planning; that check is cheap and
 belongs in planning, because a plan that hands the builder an unfalsifiable
 assertion produces a green suite over the exact bug it was written to prevent.
+
+**A harness that never emits the second event cannot fail on the ordering between
+them.** That trap has an ordering twin. #63's seven planned cases each fired
+`contentSizeChange` on the step list and asserted what the hook did with it; RNTL
+fires **no** cell `onLayout` at all, so `getHighestMeasuredCellIndex()` was `0` in
+every one of them and all seven were equally green under the mechanism that worked
+and the mechanism that missed every pattern of ten steps or fewer. The cases that
+could tell the two apart had to synthesise the cell layout events by hand, in the
+emitter's order — content size, then the cells, then the deferred attempt — and
+assert the offset that came out. So when a planned mechanism reads state some
+other event writes (§4.3), name a case that **writes that state through the same
+code path, in the emitter's order**, and say plainly what the cases that do not
+are still worth: they pin the intent — right index, right moment, right number of
+times — and nothing whatever about the ordering.
 
 The same trap has an end-to-end form. A Maestro `assertNotVisible` whose selector
 can never match **passes**, so a flow can report success over the exact defect the
