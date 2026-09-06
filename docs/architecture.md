@@ -238,7 +238,7 @@ Conventions every table follows:
 | Search | `stitch.search_text` is a stored generated column, `lower(trim(name)) \|\| ' ' \|\| lower(trim(abbreviation))`, indexed, so case- and whitespace-insensitive lookup cannot drift from its source columns. `StitchRepository.searchStitches` matches it with two token-prefix `LIKE ? ESCAPE '\'` clauses — `q%` and `% q%` — so an abbreviation matches as a whole token (`dc` never returns *Half double crochet* through `hdc`), a multi-word name still matches across its space, and the first clause stays index-eligible. `%`, `_`, and `\` a maker typed are escaped at that boundary rather than stripped during normalization, and results are ordered `search_text ASC, id ASC` like browse. No FTS table, no dependency, no migration. |
 | Exclusive owners | `counter.owner_kind` plus paired `CHECK`s guarantee exactly one pattern or one guide owner. `UNIQUE (pattern_id, position)` and `UNIQUE (guide_id, position)` order each owner independently because SQLite treats `NULL`s in a unique index as distinct. |
 | Cross-parent references | A reference that must stay inside one aggregate derives its parent in SQL rather than trusting the caller. `pattern_progress.active_step_id` and `pattern_step_progress.pattern_id` are both written by `INSERT ... SELECT ... FROM pattern_step WHERE id = ?`, so a step from another pattern — or no step at all — writes nothing instead of pointing a pattern at a position it does not own. |
-| Text | Trimmed by the caller before insert; the schema never trims silently except in the generated search column. From version 3 the two step-instruction columns carry a **floor** as well: `CHECK (trim(instruction, char(9,10,11,12,13,32,160,65279)) <> '')`, named `<table>_instruction_not_empty`. It never trims or rewrites — a stored `' Chain 41 '` stays byte-identical — it only refuses text that is *entirely* whitespace, so no writer can persist a nameless step (issue #67). SQLite's one-argument `trim(X)` strips only U+0020, which is why the character set is spelled out; that set is a strict **subset** of `String.prototype.trim()`'s, so the schema can never refuse a value the domain validators accept. The validators stay the primary defence and keep owning the maker-facing message. |
+| Text | Trimmed by the caller before insert; the schema never trims silently except in the generated search column. From version 3 the two step-instruction columns carry a **floor** as well: `CHECK (trim(instruction, char(9,10,11,12,13,32,160,65279)) <> '')`, named `<table>_instruction_not_empty`. It never trims or rewrites — a stored `' Chain 41 '` stays byte-identical — it only refuses text that is *entirely* whitespace, so no writer can persist a nameless step (issue #67). SQLite's one-argument `trim(X)` strips only U+0020, which is why the character set is spelled out; that set is a strict **subset** of `String.prototype.trim()`'s, so the schema can never refuse a value the domain validators accept. **Known bound, accepted knowingly:** the subset omits the exotic Unicode spaces `String.prototype.trim()` also strips — U+1680, U+2000-U+200A, U+2028, U+2029, U+202F, U+205F, U+3000 — so an instruction consisting solely of, say, an ideographic space still persists at the schema layer (measured: a BMP-wide sweep found zero code points the schema refuses that JS `trim()` keeps, and these as the only ones it keeps that JS `trim()` strips). Enumerating twenty more code points in frozen DDL would cost more review than it buys, and the floor is not a duplicate of the domain guard. The validators stay the primary defence and keep owning the maker-facing message. |
 
 ### 6.1 Seed content
 
@@ -436,6 +436,64 @@ stitches, sections 8-11 patterns).
      migration is a historical record: a copy change in a validator's message
      must not retroactively alter what a device already wrote. The tests write
      the same literal out independently rather than importing it.
+   - **A runner capability flag decides two contracts, not one.**
+     `foreignKeys: 'off'` answers *"does this rebuild run with enforcement off?"* **and**
+     *"does a migration that does not declare it keep enforcement on for its own
+     statements, and skip `foreign_key_check`'s whole-database scan?"* Only the
+     first is anyone's acceptance criterion; the second arrives as a stated
+     consequence and therefore with no test attached, so widening the runner's
+     `migration.foreignKeys === 'off'` to a constant `true` left every suite in
+     the repository green. Any future flag on `Migration` inherits this shape:
+     name the **opting-out** contract as its own case, asserting which pragmas
+     each kind of migration issues and where they fall relative to
+     `BEGIN IMMEDIATE` and `COMMIT`.
+   - **A new `*_instruction_not_empty` constraint must be added to
+     `EMPTY_INSTRUCTION_CONSTRAINTS`** in `src/data/sqlite/writeErrors.ts`, or
+     its refusal reaches the maker as a raw SQLite error instead of
+     `DatabaseError('empty-step-instruction')`. That list is a hand-written
+     enumeration — deriving it at runtime would mean querying `sqlite_master` on
+     the error path — so it is kept honest by a **walk** rather than by this
+     paragraph: `tests/databaseSchema.test.ts` reads every `CONSTRAINT <name>
+     CHECK` out of the built latest schema and asserts the list equals the
+     `*_instruction_not_empty` names it finds. Give a third table such a
+     constraint and that test is red until the name is mapped.
+10. **The probe that must run before a schema change is prescribed.** Both of
+    migration 3's load-bearing findings — the foreign-keys-off requirement and
+    the two-argument `trim` — came from *running* the statements against
+    `node:sqlite` during planning, not from reading documentation. The
+    documentation states both; neither was believed until measured, and the
+    one-argument `trim` reading would otherwise have shipped a floor strictly
+    weaker than `String.prototype.trim()` while looking exactly like the issue
+    asked. Migration 2 established "verify the statement before prescribing it"
+    (rule 8); migration 3 fixes the **shape** of that probe, which is reusable
+    verbatim:
+    - Open a `node:sqlite` database through `tests/support/sqliteHarness.ts`, so
+      the probe runs the production connection boundary rather than a second
+      one, and migrate it to the **previous** version with
+      `MIGRATIONS.filter((m) => m.version <= n - 1)`.
+    - Populate it with `insertPopulatedBaseline` — real rows, real children,
+      real progress — never an empty database. An empty database cannot show a
+      cascade firing.
+    - Run the candidate statements and record, as a table, the row counts and
+      the specific column values of **every referencing table**, before and
+      after. **The destructive-cascade check is a named step, not a judgement
+      call:** for each table the change `DROP`s or rewrites, list what references
+      it and with what `ON DELETE` action, run the change once with
+      `PRAGMA foreign_keys = ON` and once with it `OFF`, and put both columns in
+      the plan. The FK-on run of migration 3 raised nothing, committed, set
+      `user_version`, and reported success having destroyed every completion
+      instant — a probe that only checks for a thrown error sees a clean pass.
+    - Probe each *rejected* alternative too, and record its measured failure
+      rather than a reason it "would not work": `PRAGMA defer_foreign_keys = ON`
+      is the tempting one here, it can be set inside a transaction, and it
+      leaves the progress rows at zero all the same.
+    - Where the change is a predicate, sweep its **inputs**, not its examples: a
+      row per candidate value against the issue's predicate and the chosen one,
+      including the values that must stay *accepted*, so the plan shows the
+      predicate is not a reject-all.
+    Paste the resulting tables into the plan as evidence. They are what make a
+    migration claim reviewable rather than hopeful, and they are what let verify
+    reproduce the hazard independently instead of taking the diff's word for it.
 
 Repositories are built by `createRepositories` over one `RepositoryContext`
 (connection, transaction runner, injected clock, injected identifier generator),
@@ -1439,6 +1497,17 @@ Widening the runner's `migration.foreignKeys === 'off'` to a constant `true`
 leaves every other suite in the repository green, so two cases record which
 pragmas each kind of migration issues, and in what order relative to
 `BEGIN IMMEDIATE` and `COMMIT`.
+`databaseSchema` additionally **walks** the built schema for every
+`CONSTRAINT <name> CHECK` and asserts `EMPTY_INSTRUCTION_CONSTRAINTS` equals the
+`*_instruction_not_empty` names it finds, so the mapper's hand-written
+enumeration cannot fall behind a migration that adds a third one (§7 rule 9);
+planting a `stitch_instruction_instruction_not_empty` constraint reddens exactly
+that case.
+`patternSeedLoader` covers the eighth guarded writer, `insertSeededPatterns`,
+which the bundled document cannot reach because `parsePatternSeedDocument`
+refuses an empty step upstream: a hand-built record with a whitespace-only step
+is refused as `empty-step-instruction` and the whole release rolls back to an
+empty, still-seedable library.
 `guideRepository` and `repositories` pin the typed
 `DatabaseError('empty-step-instruction')` and the whole-batch rollback for
 `appendImportedGuideSteps` (the empty entry deliberately at index 1, so an

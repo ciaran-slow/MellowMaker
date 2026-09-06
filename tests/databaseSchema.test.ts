@@ -1,6 +1,7 @@
 /** @jest-environment node */
 
 import type { SqliteConnection } from '@/data/sqlite/sqliteConnection';
+import { EMPTY_INSTRUCTION_CONSTRAINTS } from '@/data/sqlite/writeErrors';
 
 import { createTestDatabase, type TestDatabase } from './support/sqliteHarness';
 
@@ -551,6 +552,36 @@ describe('PRD0 schema behaviour', () => {
         expect(() =>
           connection.run(INSERT_STEP, ['step-null', 'pattern-a', 9, null]),
         ).toThrow(/NOT NULL/);
+      });
+
+      /**
+       * The mapper in `src/data/sqlite/writeErrors.ts` keeps a hand-written list
+       * of constraint names, which is the enumeration-guard shape: a migration
+       * that gives a **third** table an `instruction_not_empty` constraint would
+       * leave its refusal reaching the maker as a raw SQLite error rather than
+       * `DatabaseError('empty-step-instruction')`, and nothing would say so.
+       *
+       * So the list is walked against the schema the app actually builds rather
+       * than trusted. `sqlite_master` is the widest carrier available — it holds
+       * whatever DDL any migration wrote, including one this test predates — so
+       * a new constraint cannot escape by being declared somewhere this test
+       * does not think to look.
+       */
+      it('maps every non-empty instruction CHECK the built schema can raise', () => {
+        const declared = connection
+          .all<{ readonly sql: string | null }>(
+            "SELECT sql FROM sqlite_master WHERE sql IS NOT NULL",
+          )
+          .flatMap((row) => [
+            ...(row.sql ?? '').matchAll(
+              /CONSTRAINT\s+([A-Za-z_][A-Za-z0-9_]*_instruction_not_empty)\b/g,
+            ),
+          ])
+          .map((match) => match[1]);
+
+        expect([...new Set(declared)].sort()).toStrictEqual(
+          [...EMPTY_INSTRUCTION_CONSTRAINTS].sort(),
+        );
       });
     });
 

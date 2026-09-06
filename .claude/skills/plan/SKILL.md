@@ -207,6 +207,55 @@ play/pause) — and then put the residual behaviour in the owner's device script
 as "expected, not a defect", step 10. Do not silently drop a hypothesis the
 issue raised; convert it into a recorded decision or an observation to confirm.
 
+### 4.2 Prescribing a schema change: run the probe, do not read the docs
+
+A migration plan must contain an **executed probe** of its own statements
+against the harness engine, and paste the results in as evidence. Not a citation
+of SQLite's documentation, not "this should be safe" — the measured table. #67
+is the case that fixes this rule: both of its load-bearing findings came from
+running the rebuild during planning, and both would have been missed by a plan
+that read the documentation carefully.
+
+- The issue prescribed `CHECK (trim(instruction) <> '')`. Measured, SQLite's
+  one-argument `trim(X)` strips **only U+0020**, so that predicate accepts a
+  tab-only, newline-only, or NBSP-only instruction — a floor strictly weaker
+  than `String.prototype.trim()`, in the one place the defect actually lives
+  (text pasted out of a web page). The documentation says this; nobody notices
+  until a row prints `accepts`.
+- The rebuild had to run with `PRAGMA foreign_keys = OFF`. With enforcement on,
+  `DROP TABLE` performs an implicit `DELETE` that fires `ON DELETE` actions:
+  measured on a populated database, the rebuild **emptied** the maker's progress
+  table, nulled the active-step pointer, **committed**, set `user_version`, and
+  reported success. Nothing was raised. A plan that had only reasoned about it
+  would have described the pragma as best practice rather than as the difference
+  between a working migration and silent data destruction.
+
+The reusable shape is recorded as `docs/architecture.md` §7 rule 10 and is the
+same every time: migrate a `tests/support/sqliteHarness.ts` connection to the
+**previous** version with `MIGRATIONS.filter(...)`, populate it with
+`insertPopulatedBaseline` (never an empty database — an empty database cannot
+show a cascade fire), run the candidate statements, and record before/after row
+counts and column values for **every referencing table**.
+
+Two steps are named rather than left to judgement:
+
+- **The destructive-cascade check.** For each table the change `DROP`s or
+  rewrites, list what references it and with what `ON DELETE` action, then run
+  the change **twice** — once with `PRAGMA foreign_keys = ON`, once with it
+  `OFF` — and put both columns in the plan. A probe that only asks "did it
+  throw?" reports a clean pass over the destruction above.
+- **The rejected alternative is probed too**, and recorded by its measured
+  failure rather than by a reason it would not work. `PRAGMA defer_foreign_keys
+  = ON` is the tempting one here — it can be set inside a transaction, which
+  would avoid touching the runner at all — and the progress rows still go to
+  zero, because it defers violation *checking*, not the *actions*.
+
+Where the change is a predicate, sweep its **inputs** rather than its examples:
+one row per candidate value against the issue's predicate and the chosen one,
+including values that must stay **accepted**, so the plan shows the predicate is
+not a reject-all. If a probe cannot be run at all, say so and mark the claim
+unverified — the same honesty §4.1 demands of an un-reproduced diagnosis.
+
 ## 5. Write a buildable one-PR plan
 
 Use this structure:
@@ -406,6 +455,24 @@ whether or not the release ran. Name the test at the layer where release is
 actually driven: in this app, blur/focus cleanup only fires under a real
 navigator, so a release tied to navigation must be pinned by a router-level
 test, not a component-in-isolation unmount.
+
+When the plan adds an **opt-in capability to a shared runner** — a new optional
+field on a migration, a flag on a transaction helper, a mode on a repository
+context — name a falsifier for the **opting-out** half as well as the opting-in
+half. The expression `migration.foreignKeys === 'off'` decides two contracts:
+*does the flagged migration run with enforcement off* (which is the acceptance
+criterion, so it gets a test) and *does an unflagged migration keep enforcement
+on for its own statements and skip the whole-database check* (which the plan
+states as a consequence, so it gets none). #67's plan described the second
+precisely and pinned only the first; widening the condition to a constant `true`
+left all 744 tests green, and every fresh install would have run migrations 1
+and 2 with foreign keys disabled while paying a full `foreign_key_check` scan on
+each. The build's mutation pass caught it and shipped the two cases as a second
+commit — the plan is where it was cheap. So for every optional capability, write
+the case that exercises the runner with the option **absent**, asserting what it
+does *not* do (which pragmas it issues, which work it skips), at the layer that
+decides it. The same shape covers a default-off feature flag, an opt-in cache,
+and any "callers who do not ask for X are unaffected" claim.
 
 When the plan specifies a **walk-based guard** (the #12 idiom: walk the
 source-of-truth directory so a newly added file cannot escape the check), also
