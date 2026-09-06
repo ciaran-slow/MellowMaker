@@ -1112,5 +1112,24 @@ describe('PatternViewerScreen', () => {
       }
       expect(scrollToIndex).toHaveBeenCalledTimes(5);
     });
+
+    it('makes no attempt after the maker has left the viewer', async () => {
+      const scrollToIndex = jest.spyOn(FlatList.prototype, 'scrollToIndex');
+      const long = createLongPattern({ activeStepIndex: 19 });
+
+      const list = await openLongBlanket(long.id, 'restore-unmount');
+
+      // A fire whose attempt is still queued when the screen goes away. The
+      // count is taken before the unmount so this reads the same whether or not
+      // the attempt is deferred: what it pins is that NOTHING more happens
+      // afterwards.
+      await fireEvent(list, 'contentSizeChange', 390, 3000);
+      const beforeUnmount = scrollToIndex.mock.calls.length;
+
+      screen.unmount();
+      await flushDeferredAttempt(FILL_BATCH_PERIOD_MS);
+
+      expect(scrollToIndex).toHaveBeenCalledTimes(beforeUnmount);
+    });
   });
 });
