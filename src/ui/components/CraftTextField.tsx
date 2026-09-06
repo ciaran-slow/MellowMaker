@@ -51,13 +51,21 @@ type CraftTextFieldProps = {
  * input component.
  *
  * Layout (issue #42): the field *surface* owns the 48px touch minimum as an
- * inline token style. A single-line input reaches that same 48px through
- * symmetric vertical padding — `spacing[3]` (12) + the body line height (24) +
- * 12 — instead of a `min-h-touch` class on the input itself, which measured
- * 48px around a 24px line and let iOS top-align the text high in the field.
- * Symmetric padding centres the line under either iOS layout behaviour and
- * keeps the whole surface tappable. Multiline keeps its own minimum and stays
- * deliberately top-aligned.
+ * inline token style, instead of a `min-h-touch` class on the input itself,
+ * which measured 48px around a 24px line and let iOS top-align the text high in
+ * the field. Multiline keeps its own minimum and stays deliberately
+ * top-aligned.
+ *
+ * Layout (issue #79): the single-line input carries the body **font size** as an
+ * inline token style and **no line height**, because on the new architecture a
+ * `lineHeight` on a single-line `TextInput` is applied as an `NSParagraphStyle`
+ * line height without the half-leading baseline correction `<Text>` receives
+ * (`RCTApplyBaselineOffset` is called only from `RCTTextLayoutManager`), while
+ * Android's `CustomLineHeightSpan` splits the same leading evenly — so the
+ * offset was iOS-only and could not be reached by padding. Removing it emits no
+ * paragraph style at all, so the input's text rect exactly fits its line and no
+ * vertical placement rule applies. Multiline keeps `text-body` (font size *and*
+ * the 24px leading that makes prose readable).
  */
 export function CraftTextField({
   accessibilityHint,
@@ -94,7 +102,7 @@ export function CraftTextField({
         accessibilityLabel={accessibilityLabel}
         autoCapitalize={autoCapitalize}
         autoCorrect={autoCorrect}
-        className={`flex-1 text-body text-ink${multiline ? ' min-h-touch' : ''}`}
+        className={`flex-1 text-ink${multiline ? ' text-body min-h-touch' : ''}`}
         keyboardType={keyboardType}
         multiline={multiline}
         onChangeText={onChangeText}
@@ -102,7 +110,14 @@ export function CraftTextField({
         placeholder={placeholder}
         placeholderTextColor={tokens.colors.ink}
         returnKeyType={returnKeyType}
-        style={multiline ? undefined : { paddingVertical: tokens.spacing[3] }}
+        style={
+          multiline
+            ? undefined
+            : {
+                fontSize: tokens.typography.body.fontSize,
+                paddingVertical: tokens.spacing[3],
+              }
+        }
         testID={testID}
         textAlignVertical={multiline ? 'top' : 'center'}
         value={value}

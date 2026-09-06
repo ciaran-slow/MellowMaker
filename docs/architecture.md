@@ -1257,11 +1257,30 @@ One convention introduced by the field-alignment fix (issue #42):
   `minHeight: tokens.touch.minimum` as an inline token style — matching how
   `CraftPressable` and `CraftTabBarButton` already express touch minimums — and
   the single-line `TextInput` gets `paddingVertical: tokens.spacing[3]` instead
-  of a `min-h-touch` class of its own: 12 + the 24px body line + 12 is exactly
-  48, so the input's box still fills the whole tappable surface while its line
-  sits centred in it. The previous arrangement put the 48px minimum on the input
-  alone, and iOS top-aligns a short line inside a `TextInput`'s own height, so
-  every field's text read high. `textAlignVertical` is passed explicitly on both
+  of a `min-h-touch` class of its own. The previous arrangement put the 48px
+  minimum on the input alone, and iOS top-aligns a short line inside a
+  `TextInput`'s own height, so every field's text read high.
+  **Issue #79 completed this:** #42's padding fixed the box and never touched
+  the *line*, and the owner's device pass on 2026-09-06 still showed the text
+  high. `text-body` is three values, not one — `[16, { lineHeight: '24px',
+  fontWeight: '400' }]` — so the single-line branch now carries
+  `fontSize: tokens.typography.body.fontSize` as an inline token style and
+  **no line height at all**, while multiline keeps `text-body`. On the new
+  architecture a `lineHeight` on a `TextInput` becomes an `NSParagraphStyle`
+  `minimumLineHeight`/`maximumLineHeight` with none of the half-leading baseline
+  correction `<Text>` receives — `RCTApplyBaselineOffset` is called only from
+  `RCTTextLayoutManager`, never from `RCTTextInputComponentView` — while
+  Android's `CustomLineHeightSpan` splits the same leading evenly on the input.
+  The offset was therefore iOS-only and unreachable by padding: with the
+  fragment and the text rect both 24pt, no vertical placement rule had any slack
+  to place. Removing the line height emits no paragraph style at all, so the
+  rect exactly fits the natural line. The consequence, accepted deliberately, is
+  that the single-line input's own box drops from 48pt to
+  `12 + ≈19.1 + 12 ≈ 43pt`; the *surface* stays 48pt via the container minimum
+  and `items-center`, so the visible field and every existing assertion are
+  unchanged, and the ≈5pt of edge-of-surface tap area is recorded in
+  [`runbooks/deferred-smokes/079-issue-79.md`](./runbooks/deferred-smokes/079-issue-79.md).
+  `textAlignVertical` is passed explicitly on both
   branches (`center` single-line, `top` multiline; the prop is Android-only and
   inert on iOS) so the multiline contract has an exact expected value. Multiline
   fields keep their own `min-h-touch` and stay deliberately top-aligned.
@@ -1409,7 +1428,9 @@ right there. A value a test must pin therefore has to be either an inline
 explicit `className` string match, and the test should say which of the two it
 is doing. A plan that specifies `toHaveStyle` against a NativeWind class is not
 buildable as written; issue #42 moved the load-bearing values to inline token
-styles for exactly this reason.
+styles for exactly this reason, and issue #79 moved the single-line field's font
+size for the same reason, because "this input carries no line height" is
+assertable only as a `className` non-match while the value lives in a class.
 
 **A React `key` is invisible to this harness, in the same way and with the same
 consequence.** RNTL renders an identical tree either side of a key change: the
