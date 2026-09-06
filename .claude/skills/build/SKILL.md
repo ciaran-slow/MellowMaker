@@ -110,6 +110,19 @@ partial work already exists — then re-read the posted plan so you neither redo
 finished parts nor drop planned ones. Re-run the full gate suite once the code
 is complete; never assume a pre-interruption "green" still holds.
 
+**Untracked residue is part of that ground truth.** An interrupted run leaves
+behind whatever scratch it was in the middle of, and inside the worktree a scratch
+*test* is not inert: `jest` collects any `tests/*.test.tsx`, and the walk guards
+(`offlineColdStart`, `loggingHygiene`, `accessibilityContrast`, `textScaling`)
+walk directories, so an abandoned probe can turn a gate green or red on a file
+that is not in the PR at all. #63's build wrote `tests/build63Probe.test.tsx` to
+measure the harness, was cut off by a rate limit, and had to remove it on resuming
+before the gates meant anything. So read the **untracked** section of
+`git status` as carefully as the modified one; name every in-worktree probe for
+its issue and stage (`build63Probe.test.tsx`) so a leftover is attributable;
+remove it with `git clean` scoped to that path; and run the full gate suite
+**after** the removal, so the gate result you report describes the tree you push.
+
 ## 3. Implement the plan
 
 Follow the posted outcome, paths, contracts, and tests. Small local judgment

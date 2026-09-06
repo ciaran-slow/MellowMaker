@@ -207,6 +207,26 @@ derived but could not run (see `043-issue-43.md`'s Android
 `removeClippedSubviews` scenario). Put such a scenario in the deferred entry
 rather than in a PR review, which disappears from view once the PR merges.
 
+### One fixture is evidence for one position, not for the mechanism
+
+When the deferred behaviour turns on a **discrete** parameter — which fill batch a
+row lands in, which page a record is on, which migration step ran — a device
+script that exercises a single value proves that value and says nothing about the
+others. #63's owner script used a 24-step pattern at step 20, which lands under
+both the mechanism that shipped and the broken one it replaced; the case that
+separates them (a current step in the pattern's **final** fill batch, which has no
+later batch to be rescued by) was not in the script at all, so #16 would have
+cleared AC1 while a mainstream input failed it silently. Verify derived that and
+the entry gained two named scenarios: the discriminating one, and a **positive
+control** one region below it, so a failure tells the owner *which* reading is
+wrong rather than only that something is.
+
+So when an entry's behaviour has such a parameter, name the regions and cover at
+least the boundary region plus one control. And say plainly where an existing flow
+leg passes either way — `063-issue-63.md` records that the 3-step Maestro fixture's
+legs cannot report the difference, which is why the flow is not evidence for AC1.
+A leg that cannot fail on the thing is not evidence for it.
+
 ### Clearing an entry
 
 Run the flow on-device, then set `**Status:**` to `Done — <date>, <targets

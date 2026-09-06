@@ -136,6 +136,15 @@ stage begins.** It is a precondition of the record, not a formality after it.
   escalation and the owner's answers are in *your* session. The record's PR body
   then links that comment by URL as its authorization.
 
+**A gate written into a non-decision issue's own body works the same way.** #63
+was a plain `enhancement` whose body carried an "Owner gate" section reading
+"This is not yet approved for build". The plan stage refused to plan past it,
+which was correct — and reported the refusal only in the orchestrating chat, so
+the issue itself held no record of it. The `plan` skill (§1, "An owner gate in the
+issue body stops the plan") now requires that stop to be posted on the issue, for
+exactly the reason this section requires the owner-decision comment: a stop, like
+an approval, that exists only in a chat session is not evidence anyone can read.
+
 ## 3. Record (in place of build)
 
 Write the **approved** decision into the docs. **Cite the §2 owner-decision

@@ -545,14 +545,19 @@ describe('PatternViewerScreen', () => {
       expect(list.props.initialScrollIndex).toBeUndefined();
     });
 
-    it('still restores the current step far down a long pattern, without the mount-time jump', async () => {
+    it('holds the durable current step far down a long pattern, independently of any scroll', async () => {
       // The falsifier for the removal: what FR-PV-05 actually promises is the
       // DURABLE position, held in SQLite and rendered as the selected current
       // step — not a scroll offset, which this app has never persisted. Index 19
       // is well past `initialNumToRender`'s default of 10, so this is exactly
-      // the case a 3-step fixture can never reach. What IS given up is stated
-      // out loud: the row is present and marked current, but the list no longer
-      // scrolls to it on open.
+      // the case a 3-step fixture can never reach.
+      //
+      // Renamed by the #63 retro. It was written when #56 gave up the mount-time
+      // jump and was titled "…without the mount-time jump"; #63 put a jump back,
+      // by a different mechanism, and every assertion here stayed true through
+      // both, because none of them was ever about scrolling. #63's AC4 froze this
+      // block byte-identical for the length of that PR, so the rename waited for
+      // the retro (plan D5). That freeze is spent; this case is ordinary again.
       const long = repositories.patterns.createPattern({
         title: 'Long Blanket',
         steps: Array.from({ length: 24 }, (_, index) => `Row ${index + 1}`),
@@ -595,23 +600,21 @@ describe('PatternViewerScreen', () => {
   // content-container-relative and so already contains the header cell.
   //
   // What these cases can and cannot prove (AC5): Jest has no layout engine, so
-  // `getHighestMeasuredCellIndex()` is 0 here and every attempt at an index
-  // above 0 takes `VirtualizedList`'s failure branch. They therefore pin the
-  // INTENT — the right index, at the right moment, exactly the right number of
-  // times, and never at the wrong moments — never the resulting pixel offset.
-  // The offset is guaranteed by construction (measured cells only) and observed
-  // by step 3 of the owner's device script in
-  // `docs/runbooks/deferred-smokes/063-issue-63.md`.
+  // nothing measures a cell unless a case feeds the measurement in. The first
+  // eight do not, so `getHighestMeasuredCellIndex()` stays 0 in them and every
+  // attempt above index 0 takes `VirtualizedList`'s failure branch — they pin the
+  // INTENT (the right index, at the right moment, exactly the right number of
+  // times, and never at the wrong moments) and nothing about the offset. The
+  // three that feed cell layouts by hand DO reach the landing branch and pin the
+  // arithmetic; see the comment above them. What no case here can pin is that the
+  // real layout puts the row where the fixture says — that is step 3 of the
+  // owner's device script in `docs/runbooks/deferred-smokes/063-issue-63.md`.
   //
   // `jest.spyOn(FlatList.prototype, 'scrollToIndex')` records the call and CALLS
   // THROUGH, so the real `VirtualizedList` branch — including its
   // `invariant(!!onScrollToIndexFailed, …)` — runs under the spy and a missing
   // handler would throw rather than pass quietly.
   //
-  // The neighbouring #56 case is titled "…without the mount-time jump" (line
-  // 539). Every assertion in it is still true — it only ever pinned the DURABLE
-  // position — but its name now describes a world this block ends. AC4 freezes
-  // that block byte-identical, so the rename is left to the retro (plan D5).
   describe('opens at the current step (issue #63)', () => {
     const SCROLL_TO_CURRENT = (index: number) => ({
       animated: false,
@@ -958,6 +961,12 @@ describe('PatternViewerScreen', () => {
       // the same way. Neither may move the list.
       await fireEvent.press(screen.getByLabelText('Mark step 10 complete'));
       await fireEvent.press(screen.getByLabelText('Increase Rows'));
+      // Explicit, because the attempt is deferred by a task: without this flush
+      // the guard would only hold if the second press's `act` happened to run
+      // long enough for a scheduled attempt to fire, which nothing here forces.
+      // A tap-triggered re-scroll must have had its chance to run before the
+      // count below can mean anything.
+      await flushDeferredAttempt(0);
 
       expect(scrollToIndex).toHaveBeenCalledTimes(1);
       // Both taps genuinely landed, so this cannot pass by doing nothing.
@@ -1020,7 +1029,7 @@ describe('PatternViewerScreen', () => {
     // fill batch below is therefore fired in that order — content size, then the
     // cells, then the macrotask.
 
-    it('lands on the measured current step of a short pattern, at the row own offset', async () => {
+    it("lands on the measured current step of a short pattern, at the row's own offset", async () => {
       const scrollToIndex = jest.spyOn(FlatList.prototype, 'scrollToIndex');
       // Left as a recording no-op: letting it through would drive the mocked
       // native scroll commands, and the offset it is ASKED for is the assertion.
