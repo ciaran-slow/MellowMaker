@@ -857,7 +857,9 @@ commits through `createPattern` and `router.replace`s onto the pattern viewer.
 The recorded notes are `Saved from YouTube: <canonical watch url>` — derived
 from `video_id`, the canonical identity, rather than copied from the stored
 `source_url`, which carries no canonical-form constraint — followed, when the
-guide has notes of its own, by a blank line and those notes verbatim. The
+guide has notes of its own, by a blank line and those notes with only their
+outer whitespace trimmed (internal line breaks are preserved; `trim()` in
+`guidePatternSnapshot`, pinned by `tests/guidePatternSnapshot.test.ts`). The
 converted pattern carries `origin: 'user'` with no code change at all:
 `createPattern`'s SQL names `'user'` and `CreatePatternInput` has no `origin`
 field, and a third CHECK value such as `'guide'` was rejected because it would be
@@ -865,6 +867,18 @@ a schema-v3 migration buying nothing the notes line does not already carry.
 Converting the same guide twice is deliberately **not** idempotent: it produces
 two independent patterns, because a maker may fork a project and the only
 available dedupe key (the title or the notes URL) is editable afterwards.
+
+**Two accepted consequences of re-seeding on focus** (recorded by the #51 retro
+so neither is re-diagnosed as a defect). The route is a hidden `Tabs` screen, so
+it re-reads the guide on every focus and the title field re-seeds on the *draft's
+identity*: (1) a rename the maker abandons by leaving the screen is discarded on
+return — the field follows the guide's current name, which is the same rule that
+makes a second visit a review of the guide rather than of the first visit's
+draft; a rename kept within one visit is never clobbered. (2) After a failed
+commit, "Try again" re-reads the guide rather than retrying the write, so a title
+typed before the failure is not preserved. Both are the cost of one recovery
+control shared by the read and the write path, on a path only a SQLite write
+failure reaches; neither is worth a second convention here.
 
 ## 10. UI and interaction architecture
 
@@ -964,9 +978,29 @@ wrapping of those three labels at extreme accessibility text sizes; that is not
 derivable from the constants (it depends on glyph metrics), so it is a bound
 rather than a value and belongs to the #16 device pass, not to this rule.
 
-A list-owning screen re-reads its first page on focus
-(`useFocusEffect`) so a change made on a pushed editor is reflected on return,
-keeping SQLite authoritative without a global store.
+**Every screen that displays persisted data re-reads it on focus**
+(`useFocusEffect` paired with a stable `refresh`/`reload`), so a change made
+elsewhere is reflected on return and SQLite stays authoritative without a global
+store. This is not only a list rule: it covers a list's first page, a single
+aggregate (`PatternViewerScreen`, `GuideWorkingViewScreen`), and a screen that
+merely *derives* a draft from persisted data (`SaveGuideAsPatternScreen`, whose
+review is a read of the guide). Every route here is a flat, hidden (`href: null`)
+bottom-tab screen with no `unmountOnBlur`, so a visited screen **stays mounted**
+and a mount-time read never runs again: without the focus re-read the maker
+reviews, and can act on, what the data looked like on their first visit. That
+mistake has now been made three times — #11 (the guide WebView kept alive after
+blur), #43 (`useFocusEffect` reload on the working view), #51 (the save-as-pattern
+review re-seeded on focus) — so treat "hidden tab screens stay mounted" as a
+property of this navigator, not a surprise.
+
+The **dependency array of that focus callback is itself load-bearing**:
+`useFocusEffect` re-runs the callback whenever its identity changes while the
+screen is focused, so it must depend only on the stable `refresh`/`reload`, never
+on the per-render state or view model — a read produces new state, which would
+re-arm the effect, which reads again. `tests/focusReadBudget.test.tsx` pins one
+bounded read per focus for all five screens by counting repository calls on the
+real router; the isolated screen suites cannot, because they mock
+`useFocusEffect` as a capture and fire it themselves.
 
 A screen that holds a **resource** — a media/WebView player, a subscription, or
 a timer — must release it on **blur** via `useFocusEffect`'s cleanup, not only on

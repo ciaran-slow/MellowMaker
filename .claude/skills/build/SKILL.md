@@ -340,6 +340,26 @@ the PR body**: a strengthened fixture is a deviation from the plan's test list,
 and the reviewer needs to know the plan's version was inert rather than
 redundant. #50 did exactly this and shipped the fix as its second commit.
 
+**The self-check cannot see a mechanism that is absent — a scenario test can.**
+Every reading above mutates code that exists. When the defect is a *missing*
+mechanism, there is nothing to invert: the suite is green, the mutation pass is
+green, and the build is genuinely finished by its own lights. #51 shipped a review
+screen whose guide read ran only in a mount effect. The route is a hidden `Tabs`
+screen, so it stayed mounted, and a maker who cancelled, added a step and came
+back reviewed — and would have written — the *previous* visit's draft. Nothing
+could go red, because no line was wrong; the second visit had no test at all. The
+same class produced #11 and #43.
+
+So for each new screen or hook that reads persisted data, run one **scenario**
+before opening the PR, on the real router, in addition to the mutation pass:
+visit it, leave, change the underlying row through another screen, return, and
+assert what is now shown. `renderRouter` is the only harness that can see it —
+the isolated screen suites mock `useFocusEffect` as a capture and mount once, so
+the staleness is invisible there. The same shape covers the sibling classes:
+after a `router.replace`, after a delete, and after a second visit to a
+write-capable screen. `tests/focusReadBudget.test.tsx` is the companion guard for
+the loop hazard the fix introduces on the way in (one bounded read per focus).
+
 **Plant the mutation in every carrier the guard claims to cover.** For an
 enumeration/walk guard, a single mutation in the obvious syntactic form proves
 only that form. Plant the same violation in each distinct place the value can be
@@ -498,6 +518,18 @@ gh pr create --repo "$REPO" \
   --title "<issue title>" \
   --body-file <pr-body-file>
 ```
+
+**Name every scratch file uniquely per issue and stage — the scratchpad is
+shared.** Stages run in parallel worktrees but the session scratchpad directory
+is **not** isolated: a generic `pr-body.md` is the same path for every agent on
+this machine. #51's build wrote `pr-body.md`, another agent overwrote it between
+the write and `gh pr create` reading it, and **PR #64 was published carrying an
+unrelated retro for #56**. Nothing in the branch was affected; only the published
+body, which a reader may already have seen. Use `<issue>-<stage>-<what>.md` —
+`51-build-pr-body.md`, `51-build-plan-notes.md` — for every file you write
+outside the worktree, and re-read the file immediately before the command that
+consumes it if anything ran in between. Do not rely on the orchestrator to
+instruct this: it is a property of the machine, not of one run.
 
 **An acceptance criterion that names *where* an artifact goes is a location
 contract, and the PR body is not that location.** #46's AC5 read "spike numbers
