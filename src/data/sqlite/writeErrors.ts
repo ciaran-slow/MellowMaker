@@ -9,7 +9,19 @@ import { DatabaseError } from '../contracts/databaseError';
  * itself would be invisible. The floor is the schema; this module only names
  * what it refused.
  */
-const EMPTY_INSTRUCTION_CONSTRAINTS = [
+/**
+ * Every non-empty step-instruction `CHECK` the current schema can raise.
+ *
+ * This is a hand-written list rather than a derivation, because deriving it at
+ * runtime would mean querying `sqlite_master` on the error path. It is kept
+ * honest by a **walk**: `tests/databaseSchema.test.ts` reads every
+ * `CONSTRAINT <name> CHECK` out of the built latest schema and asserts this list
+ * equals the set of `*_instruction_not_empty` names it finds. A migration that
+ * gives a third table such a constraint therefore turns that test red until the
+ * name is added here — it cannot silently leave the refusal reaching the maker
+ * as a raw SQLite error. See `docs/architecture.md` §7 rule 9.
+ */
+export const EMPTY_INSTRUCTION_CONSTRAINTS = [
   'pattern_step_instruction_not_empty',
   'guide_step_instruction_not_empty',
 ] as const;

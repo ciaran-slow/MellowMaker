@@ -217,6 +217,53 @@ describe('bundled pattern seed loader', () => {
     expect(ledger(database)).toHaveLength(6);
   });
 
+  /**
+   * `insertSeededPatterns` is one of the eight writers wrapped by
+   * `withStepInstructionGuard`, and it was the only one with no test driving an
+   * empty instruction through it (#67 / PR #71's non-blocking coverage gap).
+   * The bundled document cannot produce one — `parsePatternSeedDocument` refuses
+   * it upstream — so the record is hand-built here to reach the branch, which is
+   * the same shape the mid-loop rollback case above uses. Without the schema
+   * `CHECK` the whitespace-only step persists and a starter ships with a
+   * nameless row; without the guard the refusal arrives as a raw SQLite error.
+   */
+  it('refuses a seeded record whose step instruction is whitespace, and rolls the release back', () => {
+    const doomed: SeedPatternInput[] = document.patterns.map((pattern, index) =>
+      index === 2
+        ? { ...pattern, steps: [pattern.steps[0] ?? 'Chain 41', '   '] }
+        : pattern,
+    );
+
+    let failure: unknown;
+    try {
+      database.repositories.patterns.insertSeededPatterns(1, doomed);
+    } catch (cause) {
+      failure = cause;
+    }
+
+    expect(failure).toBeInstanceOf(DatabaseError);
+    expect((failure as DatabaseError).code).toBe('empty-step-instruction');
+    // No maker content in the message, per architecture section 12.
+    expect((failure as DatabaseError).message).not.toContain('   ');
+
+    // The release is one transaction, so the two complete records written before
+    // record 3 went with it — no half-seeded library, no half-written ledger.
+    expect(
+      database.repositories.patterns.listPatterns(WHOLE_LIBRARY),
+    ).toStrictEqual([]);
+    expect(stepCount(database)).toBe(0);
+    expect(ledger(database)).toStrictEqual([]);
+    expect(
+      database.repositories.patterns.appliedPatternSeedVersion(),
+    ).toBeUndefined();
+
+    // And the rollback leaves the database seedable: the real release applies.
+    expect(
+      applyBundledPatternSeed(database.repositories.patterns),
+    ).toStrictEqual({ status: 'applied', seedVersion: 1, inserted: 6, skipped: 0 });
+    expect(stepCount(database)).toBe(TOTAL_STEPS);
+  });
+
   it('performs no write when the applied version already covers the release', () => {
     applyBundledPatternSeed(database.repositories.patterns);
 
