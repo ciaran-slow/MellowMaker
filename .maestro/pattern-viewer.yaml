@@ -66,14 +66,28 @@ appId: ${APP_ID}
 # done and step 3 current.
 #
 # Since issue #56 the title, progress summary, and counter scroll WITH the steps
-# as the list's header, and the mount-time jump to the current step is gone. The
-# arithmetic (unverified - Maestro cannot run on this machine, see
-# docs/runbooks/smoke-verification.md section 1): the list viewport starts at
-# 135, the header occupies 135-639, gap-3 puts step 1 at 651, and with steps 1
-# and 2 completed at 92pt each step 3 begins at about 859 on an 844pt screen.
-# `assertVisible` does not scroll, so each leg below scrolls its target into
-# view first. Every element named is a standalone Text node or an accessible
-# control label, metacharacter-free, and every assertion here is positive.
+# as the list's header. Since issue #63 the viewer opens AT the current step
+# again: steps 1 and 2 are complete here, so step 3 is current and the reopened
+# viewer is EXPECTED to scroll it to the top of the step area, leaving the
+# progress summary above the fold.
+#
+# Three steps all fit in the first render batch, so the list fires
+# `onContentSizeChange` exactly once and no later fire arrives. That single fire
+# is the content container's own layout event, which Fabric delivers BEFORE the
+# layout events of the cells in the same commit, so #63 defers each attempt by
+# one task - without that deferral this fixture would measure no cell in time and
+# would open at the title instead. Whichever way it lands, the legs below still
+# pass: `assertVisible` does not scroll, so each one scrolls its target into view
+# first - UP to the summary, then back DOWN to the step - and the UP leg is a
+# no-op when the summary is already on screen. So this flow is not itself a bet
+# on #63; the landing position is the owner's device check in
+# docs/runbooks/deferred-smokes/063-issue-63.md. Every element named is a
+# standalone Text node, metacharacter-free, and every assertion here is positive
+# (docs/runbooks/smoke-verification.md section 4).
+- scrollUntilVisible:
+    element:
+      text: "2 of 3 steps done"
+    direction: UP
 - assertVisible: "2 of 3 steps done"
 - scrollUntilVisible:
     element:
