@@ -15,7 +15,17 @@ import tokens from '@/ui/theme/tokens.json';
  * because the 48px touch minimum sat on the `TextInput` (a 24px line inside a
  * 48px box, which iOS top-aligns) rather than on the field surface. The fix
  * moves the minimum to the container and pads the single-line input
- * symmetrically so its own box is still 48px with the line centred in it.
+ * symmetrically.
+ *
+ * Issue #79: the owner's device pass showed the text still high after #42,
+ * because `text-body` also carries `lineHeight: 24`, and on the new
+ * architecture a single-line `TextInput` gets that as an `NSParagraphStyle`
+ * line height with none of the half-leading baseline correction `<Text>`
+ * receives. The single-line branch therefore carries the body font size inline
+ * and no line height at all; multiline keeps `text-body`. The single-line
+ * input's own box is consequently ~43pt inside the unchanged 48px surface, so
+ * `spacing[3] * 2 + body.lineHeight === touch.minimum` below is a token pin and
+ * a record of the historical arithmetic, not a live description of that box.
  *
  * Two facts about this repo make the assertions below the shape they are:
  *
@@ -80,6 +90,57 @@ describe('CraftTextField layout contract (issue #42)', () => {
     // here, so only this assertion can catch `min-h-touch` coming back.
     expect(input.props.className).not.toMatch(/\bmin-h-/);
     expect(input.props.textAlignVertical).toBe('center');
+
+    // Issue #79. `text-body` is three values, not one — `[16, { lineHeight:
+    // '24px', fontWeight: '400' }]` — so the only way to keep the font size
+    // without the line height is to drop the class and carry the size inline.
+    // The first two are RED on `main`; the rest are carrier guards (see T7).
+    expect(input.props.className).not.toMatch(
+      /\btext-(display|heading|body|label)\b/,
+    );
+    expect(input).toHaveStyle({ fontSize: 16 });
+    expect(
+      StyleSheet.flatten(input.props.style as StyleProp<TextStyle>)?.lineHeight,
+    ).toBeUndefined();
+    expect(input.props.className).not.toMatch(/\bleading-/);
+    expect(input.props.className).toMatch(/\btext-ink\b/);
+  });
+
+  it('carries no line height on the single-line input (issue #79)', async () => {
+    await render(
+      <CraftTextField
+        accessibilityLabel="Pattern title"
+        onChangeText={jest.fn()}
+        placeholder="Name your pattern"
+        testID="title-field"
+        value="Sunrise scarf"
+      />,
+    );
+
+    const input = screen.getByTestId('title-field');
+
+    // The two falsifiers — both RED on `main`, where the input's `className` is
+    // `"flex-1 text-body text-ink"` and its `style` is `{ paddingVertical: 12 }`.
+    // The 24px line height lives in `text-body`, so the class non-match is the
+    // only assertion that can see it (architecture §14).
+    expect(input.props.className).not.toMatch(
+      /\btext-(display|heading|body|label)\b/,
+    );
+    expect(input).toHaveStyle({ fontSize: 16 });
+
+    // Carrier guards, NOT falsifiers: both are green on `main` by construction
+    // and could never have caught this bug, because on `main` the 24 arrives in
+    // a class and no `leading-` utility is in play. They close the other two
+    // carriers the line height could come back through.
+    expect(
+      StyleSheet.flatten(input.props.style as StyleProp<TextStyle>)?.lineHeight,
+    ).toBeUndefined();
+    expect(input.props.className).not.toMatch(/\bleading-/);
+
+    // The placeholder inherits the value's paragraph style on iOS (a mutable
+    // copy of the default text attributes with only the colour swapped), so one
+    // edit centres both; it is rendered here so the fixture matches AC1.
+    expect(screen.getByPlaceholderText('Name your pattern')).toBe(input);
   });
 
   it('leaves a multiline field top-aligned with its own minimum', async () => {
@@ -103,12 +164,29 @@ describe('CraftTextField layout contract (issue #42)', () => {
     ).toBeUndefined();
     expect(surface?.props.className).toMatch(/\bitems-start\b/);
     expect(surface).toHaveStyle({ minHeight: 48 });
+
+    // Issue #79's negative branch, and the half that would otherwise ship
+    // silently: nothing else in the repository asserts a multiline field's
+    // typography. `text-body` must be *moved* onto this branch, not stripped
+    // from both — the 24px leading is the paragraph spacing that keeps three
+    // paragraphs of notes readable — and the single-line inline size must not
+    // be applied unconditionally.
+    expect(input.props.className).toMatch(/\btext-body\b/);
+    expect(
+      StyleSheet.flatten(input.props.style as StyleProp<TextStyle>)?.fontSize,
+    ).toBeUndefined();
   });
 
-  it('pads the single line to exactly the touch minimum', () => {
+  it('pins the token literals the field layout depends on', () => {
     expect(tokens.touch.minimum).toBe(48);
     expect(tokens.typography.body.lineHeight).toBe(24);
+    expect(tokens.typography.body.fontSize).toBe(16);
     expect(tokens.spacing[3]).toBe(12);
+    // 12 + 24 + 12 = 48 now describes the **multiline** body line and the
+    // historical single-line arithmetic, not the single-line box. Since #79 the
+    // single-line input's own box is 12 + the platform's natural line at 16pt
+    // (~19.1) + 12 ≈ 43, held inside a 48px surface by the container's
+    // `minHeight` and centred there by `items-center`.
     expect(tokens.spacing[3] * 2 + tokens.typography.body.lineHeight).toBe(
       tokens.touch.minimum,
     );
